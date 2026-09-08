@@ -1,0 +1,56 @@
+# 준비물 · 결정 체크리스트 (사용자가 직접 할 일)
+
+> 개발은 Claude 세션이 하고, 여기 있는 것은 계정 권한·실제 기기·본인 판단이 필요해 사용자가 직접 해야 하는 것들이다.
+> 끝내면 체크박스를 채우고 커밋해 두면 다음 세션이 상태를 안다. 최종 갱신 2026-09-08.
+
+## A. 지금 — 단계 0 전에
+
+- [ ] **A-1 KM26 원작자에게 허락 재확인.** KMD26 이 받은 허락(매치엔진·선수/포메이션 데이터·CSS·UI)은 KMD26 에 대한 것이다.
+  KLO26 은 **선수 데이터(능력치·능숙도·특성) · 포메이션 좌표 · 구단 색**을 쓴다. 매치엔진은 안 쓴다.
+  원본 저장소 이슈에 사용 범위를 적고 답을 받아 [../NOTICE.md](../NOTICE.md) 에 링크한다.
+  **답을 받기 전에는 데이터를 저장소에 넣지 않는다** (단계 1 이 여기서 멈춘다).
+- [x] **A-2 GitHub 저장소 만들기** — `https://github.com/goormigrm/KLO26` 생성됨 (2026-09-08). 첫 커밋·푸시 완료.
+- [ ] **A-3 Pages 켜기** — 저장소 Settings → Pages → Source 를 **GitHub Actions** 로. `.github/workflows/deploy.yml` 이 push 마다 배포한다.
+  켜고 나면 `https://goormigrm.github.io/KLO26/` 에 설계 단계 안내 페이지가 떠야 한다.
+- [x] **A-4 선수 이름 표기** — **보호명** (2026-09-08). [DECISIONS.md](DECISIONS.md) 3장 1번.
+- [x] **A-5 게임패드** — **없음 → 키보드로만 검증** (2026-09-08). 패드 매핑은 설계만.
+- [ ] **A-6 두 번째 PC** — 노트북에서 `git clone` 해 두면 두 PC 를 오가며 작업할 수 있다. 커밋 작성자 설정은 저장소마다:
+  ```bash
+  git config user.name goormigrm && git config user.email 1117tkdrms@gmail.com
+  ```
+
+## B. 공개 전에
+
+- [ ] **B-1 다른 회선 두 대로 실제 대전** — 가장 중요하다. 같은 PC 탭 두 개로는 NAT 문제를 못 잡는다. 차선은 한 대를 폰 핫스팟에 물리기.
+  안 되면 "폰 핫스팟으로 재시도" 안내가 최종이다 (TURN 은 비용 원칙상 안 쓴다).
+- [ ] **B-2 폰으로 열어 보기** — PC 전용이라 조작은 없다. 폰·태블릿에서 열었을 때 안내 화면만 뜨고 로비로 못 들어가는지만 본다.
+- [ ] **B-3 공개 채널** — KMD26 은 FM코리아 공개글, bedorage-duck 은 다음 카페였다. **공개 시점에 정한다** (2026-09-08). 문안은 `docs/공지글-모음.md`.
+- [ ] **B-4 연락 수단** — GitHub Issues 로 받을지, 게시글 댓글로만 받을지.
+- [ ] **B-5 체감 밸런스는 오픈 베타에서** — 봇 계측은 참고일 뿐이다.
+
+## C. 비용 원칙 (bedorage-duck 2026-09-04 확정, 그대로)
+
+**카드 등록이 필요한 서비스는 무료 티어라도 쓰지 않는다.**
+
+| 항목 | 결정 |
+|---|---|
+| TURN (metered.ca, Cloudflare Realtime, Twilio …) | **배제.** 연결 실패는 핫스팟 안내로 끝낸다 |
+| STUN (Google 공개) | 허용 |
+| 시그널링: Trystero 공개 Nostr 릴레이 | 허용 |
+| GitHub Pages · Google Fonts | 허용 |
+| Supabase (KMD26 게시판이 쓰던 것) | **안 쓴다** — 이 프로젝트는 DB 가 없다 |
+| 광고 · 결제 · 후원 | **없음** |
+
+## D. 환경
+
+| | 값 |
+|---|---|
+| Node | 24 (bedorage-duck 과 같음). PowerShell 에서 `npm` 이 막히면 `npm.cmd` |
+| git · gh | 로그인돼 있음 |
+| 개발 서버 | `npm run dev` → `http://localhost:5175/KLO26/` (bedorage-duck 5173 과 겹치지 않게) |
+
+## E. 세션이 끊겼을 때
+
+1. 새 Claude Code 세션을 `C:\Users\tkdrm\Workspace\personal\KLO26` 에서 연다.
+2. **"HANDOVER.md 읽고 이어서 진행해줘"** 라고만 하면 된다.
+3. 커밋 안 된 변경이 있으면 `git status` 로 확인하고 먼저 커밋하게 한다.

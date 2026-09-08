@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.vite/
+*.log
+.DS_Store
+Thumbs.db
+# 공지용 사진·GIF 는 로컬에만 (이력에 쌓이지 않게)
+docs/img/
+# Python 캐시
+__pycache__/

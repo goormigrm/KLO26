@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.png binary
+*.ogg binary
+# 배치 파일은 CRLF 여야 한다. LF 면 cmd 가 괄호 블록(if ...)을 잘못 읽어 창이 바로 닫힌다 (bedorage-duck 2026-09-08)
+*.cmd text eol=crlf
+*.bat text eol=crlf

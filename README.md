@@ -5,7 +5,7 @@
 
 > 🚧 **설계 단계 (2026-09-08).** 게임은 아직 없습니다. 설계서와 뼈대만 있습니다.
 
-- 배포 예정: <https://goormigrm.github.io/KLO26/>
+- 배포: <https://goormigrm.github.io/KLO26/> (지금은 설계 단계 안내 페이지)
 - 저장소: <https://github.com/goormigrm/KLO26>
 
 ## 이런 게임이 됩니다

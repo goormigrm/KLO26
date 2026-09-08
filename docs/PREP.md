@@ -10,8 +10,9 @@
   원본 저장소 이슈에 사용 범위를 적고 답을 받아 [../NOTICE.md](../NOTICE.md) 에 링크한다.
   **답을 받기 전에는 데이터를 저장소에 넣지 않는다** (단계 1 이 여기서 멈춘다).
 - [x] **A-2 GitHub 저장소 만들기** — `https://github.com/goormigrm/KLO26` 생성됨 (2026-09-08). 첫 커밋·푸시 완료.
-- [ ] **A-3 Pages 켜기** — 저장소 Settings → Pages → Source 를 **GitHub Actions** 로. `.github/workflows/deploy.yml` 이 push 마다 배포한다.
-  켜고 나면 `https://goormigrm.github.io/KLO26/` 에 설계 단계 안내 페이지가 떠야 한다.
+- [x] **A-3 Pages 켜기** — Source 를 **GitHub Actions** 로 켰다 (2026-09-08). `.github/workflows/deploy.yml` 이 push 마다 배포한다.
+  <https://goormigrm.github.io/KLO26/> 에 설계 단계 안내 페이지가 뜨는 것을 curl 로 확인했다.
+  ⚠ 첫 푸시의 deploy 는 Pages 를 켜기 전이라 404 로 실패했고, 켠 뒤 Re-run 으로 성공했다 — **새 저장소는 Pages 부터 켜고 푸시할 것.**
 - [x] **A-4 선수 이름 표기** — **보호명** (2026-09-08). [DECISIONS.md](DECISIONS.md) 3장 1번.
 - [x] **A-5 게임패드** — **없음 → 키보드로만 검증** (2026-09-08). 패드 매핑은 설계만.
 - [ ] **A-6 두 번째 PC** — 노트북에서 `git clone` 해 두면 두 PC 를 오가며 작업할 수 있다. 커밋 작성자 설정은 저장소마다:

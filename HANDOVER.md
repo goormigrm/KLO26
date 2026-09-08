@@ -9,7 +9,7 @@
 | 날짜 | 2026-09-08 |
 | 작업 디렉터리 | `C:\Users\tkdrm\Workspace\personal\KLO26` |
 | 저장소 | `https://github.com/goormigrm/KLO26` · `main` · **첫 커밋 푸시됨** (2026-09-08) |
-| 배포 | 아직 — Pages 를 Actions 로 켜야 한다 (PREP A-3). 켜면 `https://goormigrm.github.io/KLO26/` |
+| 배포 | <https://goormigrm.github.io/KLO26/> — Pages(Actions) 켜짐, 첫 배포 성공 (2026-09-08). `<title>개리그 온라인 2026</title>` curl 확인 |
 | 참고한 곳 | `../km`(KM26 원본 + docs 9종) · `../KMD26v1.0`(데이터·코드 규격·문서 체계) · `../철FPS/bedorage-duck`(P2P·락스텝·결정론·배포) |
 
 이 세션의 산출물은 전부 첫 커밋에 들어갔습니다. 두 PC 를 오가므로 다음 세션은 `git fetch origin && git status -sb` 부터.
@@ -49,14 +49,13 @@
 
 ### 사용자가 먼저 (PREP A)
 
-1. **A-1 원작자 허락 재확인** — 단계 1 이 여기 걸려 있다.
-2. **A-3 Pages 켜기** (Settings → Pages → Source: GitHub Actions). 첫 푸시의 워크플로는 Pages 가 꺼져 있으면 deploy 단계에서 실패한다 — 켜고 다시 돌리면 된다(Actions 탭 → Re-run).
+1. **A-1 원작자 허락 재확인** — 단계 1 이 여기 걸려 있다. (A-2 저장소 · A-3 Pages 는 끝났다)
 
 ### 다음 세션 (단계 0 → 1 → 2)
 
 | 순서 | 무엇 | 끝났다의 기준 |
 |---|---|---|
-| 0 | 첫 커밋 · `gh repo create` · Pages 배포 확인 | 빈 페이지가 배포 주소에서 열린다 |
+| 0 | ~~첫 커밋 · 저장소 · Pages 배포 확인~~ **끝** (2026-09-08) | 배포 주소에서 안내 페이지가 열린다 ✅ |
 | 1 | `tools/build_cards.py` (KMD26 `data/players.json` → `src/data/cards.json`) · `tools/calibrate.py` (OVR 앵커 · 급여 상한) | DESIGN 11장 1단계 기준 |
 | 2 | `src/core` 시뮬 코어 — 피치·공·선수·소유·패스·슛·GK·기본 AI · 봇 vs 봇 헤드리스 | 같은 시드 100회 해시 일치 · 틱당 < 0.5 ms · 평균 골 2~4/6분 |
 | 3 | Three.js 방송 카메라 · 찰흙 선수(키 `h/180`) · 피치 · 키보드 · 폰 차단 · 혼자 하기 | DESIGN 11장 3단계 기준. bedorage-duck `src/render3d`(카메라·프리미티브 조립·툰) 를 옮겨 오는 것부터 |

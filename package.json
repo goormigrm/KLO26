@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "balance": "vite-node tools/balance.ts",
+    "probe": "vite-node tools/probe.ts"
   },
   "dependencies": {
     "three": "^0.185.1",

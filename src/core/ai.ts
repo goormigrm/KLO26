@@ -1,0 +1,409 @@
+// 팀 AI — 조작하지 않는 20명과 봇 팀 22명 (DESIGN 4.10).
+// 자리(앵커) · 지원 러닝 · 압박/커버/마크 · 볼 소유자의 효용 판단 · GK 위치. 난수는 봇 전용 st.botRng 만 쓴다.
+
+import { atan2A, clamp, cosA, len, sinA } from './fixedmath'
+import { anchorOf, type Band } from './formation'
+import { rand } from './rng'
+import { dist, doClear, doPass, doShoot, inOwnBox, interceptPoint, nearestOppDist, randN, type PassKind } from './ball'
+import { HALF_L, HALF_W, goalX, type GameState, type Player } from './state'
+
+const tmp = { x: 0, y: 0 }
+
+/** 봇 난이도별 손잡이 — 판단 잡음 · 압박 거리 배수 */
+const BOT: Record<number, { noise: number; press: number }> = {
+  1: { noise: 0.25, press: 0.7 },
+  2: { noise: 0.12, press: 1.0 },
+  3: { noise: 0.05, press: 1.25 },
+}
+
+export function ballOwnerTeam(st: GameState): number {
+  const o = st.ball.owner
+  return o < 0 ? -1 : st.players[o].team
+}
+
+/** 22명의 자리를 다시 계산한다 (매 틱, 싸다) */
+export function updateAnchors(st: GameState): void {
+  const ot = ballOwnerTeam(st)
+  for (const p of st.players) {
+    const team = st.teams[p.team]
+    anchorOf(p.slot, p.band as Band, team.dir, team.sliders, st.ball.x, st.ball.y, ot === p.team, tmp)
+    p.ax = tmp.x
+    p.ay = tmp.y
+  }
+}
+
+/** 오프사이드 라인 — 상대 팀에서 골문 쪽으로 두 번째 선수의 x (절대 좌표) */
+export function offsideLineX(st: GameState, teamIdx: number): number {
+  const dir = st.teams[teamIdx].dir
+  let m1 = -99
+  let m2 = -99
+  for (const q of st.players) {
+    if (q.team === teamIdx) continue
+    const v = q.x * dir
+    if (v > m1) {
+      m2 = m1
+      m1 = v
+    } else if (v > m2) m2 = v
+  }
+  return m2 * dir
+}
+
+/** (x,y) 에 p 보다 가까운 같은 팀 선수 수 (동률은 idx 로) */
+function rankByDist(st: GameState, teamIdx: number, x: number, y: number, p: Player, excludeGK: boolean, exclude = -1): number {
+  const dp = dist(p.x, p.y, x, y)
+  let rank = 0
+  for (const q of st.players) {
+    if (q.team !== teamIdx || q.idx === p.idx || q.idx === exclude) continue
+    if (excludeGK && q.sk.isGK) continue
+    const dq = dist(q.x, q.y, x, y)
+    if (dq < dp || (dq === dp && q.idx < p.idx)) rank++
+  }
+  return rank
+}
+
+function goAnchor(p: Player, fwd: number, dir: number): void {
+  p.tx = clamp(p.ax + dir * fwd, -HALF_L + 1, HALF_L - 1)
+  p.ty = p.ay
+}
+
+/** q 앞(공격 방향 ±40°, 8 m) 가장 가까운 상대까지 거리. 없으면 99 */
+function spaceAhead(st: GameState, q: Player, dir: number): number {
+  let best = 99
+  for (const o of st.players) {
+    if (o.team === q.team) continue
+    const dx = (o.x - q.x) * dir
+    if (dx <= 0 || dx > 8) continue
+    const dy = Math.abs(o.y - q.y)
+    if (dy > dx * 0.84) continue
+    const d = len(dx, dy)
+    if (d < best) best = d
+  }
+  return best
+}
+
+/** p→q 패스 길에 가장 가까운 상대까지 거리 (상한 3) */
+function laneClear(st: GameState, p: Player, q: Player): number {
+  const ax = p.x
+  const ay = p.y
+  const bx = q.x - ax
+  const by = q.y - ay
+  const l2 = bx * bx + by * by
+  let best = 3
+  for (const o of st.players) {
+    if (o.team === p.team) continue
+    let t = l2 > 0 ? ((o.x - ax) * bx + (o.y - ay) * by) / l2 : 0
+    t = clamp(t, 0, 1)
+    const d = dist(ax + bx * t, ay + by * t, o.x, o.y)
+    if (d < best) best = d
+  }
+  return best
+}
+
+function gkDecide(st: GameState, gk: Player): void {
+  const ti = gk.team
+  const team = st.teams[ti]
+  const dir = team.dir
+  const ownGoalX = -dir * HALF_L
+  const b = st.ball
+  gk.sprint = false
+  if (gk.holdT > 0) {
+    gk.tx = gk.x
+    gk.ty = gk.y
+    return
+  }
+  const ot = ballOwnerTeam(st)
+  if (ot < 0 && Math.abs(b.x - ownGoalX) < 16.5 && Math.abs(b.y) < 20) {
+    interceptPoint(st, gk, tmp)
+    if (rankByDist(st, ti, tmp.x, tmp.y, gk, false) === 0 && dist(gk.x, gk.y, tmp.x, tmp.y) < 12) {
+      gk.tx = tmp.x
+      gk.ty = tmp.y
+      gk.sprint = true
+      return
+    }
+  }
+  let d = 1.0 + 1.5 * gk.sk.gkPos
+  if (ot === 1 - ti) {
+    const c = st.players[b.owner]
+    const dc = dist(c.x, c.y, ownGoalX, 0)
+    if (dc < 14) {
+      let between = 0
+      for (const q of st.players) if (q.team === ti && !q.sk.isGK && dist(q.x, q.y, c.x, c.y) < 3) between++
+      if (between === 0) d = clamp(dc * 0.5, 2, 7)
+    }
+  }
+  let ux = b.x - ownGoalX
+  let uy = b.y
+  const l = len(ux, uy)
+  if (l > 0) {
+    ux /= l
+    uy /= l
+  } else {
+    ux = dir
+    uy = 0
+  }
+  gk.tx = ownGoalX + ux * d
+  gk.ty = clamp(uy * d, -4, 4)
+}
+
+function carrierDecide(st: GameState, p: Player, noise: number): void {
+  const ti = p.team
+  const team = st.teams[ti]
+  const dir = team.dir
+  const gx = goalX(team)
+  const r = st.botRng
+  const dG = dist(p.x, p.y, gx, 0)
+  const opD = nearestOppDist(st, p)
+
+  // 잡은 직후엔 (압박이 없으면) 일단 몰고 간다 — 받자마자 되차는 핑퐁을 막는다
+  const justGot = st.tick - p.gotT < 20 && opD > 2.5
+
+  let shoot = -1
+  if (dG < 34) {
+    const lat = Math.abs(p.y) / Math.max(1, Math.abs(gx - p.x))
+    const angF = 1 / (1 + lat * 1.2)
+    shoot = (1 - dG / 34) * (0.5 + 0.5 * p.sk.sho) * angF * 1.6 + (dG < 16 ? 0.3 : 0)
+    if (opD < 1.5) shoot *= 0.7
+    shoot += randN(r) * noise
+  }
+
+  let bestPass = -1
+  let bestScore = -1
+  let bestKind: PassKind = 'ground'
+  for (const q of st.players) {
+    if (q.team !== ti || q.idx === p.idx) continue
+    if (q.sk.isGK && !(p.x * dir < -10 && opD < 3)) continue
+    const dq = dist(p.x, p.y, q.x, q.y)
+    if (dq < 3) continue
+    const gain = clamp(((q.x - p.x) * dir) / 30, -1, 1)
+    const open = Math.min(8, nearestOppDist(st, q)) / 8
+    const lane = laneClear(st, p, q) / 3
+    let s = 0.2 + 0.3 * gain + 0.25 * open + 0.25 * lane + 0.15 * p.sk.pas - (dq > 35 ? 0.3 : dq > 25 ? 0.1 : 0) + randN(r) * noise
+    if (justGot) s -= 0.35
+    let kind: PassKind = 'ground'
+    if (gain > 0.2 && spaceAhead(st, q, dir) > 5) {
+      s += 0.12
+      kind = 'through'
+    }
+    if (Math.abs(p.y) > 18 && p.x * dir > 30 && Math.abs(q.x - gx) < 20 && Math.abs(q.y) < 20) {
+      s += 0.15
+      kind = 'lob'
+    }
+    if (s > bestScore) {
+      bestScore = s
+      bestPass = q.idx
+      bestKind = kind
+    }
+  }
+
+  const ahead = spaceAhead(st, p, dir)
+  let drib = ahead > 8 ? 0.55 + 0.25 * p.sk.drib + (dG > 40 ? 0.1 : 0) : 0.25 + 0.15 * p.sk.drib
+  if (p.x * dir < -20 && opD < 2.5) drib = 0.05
+  drib += randN(r) * noise
+
+  let clr = -1
+  if (p.x * dir < -20 && opD < 3) clr = 0.55 + (inOwnBox(p, dir) ? 0.2 : 0) + randN(r) * noise
+
+  const hold = 0.08
+  const top = Math.max(shoot, bestScore, drib, clr, hold)
+  p.sprint = false
+  if (top === shoot) {
+    const power = clamp(0.5 + dG / 40, 0.5, 1)
+    let gkY = 0
+    let gkFar = false
+    for (const q of st.players) {
+      if (q.team === ti || !q.sk.isGK) continue
+      gkY = q.y
+      gkFar = dist(q.x, q.y, gx, 0) > 8
+    }
+    let side = gkY > 0.5 ? -1 : gkY < -0.5 ? 1 : rand(r) < 0.5 ? -1 : 1
+    doShoot(st, p, 0, 0, power, gkFar && dG < 25, side)
+    return
+  }
+  if (top === bestScore && bestPass >= 0) {
+    doPass(st, p, bestKind, bestPass, 0, 0, bestKind === 'through' ? 0.5 : 0.2)
+    return
+  }
+  if (top === clr) {
+    doClear(st, p)
+    return
+  }
+  if (top === drib) {
+    let ux = gx - p.x
+    let uy = -p.y * 0.3
+    const l = len(ux, uy)
+    if (l > 0) {
+      ux /= l
+      uy /= l
+    }
+    if (ahead <= 8) {
+      // 앞에 있는 가장 가까운 상대를 피해 옆으로
+      let ox = 0
+      let oy = 0
+      let od = 99
+      for (const o of st.players) {
+        if (o.team === ti) continue
+        const d = dist(p.x, p.y, o.x, o.y)
+        if (d < od && (o.x - p.x) * dir > 0) {
+          od = d
+          ox = o.x
+          oy = o.y
+        }
+      }
+      void ox
+      const side = p.y >= oy ? 1 : -1
+      ux += -uy * side * 0.8
+      uy += ux * side * 0.8
+      const l2 = len(ux, uy)
+      if (l2 > 0) {
+        ux /= l2
+        uy /= l2
+      }
+    }
+    p.tx = clamp(p.x + ux * 6, -HALF_L + 1, HALF_L - 1)
+    p.ty = clamp(p.y + uy * 6, -HALF_W + 1, HALF_W - 1)
+    p.sprint = ahead > 8 && p.stamina > 0.3
+    return
+  }
+  // hold: 상대 반대쪽으로 몸을 돌려 지킨다
+  p.tx = p.x - dir * 1
+  p.ty = p.y
+}
+
+/** 선수 하나의 다음 목표·행동을 정한다. DECIDE_TICKS 마다 한 번 */
+export function aiDecide(st: GameState, p: Player): void {
+  const ti = p.team
+  const team = st.teams[ti]
+  const dir = team.dir
+  const b = st.ball
+  const params = BOT[team.bot || 2]
+  p.press = false
+  p.sprint = false
+  if (p.sk.isGK) {
+    gkDecide(st, p)
+    return
+  }
+  // 리스타트 중 상대 팀: 자리로 가되 공에서 9.15 m 는 떨어진다
+  if (st.phase !== 'play' && st.restart && st.restart.team !== ti) {
+    goAnchor(p, -2, dir)
+    const d = dist(p.x, p.y, b.x, b.y)
+    if (d < 9.15 && d > 0) {
+      p.tx = clamp(p.x + ((p.x - b.x) / d) * 6, -HALF_L + 1, HALF_L - 1)
+      p.ty = clamp(p.y + ((p.y - b.y) / d) * 6, -HALF_W + 1, HALF_W - 1)
+    }
+    return
+  }
+  if (b.owner === p.idx) {
+    if (st.phase === 'play') carrierDecide(st, p, params.noise)
+    else {
+      p.tx = p.x
+      p.ty = p.y
+    }
+    return
+  }
+  const ot = ballOwnerTeam(st)
+  if (ot < 0) {
+    // 자유 공: 받으라고 보낸 사람과 가장 가까운 둘이 요격 지점으로 달린다
+    interceptPoint(st, p, tmp)
+    const rank = rankByDist(st, ti, tmp.x, tmp.y, p, true)
+    if (rank < 2 || b.passTo === p.idx) {
+      p.tx = clamp(tmp.x, -HALF_L - 1, HALF_L + 1)
+      p.ty = clamp(tmp.y, -HALF_W - 1, HALF_W + 1)
+      p.sprint = dist(p.x, p.y, p.tx, p.ty) > 6 && p.stamina > 0.2
+      p.press = true
+      return
+    }
+    goAnchor(p, 0, dir)
+    return
+  }
+  if (ot === ti) {
+    const o = st.players[b.owner]
+    const rank = rankByDist(st, ti, o.x, o.y, p, true, b.owner)
+    const n = 2 + (team.sliders.mentality >= 3 ? 1 : 0) + (team.sliders.mentality === 4 ? 1 : 0)
+    if (rank < n) {
+      const side = p.y >= o.y ? 1 : -1
+      let tx: number
+      let ty: number
+      if (rank === 0) {
+        tx = o.x + dir * 8
+        ty = o.y + side * 7
+      } else if (rank === 1) {
+        tx = o.x + dir * 14
+        ty = o.y * 0.5
+      } else if (rank === 2) {
+        tx = o.x - dir * 7
+        ty = o.y * 0.7
+      } else {
+        tx = o.x + dir * 4
+        ty = o.y - side * 12
+      }
+      const line = offsideLineX(st, ti)
+      if ((tx - line) * dir > -0.5) tx = line - dir * 0.5
+      p.tx = clamp(tx, -HALF_L + 1, HALF_L - 1)
+      p.ty = clamp(ty, -HALF_W + 1, HALF_W - 1)
+      p.sprint = dist(p.x, p.y, p.tx, p.ty) > 8 && p.stamina > 0.25
+      return
+    }
+    goAnchor(p, 3, dir)
+    return
+  }
+  // 상대가 공을 가졌다
+  const c = st.players[b.owner]
+  const inOwnHalf = c.x * dir < 0
+  const dPress = (8 + team.sliders.press * 3 + (inOwnHalf ? 6 : 0)) * params.press
+  const rank = rankByDist(st, ti, c.x, c.y, p, true)
+  const d = dist(p.x, p.y, c.x, c.y)
+  if (rank === 0 && d < dPress + 10) {
+    p.tx = c.x + c.vx * 0.3
+    p.ty = c.y + c.vy * 0.3
+    p.press = true
+    p.sprint = d > 4 && p.stamina > 0.2
+    return
+  }
+  if (rank === 1) {
+    p.tx = clamp(c.x - dir * 5, -HALF_L + 1, HALF_L - 1)
+    p.ty = c.y * 0.8
+    p.press = team.assist
+    p.sprint = d > 10 && p.stamina > 0.25
+    return
+  }
+  let mk = -1
+  let mkd = 8
+  for (const q of st.players) {
+    if (q.team === ti || q.idx === b.owner || q.sk.isGK) continue
+    const dq = dist(p.x, p.y, q.x, q.y)
+    if (dq < mkd && q.x * dir < 5) {
+      mkd = dq
+      mk = q.idx
+    }
+  }
+  if (mk >= 0) {
+    const q = st.players[mk]
+    p.tx = clamp(q.x - dir * 1.5, -HALF_L + 1, HALF_L - 1)
+    p.ty = q.y
+    return
+  }
+  goAnchor(p, -2, dir)
+}
+
+/** 사람이 조작할 다음 선수 — 공에 가장 가까운 필드 선수. exclude 를 주면 그 다음 */
+export function nearestToBall(st: GameState, teamIdx: number, exclude: number): number {
+  const b = st.ball
+  let best = -1
+  let bestD = 999
+  for (const q of st.players) {
+    if (q.team !== teamIdx || q.sk.isGK || q.idx === exclude) continue
+    const d = dist(q.x, q.y, b.x + b.vx * 0.3, b.y + b.vy * 0.3)
+    if (d < bestD) {
+      bestD = d
+      best = q.idx
+    }
+  }
+  return best
+}
+
+/** 각도 단위 → 방향 벡터 (렌더가 아니라 sim 안에서 쓰는 보조) */
+export function dirOf(a: number): { x: number; y: number } {
+  return { x: cosA(a), y: sinA(a) }
+}
+
+export { atan2A as aiAtan2 }

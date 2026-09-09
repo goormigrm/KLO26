@@ -3,9 +3,10 @@
 **K리그 2026 29개 구단 1,024명으로 내 스쿼드를 짜서, 브라우저에서 P2P 로 1:1 실시간 조작 축구 대전.**
 설치·가입·서버 없음. PC 전용. 비상업.
 
-> 🚧 **개발 중 (2026-09-08).** 설계서와 시뮬레이션 코어(봇 vs 봇, 화면 없음)까지 있습니다. 화면·네트워크는 아직입니다.
+> 🚧 **개발 중 (2026-09-09).** 설계서 · 시뮬레이션 코어 · **혼자 하기(봇과 한 판, Three.js 방송 카메라, 키보드 조작)** 까지 있습니다.
+> 실제 선수 카드는 아직 없어 **합성 스쿼드(가짜 선수 "홈7" 같은 이름)** 로 돕니다. 온라인 대전·스쿼드 화면은 아직입니다.
 
-- 배포: <https://goormigrm.github.io/KLO26/> (지금은 설계 단계 안내 페이지)
+- 배포: <https://goormigrm.github.io/KLO26/> — 로비에서 **혼자 하기** 로 봇과 한 판
 - 저장소: <https://github.com/goormigrm/KLO26>
 
 ## 이런 게임이 됩니다
@@ -46,7 +47,7 @@ npm run dev     # http://localhost:5175/KLO26/
 | 명령 | 하는 일 |
 |---|---|
 | `npm run dev` | 개발 서버 (HMR) |
-| `npm test` | vitest — 결정론 · 성능 · 경기 · 기본 수학 |
+| `npm test` | vitest — 결정론 · 성능 · 경기 · 리스타트 킥 · 키 매핑 · 카메라 · 기본 수학 (26개) |
 | `npm run build` | `tsc --noEmit` + vite build → `dist/` |
 | `npm run balance -- 50` | 봇 vs 봇 50판 계측 (골 분포 · 슛 · 점유 · 패스 성공률) |
 | `npm run probe -- 101` | 시드 101 한 경기 진단 (사건 · 공 위치 분포) |
@@ -58,19 +59,19 @@ npm run dev     # http://localhost:5175/KLO26/
 
 저장소 폴더를 열고 **"HANDOVER.md 읽고 이어서 진행해줘"** 한 줄이면 됩니다.
 
-### 구조 (계획 — 설계서 8장)
+### 구조 (설계서 8장 · ✅ = 있음)
 
 ```
-src/core/     결정론 시뮬레이션 (물리·규칙·AI·포메이션·스킬) — 렌더/DOM 금지
-src/cards/    카드 6스탯·OVR·급여·스쿼드 규칙·스쿼드 코드
-src/net/      Trystero 로비·방, 2인 락스텝
-src/game/     세션 루프, 입력(키·패드·터치), Worker 틱 타이머
-src/render3d/ Three.js 방송 카메라·찰흙 선수(키 반영)·피치·공
-src/render/   HUD(DOM 오버레이)·레이더
-src/audio/    효과음 (Web Audio 절차 생성)
-src/ui/       로비·스쿼드·대기실·결과·설정
-tools/        카드 빌드 · 캘리브레이션 · 밸런스 계측
-tests/        vitest
+src/core/     ✅ 결정론 시뮬레이션 (물리·규칙·AI·포메이션·스킬·합성 스쿼드) — 렌더/DOM 금지
+src/cards/       카드 6스탯·OVR·급여·스쿼드 규칙·스쿼드 코드 (단계 5)
+src/net/         Trystero 로비·방, 2인 락스텝 (단계 6)
+src/game/     ✅ 혼자 하기 세션 루프 · 키보드 입력 · Worker 틱 타이머
+src/render3d/ ✅ Three.js 방송 카메라 · 찰흙 선수(키 반영·동작) · 피치·골대·관중석 · 공
+src/render/   ✅ HUD(DOM 오버레이) · 레이더
+src/audio/       효과음 (Web Audio 절차 생성) — 아직 없음
+src/ui/       ✅ 로비 · 설정 · 폰 차단 (스쿼드·대기실은 단계 5·6)
+tools/        ✅ 밸런스 계측 · 한 경기 진단 (카드 빌드·캘리브레이션은 단계 1)
+tests/        ✅ vitest
 ```
 
 **핵심 규칙**: `src/core/` 에서는 `Math.random`·삼각함수·시간 함수를 쓰지 않습니다. 두 브라우저가 같은 입력으로 같은 결과를 내야 하기 때문입니다. [docs/DESIGN.md](docs/DESIGN.md) 4.12.

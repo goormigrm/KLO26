@@ -120,9 +120,12 @@ function handleInput(st: GameState, t: number, inp: Input): void {
     team.prevButtons = held
     return
   }
-  // 리스타트 킥커: 아무 킥 키나 누르면 찬다 (방향은 단계 3 에서)
+  // 리스타트 킥커: 킥 키를 누르면 방향키 쪽으로 찬다. 방향키가 없으면 AI 가 고른다 (rules.performRestartKick)
   if (st.phase !== 'play' && st.restart && st.restart.team === t && st.restart.kicker === c.idx) {
-    if (edge & (BTN_S | BTN_W | BTN_A | BTN_D)) performRestartKick(st)
+    if (edge & (BTN_S | BTN_W | BTN_A | BTN_D)) {
+      const kind = edge & BTN_D ? 'D' : edge & BTN_W ? 'W' : edge & BTN_A ? 'A' : 'S'
+      performRestartKick(st, { kind, dx: team.inX, dy: team.inY })
+    }
     team.prevButtons = held
     return
   }

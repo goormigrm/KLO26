@@ -4,7 +4,7 @@
 import { atan2A, clamp } from './fixedmath'
 import { anchorOf, type Band } from './formation'
 import { rand } from './rng'
-import { dist, doPass, nearestOppDist } from './ball'
+import { dist, doPass, doShoot, nearestOppDist, pickPassTarget } from './ball'
 import { crossedGoalLine } from './physics'
 import {
   ACT_RUN, BALL_R, DT, GOAL_TICKS, HALFTIME_TICKS, HALF_L, HALF_W, KICKOFF_TICKS, RESTART_TICKS,
@@ -116,8 +116,19 @@ export function setupRestart(st: GameState, type: 'throwin' | 'corner' | 'goalki
   if (type === 'corner') st.stats[team].corners++
 }
 
-/** 리스타트 킥 — AI 가 고른다 (사람 킥커도 v1 은 같은 선택). 끝나면 play 로 */
-export function performRestartKick(st: GameState): void {
+/** 사람 킥커의 리스타트 킥 — 누른 키와 방향키 (DESIGN 3.1 세트피스) */
+export interface RestartAim {
+  /** S 그라운드 · W 스루 · A 로빙/크로스 · D 슛 */
+  kind: 'S' | 'W' | 'A' | 'D'
+  dx: number
+  dy: number
+}
+
+/**
+ * 리스타트 킥. aim 이 있고 방향키가 눌려 있으면 사람이 고른 대로 차고, 아니면 AI 가 고른다.
+ * 끝나면 play 로. 결정론 — aim 은 Input 에서만 온다.
+ */
+export function performRestartKick(st: GameState, aim: RestartAim | null = null): void {
   const r = st.restart
   if (!r) return
   const k = st.players[r.kicker]
@@ -127,6 +138,15 @@ export function performRestartKick(st: GameState): void {
   st.restart = null
   st.phase = 'play'
   if (st.ball.owner !== r.kicker) return
+  if (aim && (aim.dx !== 0 || aim.dy !== 0)) {
+    const { dx, dy } = aim
+    if (aim.kind === 'D') doShoot(st, k, dx, dy, 0.8, false, null)
+    else if (aim.kind === 'W') doPass(st, k, 'through', pickPassTarget(st, k, dx, dy, true), dx, dy, 0.5)
+    else if (aim.kind === 'A') doPass(st, k, phase === 'corner' ? 'highcross' : 'lob', pickPassTarget(st, k, dx, dy, false), dx, dy, 0.6)
+    else doPass(st, k, 'ground', pickPassTarget(st, k, dx, dy, false), dx, dy, 0.3)
+    if (phase === 'throwin') st.ball.vz = 1.5
+    return
+  }
   if (phase === 'kickoff') {
     let target = -1
     let td = 999

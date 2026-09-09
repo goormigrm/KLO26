@@ -1,108 +1,87 @@
-# HANDOVER — 2026-09-08 (2차)
+# HANDOVER — 2026-09-09 (3차)
 
-> **이 문서가 최신입니다.** 같은 날 두 번째 핸드오버 — 설계 + **단계 2 시뮬 코어가 돌아갑니다**(봇 vs 봇 · 결정론 · 성능 통과). 화면·네트워크는 아직 없습니다.
+> **이 문서가 최신입니다.** 단계 3 — **브라우저에서 봇과 한 판이 됩니다** (Three.js 방송 카메라 · 찰흙 선수 · 표준 키보드 · 폰 차단 · 혼자 하기).
+> 실제 카드 데이터·온라인 대전·소리는 아직 없습니다.
 
 ## 세션 메타데이터
 
 | 항목 | 값 |
 |---|---|
-| 날짜 | 2026-09-08 |
-| 작업 디렉터리 | `C:\Users\tkdrm\Workspace\personal\KLO26` |
-| 저장소 | `https://github.com/goormigrm/KLO26` · `main` · **첫 커밋 푸시됨** (2026-09-08) |
-| 배포 | <https://goormigrm.github.io/KLO26/> — Pages(Actions) 켜짐, 첫 배포 성공 (2026-09-08). `<title>개리그 온라인 2026</title>` curl 확인 |
-| 참고한 곳 | `../km`(KM26 원본 + docs 9종) · `../KMD26v1.0`(데이터·코드 규격·문서 체계) · `../철FPS/bedorage-duck`(P2P·락스텝·결정론·배포) |
+| 날짜 | 2026-09-09 |
+| 작업 디렉터리 | 이 PC: `C:\Users\tkdrm\OneDrive\Desktop\klo26` · 다른 PC: `C:\Users\tkdrm\Workspace\personal\KLO26` |
+| 저장소 | `https://github.com/goormigrm/KLO26` · `main` |
+| 배포 | <https://goormigrm.github.io/KLO26/> — push 하면 Actions 가 테스트·빌드·배포 |
+| 참고한 곳 | 배도라지덕(bedorage-duck) — 이 PC 에서는 `C:\Users\tkdrm\OneDrive\Desktop\철FPS`, 다른 PC 에서는 `../철FPS/bedorage-duck`. KM26·KMD26 은 `Desktop/km26` · `Desktop/KMD26v1.0` |
 
-이 세션의 산출물은 전부 첫 커밋에 들어갔습니다. 두 PC 를 오가므로 다음 세션은 `git fetch origin && git status -sb` 부터.
-
----
-
-## 이 세션에서 한 것
-
-**설계.** 사용자 요청 — "개리그 매니저 같은 개리그 온라인. 카드형 축구 게임 형식, 2026 K리그 선수만, 철FPS 처럼 방 만들어 P2P, 서버·DB 없음, 팬 게임(광고·결제 없음)".
-
-1. 세 프로젝트를 읽고 무엇을 가져올지 갈랐다 (DESIGN 1장).
-2. 사용자에게 갈림길 셋을 물었고 답을 받았다 (DECISIONS 1장):
-   **직접 조작(액션)** · **전원 개방 + 급여 상한** · **KLO26**.
-3. `docs/DESIGN.md` 설계서 v0.1 (13장) · `DECISIONS.md` · `PREP.md` · README · CHANGELOG · 공지글 틀.
-4. 스캐폴드 — Vite + TypeScript + vitest + Pages 워크플로. `src/core/rng.ts`·`fixedmath.ts` 는 bedorage-duck 에서 그대로 복사(결정론의 바닥). `npm install` · `npm test` · `npm run build` 통과 확인.
-5. 추가 결정 9건 반영 (DECISIONS 3장) — **보호명** · 기본 3분 · **게임패드 계획 제외** · 급여 상한 조건 **K리그2 포함** · 공개 채널 보류 · **Three.js 방송 카메라**(찰흙 선수·키 반영·피부색 안 함) · **PC 전용**(폰 차단) · **축구 게임 표준 키 배치**(방향키·S/W/A/D/E·Space·C·Q·Ctrl) · **제3자 거명 고지 문구 전부 삭제**(NOTICE.md 삭제). `three` 의존성 추가. 첫 커밋·푸시, Pages 배포.
-6. **단계 2 — 시뮬 코어** (`src/core/` 9 파일, 약 1,900줄). 피치·공·선수 물리 · 소유/드리블(붙임 모델)·태클·패스·슛·걷어내기·GK · 팀 AI(앵커·지원 러닝·압박/커버/마크·볼 소유 효용 판단·요격) · 규칙(시계·하프·킥오프·골·스로인/골킥/코너) · 사람 입력 해석(3.1 키 배치 전부) · 해시/스냅샷. 합성 스쿼드(`synth.ts`)로 검증 — 실제 카드 데이터는 아직 없다(PREP A-1).
+두 PC 를 오가므로 다음 세션은 `git fetch origin && git status -sb` 부터.
 
 ---
 
-## 주요 결정 사항
+## 이 세션에서 한 것 (단계 3)
 
-| 결정 | 근거 | 반영 위치 |
+1. **배도라지덕에서 옮겨 온 것** — `src/game/ticker.ts`(Worker 틱 타이머, 그대로) · 세션 루프 구조(틱 누적 + rAF 보간, 한 번에 최대 4틱 따라잡기) · 프리미티브 조립 캐릭터 + 툰 셰이딩 방식 · 로비 CSS 톤. 쿼터뷰 카메라·얼굴 캐리커처·터치는 안 가져왔다 (설계 1.1).
+2. **`src/render3d/`** — `camera.ts`(방송 카메라 수학, Three 없이 · 테스트 있음) · `pitch3d.ts`(잔디·라인 캔버스 텍스처 · 골대·네트 · 관중석 · 조명/그림자) · `player3d.ts`(찰흙 리그 · `h/180` · `sqrt(w/75)` · 머리 4종 id 해시 · 등번호 · 코드 애니메이션) · `renderer3d.ts`(보간 · 공 · 조작 표시 · 카메라 스무딩).
+3. **`src/game/`** — `localInput.ts`(3.1 표 전부, `e.code`) · `session.ts`(혼자 하기 · Esc 메뉴 · 결과표 · `beforeunload` · 디버그 훅 `window.__klo`).
+4. **`src/render/`** — `hud.ts`(DOM 오버레이) · `radar.ts`. **`src/ui/`** — `lobby.ts` · `settings.ts` · `device.ts`(폰 차단). `main.ts` 는 기기 판정 → 로비 ↔ 세션.
+5. **코어 한 군데** — 사람 킥커의 리스타트 킥 방향 (`rules.performRestartKick(st, aim)` · `sim.handleInput`). 결정론 테스트 통과.
+6. 테스트 16 → **26개** (키 매핑 · 카메라 · 리스타트 킥). `npm run build` 통과.
+
+### 좌표 약속 (렌더·입력이 다 이걸 본다)
+
+sim `(x, y)` → Three `(x, 높이, z = −y)`. 카메라는 Three `+z` 쪽(sim `−y` 사이드라인 바깥)에서 `−z` 를 본다.
+그래서 **화면 오른쪽 = sim +x = 전반 홈 공격 방향, 화면 위 = sim +y**. 방향키를 월드 방향 그대로 Input 에 싣는다 (요 회전 없음). 후반은 sim 이 `dir` 을 뒤집으니 화면에서는 진영이 바뀌어 보인다 — 방송처럼.
+
+---
+
+## 단계 3 검토 기준 대조
+
+| 기준 (DESIGN 11장) | 결과 | 어떻게 봤나 |
 |---|---|---|
-| **직접 조작** — KM26 매치엔진 안 씀 | 사용자 답 (Q1). 감독 모드는 백로그 | DESIGN 1·4장, DECISIONS Q1 |
-| **카드 전원 개방 · 급여 상한 · 강화 예산제 · 팀컬러** | 서버 없이 "상대가 검증할 수 있는 규칙"만 남긴다 | DESIGN 5장 |
-| **Three.js 방송 카메라 · 찰흙 선수 · 키 반영** | 사용자 결정. 피부색은 데이터가 없어 안 함, 생김새는 닮게 그리지 않음 | DESIGN 7.1, DECISIONS 3장 6 |
-| **PC 전용 — 폰 차단** | 사용자 결정. 터치 조작 없음 | DESIGN 3.4, DECISIONS 3장 7 |
-| **선수 이름 보호명** (빌드 단계 적용) | 사용자 결정. 저장소에 실명 0건이 단계 1 기준 | DESIGN 10.2 |
-| **제3자 거명 고지 문구 전부 삭제** | 사용자 결정 — "문구 자체가 문제". NOTICE.md 삭제, README 고지 절 삭제, 타 게임·회사 이름 문서에서 제거 | DESIGN 10.2, DECISIONS 3장 9 |
-| **키보드만 검증** | 검증할 패드가 없다 | DESIGN 3.2 |
-| **60Hz 락스텝 · 정원 2 · 난입/재접속 없음** | bedorage-duck 검증값. 축구는 한쪽이 비면 성립 안 함 | DESIGN 6장 |
-| **급여 상한은 도구가 데이터로** | 손으로 정한 숫자를 믿지 않는다 (KLD26·KMD26 교훈) | DESIGN 5.4, D-9 |
-| **데이터는 허락 재확인 전에 저장소에 넣지 않는다** | KMD26 허락은 KMD26 것 | PREP A-1 |
+| 사람이 골을 넣을 수 있다 | ✅ | 키 이벤트를 스크립트로 흘려 넣는 조잡한 조종(잡으면 상대 골문 쪽으로 달려 41 m 넘으면 D 0.5초)으로 40초 안에 슛 4 · **골 1**. 진짜 손맛은 사용자가 |
+| 3.1 표의 ✅ 전부 동작 | ✅ (매핑) | `tests/input.test.ts` + sim 의 `handleInput` 은 단계 2 부터 있었다. 체감은 사용자가 |
+| 키 158 과 197 이 한눈에 다르다 | ⚠ 수치상 | 1.67 m vs 2.08 m (25%). FOV 9° 로 당겨 찍은 스크린샷에서 리그는 좋았다. **넓은 화면에서 차이가 보이는지는 사용자 눈으로** |
+| 노트북 내장 GPU 60fps | ❓ 못 잼 | Claude 브라우저 패널이 뒤에 있으면 rAF 가 멈춘다. 드로우콜 약 740(그림자 포함) · 삼각형 13만. **우상단 fps 표시**를 사용자 PC 에서 볼 것. 낮으면 설정에서 그림자 끔·해상도 75% |
+| 폰으로 열면 안내만 | ✅ (코드) | `isBlockedDevice()` — 실제 폰은 PREP B-2 |
 
 ---
-
-## 단계 2 실측 (2026-09-08 · 합성 스쿼드 66 · 4-3-3 vs 4-4-2 · 3분 하프)
-
-| 항목 | 값 | 기준 | 판정 |
-|---|---|---|---|
-| 같은 시드 두 번 → 60틱마다 해시 | **100% 일치** | 100% | ✅ |
-| 틱당 시간 (봇 vs 봇) | **0.017 ms** (테스트 PC) | < 0.5 ms | ✅ (예산의 3%) |
-| 90분 완주 · kickoff/half/end 사건 | 전부 | — | ✅ |
-| 평균 총득점 (20판) | **4.4** · 0:0 0% · 5골+ 5% | 2~4 (단계 2) / 2.5~3.5 (단계 7) | ⚠ 많다 |
-| 판당 슛 · 유효슛 | 16.1 · **12.7 (79%)** | — | ⚠ 슛이 너무 정확 — GK 약함/오차 작음 |
-| 패스 성공률 | **40%** | — | ⚠ 낮다 |
-| 점유 (홈) | 52% · 홈 12승 4무 4패 | 47~53% (같은 스쿼드끼리) | 스쿼드가 달라 아직 못 잰다 |
-| 루즈볼 시간 | 58~63% | — | ⚠ 여전히 높다 (공이 날아다니는 시간) |
-
-**단계 2 의 세 기준(결정론·성능·골이 남)은 통과.** 밸런스 수치는 단계 7 에서 `tools/balance.ts` 500판으로 다시 잰다.
 
 ## 다음 단계
 
-### 사용자가 먼저 (PREP A)
+### 사용자가 먼저
 
-1. **A-1 원작자 허락 재확인** — 단계 1 이 여기 걸려 있다. (A-2 저장소 · A-3 Pages 는 끝났다)
+1. **한 판 직접 해 보기** — 조작감·카메라·선수 크기·fps. 숫자로 못 재는 것들이다. 불편한 것을 적어 주면 다음 세션이 고친다.
+2. **DECISIONS 4장 C-1** — Ctrl+W 탭 닫힘. 그대로 둘지 페이스 컨트롤 키를 옮길지.
+3. **A-1 원작자 허락 재확인** — 단계 1(실제 카드)이 여기 걸려 있다.
 
-### 다음 세션
+### 다음 세션 (순서는 사용자 답에 따라)
 
 | 순서 | 무엇 | 끝났다의 기준 |
 |---|---|---|
-| 2-보수 | (선택) 슛 오차·GK 반응을 올려 유효슛 비율 79% → 50% 안팎, 골 4.4 → 3 안팎. 같은 스쿼드끼리 붙여 홈/원정 대칭 확인 | `npm run balance -- 100` 에서 평균 골 2.5~3.5 |
-| **3** | Three.js 방송 카메라 · 찰흙 선수(키 `h/180`) · 피치 · 키보드(3.1 표) · 폰 차단 · 혼자 하기 | DESIGN 11장 3단계 기준. bedorage-duck `src/render3d`(카메라·프리미티브 조립·툰)·`src/game/session.ts`·`ticker.ts` 를 옮겨 오는 것부터 |
-| 1 | (A-1 답이 오면) `tools/build_cards.py` (KMD26 `data/players.json` → `src/data/cards.json` · 보호명) · `tools/calibrate.py` | DESIGN 11장 1단계 기준 |
-| 4 | 오프사이드 · 파울/카드 · PK/프리킥 · 교체 | `tests/rules.test.ts` |
-
-**단계 3 은 사람이 직접 해 봐야 안다.** 조작감·카메라는 숫자로 못 잰다 — 브라우저에서 봇과 한 판 돌려 보고 정한다.
+| 3-보수 | 사용자 피드백 반영 (카메라·크기·조작감). 소리(`src/audio/sfx.ts` — 킥·휘슬·골·관중, Web Audio 절차 생성, bedorage-duck `sfx.ts` 참고) | 사용자가 "됐다" |
+| 2-보수 | 유효슛 79% → 50% 안팎, 골 4.4 → 3 안팎 (슛 오차·GK). 같은 스쿼드끼리 홈/원정 대칭 | `npm run balance -- 100` 평균 골 2.5~3.5 |
+| **4** | 오프사이드 · 파울/카드 · PK/프리킥 · 교체 (교체 명령은 Input 의 `BTN_SUB`·a·b) | `tests/rules.test.ts` |
+| 1 | (A-1 답이 오면) `tools/build_cards.py` → `src/data/cards.json` · 보호명 · 구단 색 → 킷 (`session.ts` 의 임시 `KITS` 를 데이터로) | DESIGN 11장 1단계 기준 |
+| 5 · 6 | 스쿼드 화면 · 네트워크 (bedorage-duck `src/net/room.ts`·`lockstep.ts` 이식) | DESIGN 11장 |
 
 ---
 
-## 주의사항 & 교훈 (앞 프로젝트에서 가져온 것)
+## 주의사항 & 교훈
 
-1. **추정은 숫자로 판정한다.** 문턱을 못 넘으면 멈추는 것이 결론이다 (KLD26 을 이걸로 끝냈다).
-2. **적은 표본으로 판정 금지.** "3판 보고 결론"으로 두 번 틀렸다. 봇전은 500판.
-3. **슬라이더가 연결됐는지는 지문으로.** 같은 시드로 값만 바꿔 지문이 같으면 안 읽는 것이다 (KMD26 "패스 길이 미반영").
-4. **문서는 소스와 같은 커밋에.** CHANGELOG · README · DESIGN. 화면이 바뀌면 README 반드시.
-5. **`src/core` 결정론 규칙** (DESIGN 4.12) — `Math.sin/cos/atan2/random/pow/exp`·시간 함수 금지, 22명 순회 인덱스 순, 정렬 동률 금지.
-6. **브라우저 콘솔에 무거운 스크립트 돌리지 말 것** — 클로드 앱이 죽은 적 있다. 계측은 vitest·`tools/` 로.
-7. **Python·Go 편집에 heredoc 금지** — 백슬래시가 먹힌다. Write/Edit 도구로.
-8. **`.cmd` 는 CRLF** (`.gitattributes` 에 있다). LF 면 cmd 가 괄호 블록을 잘못 읽는다.
-9. 개발 서버와 배포본이 **같은 릴레이·같은 APP_ID** 면 방 목록이 섞인다 — 개발 중엔 `APP_ID` 에 `-dev`.
-10. Vite 가 파일명에 해시를 붙이므로 KMD26 의 `stamp_version.py` 는 필요 없다. 대신 **`vite.config.ts` 의 `base` 가 저장소 이름과 같아야** Pages 에서 경로가 풀린다 (`/KLO26/`).
-11. **빠른 공은 한 틱에 발을 뚫고 지나간다** (단계 2 에서 겪음). 20 m/s 공은 틱당 0.33 m 라 점 거리로는 못 잡는다 — `tryControl` 은 **이번 틱에 공이 지나온 선분**까지의 거리로 본다. 받는 선수도 공 위치가 아니라 **요격 지점**(`interceptPoint`)으로 달린다. 고치기 전엔 패스 성공률 25%, 루즈볼 77% 였다.
-12. **AI 가 공을 잡자마자 되차면 공이 늘 날아다닌다** — 잡은 뒤 20틱은 압박이 없으면 패스 점수를 깎는다(`justGot`). 이걸로 골 0.5 → 4.4.
-13. 새 저장소는 **Pages 를 먼저 켜고** 푸시한다. 안 켜면 첫 deploy 가 404 로 실패한다.
-14. **테스트를 실패한 채로 푸시하지 않는다** — `deploy.yml` 이 `npm test` 를 돌리므로 배포가 막힌다.
+앞 세션 것(1~14)은 그대로 유효하다. 이 세션에서 더한 것:
+
+15. **Claude 브라우저 패널은 뒤에 있으면 `requestAnimationFrame` 이 안 돈다.** fps 계측·rAF 기반 애니메이션 확인은 못 한다. 스크린샷을 찍는 순간만 그린다. sim 은 Worker 티커라 계속 돈다 — 그래서 `window.__klo.state()` 로 상태를 읽고 `KeyboardEvent` 를 `window` 에 dispatch 해 조작을 흘려 넣는 방식은 된다. 패널의 클릭 좌표도 잘 안 맞는다 — `document.querySelector('#btn-solo').click()` 이 확실하다.
+16. **키는 `e.code` 로.** 한글 IME 가 켜져 있으면 `e.key` 가 `'ㅅ'` 로 온다. `KeyS`·`ArrowUp`·`BracketRight`·`ControlLeft`.
+17. **Ctrl+W 는 못 막는다** (bedorage-duck 2026-09-05 와 같음). `beforeunload` 로 한 번 묻는다. DECISIONS C-1.
+18. **`MeshToonMaterial` 의 gradientMap 은 `RedFormat` + `NearestFilter`** 3×1 `DataTexture`. 재질은 색깔별로 캐시해 공유한다(22명 × 십수 개 재질을 새로 만들지 않는다).
+19. **렌더 보간 스냅샷은 pose 만** (`capturePose`). 선수마다 능력치 40종이 붙어 있어 상태 전체 JSON 복사는 무겁다.
+20. `PCFSoftShadowMap` 은 three 0.185 에서 deprecated 경고가 뜬다 (PCFShadowMap 으로 대체됨). 동작엔 문제 없다 — 다음에 `PCFShadowMap` 으로 바꿔도 된다.
+21. 킥 동작은 sim 에서 6틱(0.1초)뿐이라 렌더가 0.32초로 늘려 보여 준다 (`animateRig`). sim 값을 늘리면 결정론 지문이 바뀐다 — 렌더에서만.
 
 ---
 
 ## 보류 / 백로그
 
-DESIGN 13장. 큰 것만 — 감독 모드(KMD26 엔진) · 2v2 · 3D 렌더 · KM26 세이브 카드 · 특성 반영 · 승부차기 · 로컬 전적 · 스핀 · 관전/리플레이.
+DESIGN 13장 + 이 세션: 키 바인딩 변경 UI(설정 화면 — 3.1 "설정에서 바꿀 수 있다"는 아직 기본값만) · 오프사이드 라인 데칼 · 패스 콘 데칼 · 리그 메시 병합(드로우콜 740 → 200대, fps 가 낮으면) · 소리.
 
 ---
 
@@ -110,37 +89,33 @@ DESIGN 13장. 큰 것만 — 감독 모드(KMD26 엔진) · 2v2 · 3D 렌더 · 
 
 | 경로 | 역할 |
 |---|---|
-| `docs/DESIGN.md` | **설계서 정본.** 고치기 전에 볼 것 |
-| `docs/DECISIONS.md` | 사용자 결정 3건 · 기본안 17건 · 확인 필요 5건 |
-| `docs/PREP.md` | 사용자가 직접 할 것 — 허락·저장소·Pages·기기 |
-| `src/core/rng.ts` · `fixedmath.ts` | 결정론 바닥 (bedorage-duck 복사) |
-| `src/core/state.ts` | 상수·타입 (GameState · Player · Ball · Team · MatchConfig) |
-| `src/core/input.ts` | Input 6바이트 · 키 비트(BTN_S·W·A·D·E·CTRL·SPACE·C·Q·Z·PRESET·SUB) |
-| `src/core/formation.ts` | 포메이션 12종 · SLOT_XY · 앵커 계산 (KM26 이식) |
-| `src/core/skills.ts` | 능력치 → 경기 스킬 · 능숙도 페널티 |
-| `src/core/synth.ts` | 합성 스쿼드 (실제 데이터 전까지) |
-| `src/core/physics.ts` | 선수 이동/회전/체력 · 공 물리 · 골대 · 충돌 |
-| `src/core/ball.ts` | 소유·드리블(붙임)·태클·슬라이딩·패스·슛·걷어내기·GK·요격 지점 |
-| `src/core/ai.ts` | 팀 AI · 볼 소유 효용 판단 · GK 위치 · 사람 조작 대상 선택 |
-| `src/core/rules.ts` | 시계·하프·킥오프·골·아웃·리스타트 |
-| `src/core/sim.ts` | **createState / step / hashState / snapshot** · 사람 입력 해석 |
-| `src/main.ts` | 설계 단계 안내 페이지 (단계 3 에서 로비로 바뀐다) |
-| `tests/helpers.ts` | 합성 스쿼드 경기 만들기·끝까지 돌리기 |
-| `tests/determinism.test.ts` · `perf.test.ts` · `match.test.ts` | 단계 2 검토 기준 |
-| `tools/balance.ts` · `tools/probe.ts` | 대량 계측 · 한 경기 진단 (`npm run balance -- 50` · `npm run probe -- 101`) |
-| `.github/workflows/deploy.yml` | push → 테스트·빌드 → Pages |
-| `.claude/launch.json` | `dev` 서버 (5175) |
+| `docs/DESIGN.md` | **설계서 정본.** 7.1 카메라 수치는 단계 3 값으로 고쳤다 |
+| `docs/DECISIONS.md` | 결정 · 기본안 · **4장 확인 필요 C-1·C-2** |
+| `docs/PREP.md` | 사용자가 직접 할 것 |
+| `src/core/` | 결정론 시뮬 (단계 2). 이번에 `rules.performRestartKick(st, aim)` 만 늘었다 |
+| `src/render3d/camera.ts` | 방송 카메라 수치·수학 (Three 없음) — **카메라를 만지려면 여기** |
+| `src/render3d/pitch3d.ts` | 잔디·라인·골대·관중석·조명 |
+| `src/render3d/player3d.ts` | 찰흙 리그 조립 · `animateRig` |
+| `src/render3d/renderer3d.ts` | 씬 · 보간 · 공 · 조작 표시 · `capturePose` |
+| `src/game/localInput.ts` | 키 → Input (`keysToInput` 순수 함수) |
+| `src/game/session.ts` | 혼자 하기 루프 · 메뉴 · 결과 · 임시 `KITS` · `window.__klo` |
+| `src/render/hud.ts` · `radar.ts` | HUD · 레이더 |
+| `src/ui/lobby.ts` · `settings.ts` · `device.ts` | 로비 · 설정 · 폰 차단 |
+| `src/main.ts` | 진입점 |
+| `tests/input.test.ts` · `camera.test.ts` · `restart.test.ts` | 단계 3 테스트 |
 
 ### 재현 명령
 
 ```bash
 npm install
-npm test               # 결정론 · 성능 · 경기 · 기본 수학 (10개)
+npm test               # 26개
 npm run build
-npm run dev            # http://localhost:5175/KLO26/
+npm run dev            # http://localhost:5175/KLO26/  → 혼자 하기
 npm run balance -- 50  # 봇 vs 봇 50판 계측
 npm run probe -- 101   # 시드 101 한 경기 진단
 ```
+
+브라우저 콘솔에서 `__klo.state()` 로 경기 상태, `__klo.info()` 로 드로우콜.
 
 ---
 

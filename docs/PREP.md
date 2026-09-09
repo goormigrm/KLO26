@@ -52,6 +52,6 @@
 
 ## E. 세션이 끊겼을 때
 
-1. 새 Claude Code 세션을 `C:\Users\tkdrm\Workspace\personal\KLO26` 에서 연다.
+1. 새 Claude Code 세션을 저장소 폴더에서 연다 — PC 마다 다르다: `C:\Users\tkdrm\Workspace\personal\KLO26` 또는 `C:\Users\tkdrm\OneDrive\Desktop\klo26`. 배도라지덕(참고용)도 PC 마다 자리가 다르다 (HANDOVER 메타데이터 표).
 2. **"HANDOVER.md 읽고 이어서 진행해줘"** 라고만 하면 된다.
 3. 커밋 안 된 변경이 있으면 `git status` 로 확인하고 먼저 커밋하게 한다.

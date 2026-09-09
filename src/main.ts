@@ -1,12 +1,43 @@
-// 진입점. 지금은 설계 단계 안내만 띄운다 — 단계 3 에서 로비(src/ui/lobby.ts)로 바뀐다.
+// 진입점 — 기기 판정 → 로비 ↔ 혼자 하기 세션. 온라인 대전은 단계 6 에서 (src/net).
 // 설계서: docs/DESIGN.md · 다음 할 일: HANDOVER.md
 
+import { Session, type SoloConfig } from './game/session'
+import { isBlockedDevice, renderBlocked } from './ui/device'
+import { Lobby } from './ui/lobby'
+
 const app = document.getElementById('app')!
-app.innerHTML = `
-  <main class="hold">
-    <h1>개리그 온라인 2026</h1>
-    <p class="sub">K리그 2026 선수 1,024명으로 스쿼드를 짜서 P2P 로 붙는 1:1 실시간 조작 축구</p>
-    <p class="stage">🚧 설계 단계 — 게임은 아직 없습니다.</p>
-    <p class="note">PC 키보드 전용 · 게임패드 없음 · 서버 없음 · 광고·결제 없음</p>
-  </main>
-`
+let lobby: Lobby | null = null
+let session: Session | null = null
+
+function showLobby(): void {
+  session = null
+  app.innerHTML = ''
+  lobby = new Lobby(app, (cfg: SoloConfig) => {
+    lobby?.dispose()
+    lobby = null
+    app.innerHTML = ''
+    session = new Session(app, cfg, showLobby)
+  })
+}
+
+function boot(): void {
+  if (isBlockedDevice()) {
+    renderBlocked(app)
+    lobby = null
+    return
+  }
+  if (!lobby && !session) showLobby()
+}
+
+// 창을 넓히면 로비가 열리고, 좁히면 (세션 중이 아닐 때) 다시 안내로
+window.addEventListener('resize', () => {
+  if (session) return
+  const blocked = isBlockedDevice()
+  if (blocked && lobby) {
+    lobby.dispose()
+    lobby = null
+    renderBlocked(app)
+  } else if (!blocked && !lobby) showLobby()
+})
+
+boot()

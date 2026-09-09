@@ -69,7 +69,9 @@ export function feetY(p: Player, off: number): number {
 }
 
 /** 자유 상태의 공을 한 틱 옮긴다 (중력·선형 공기 저항·지면 마찰·반발·골대) */
-export function moveBall(b: Ball): void {
+export function moveBall(b: Ball): boolean {
+  const hitBefore = false
+  void hitBefore
   if (b.z > 0 || b.vz > 0) {
     b.vz -= GRAVITY * DT
     b.vx *= 1 - AIR_DRAG * DT
@@ -97,13 +99,13 @@ export function moveBall(b: Ball): void {
       } else b.vz = 0
     }
   }
-  hitPosts(b, px)
+  return hitPosts(b, px)
 }
 
-/** 골포스트(원기둥)·크로스바 충돌 */
-function hitPosts(b: Ball, prevX: number): void {
+/** 골포스트(원기둥)·크로스바 충돌. 맞았으면 true (소리·연출용) */
+function hitPosts(b: Ball, prevX: number): boolean {
   const gx = b.x > 0 ? HALF_L : -HALF_L
-  if (Math.abs(b.x - gx) > 0.6) return
+  if (Math.abs(b.x - gx) > 0.6) return false
   for (let s = -1; s <= 1; s += 2) {
     const py = s * GOAL_HALF
     const dx = b.x - gx
@@ -121,7 +123,7 @@ function hitPosts(b: Ball, prevX: number): void {
       }
       b.x = gx + nx * (BALL_R + POST_R)
       b.y = py + ny * (BALL_R + POST_R)
-      return
+      return true
     }
   }
   // 크로스바: 골라인을 지나는 순간 높이가 바 근처면 튕긴다
@@ -130,7 +132,9 @@ function hitPosts(b: Ball, prevX: number): void {
     b.vz = -Math.abs(b.vz) * 0.6 - 1
     b.vx = -b.vx * 0.5
     b.x = prevX
+    return true
   }
+  return false
 }
 
 /** 선수끼리 겹치면 밀어낸다 — 몸싸움(str)이 센 쪽이 덜 밀린다 */

@@ -16,6 +16,10 @@ export interface Settings {
   halfMin: 2 | 3 | 4
   /** 혼자 하기 상대 구단 (−1 = 무작위) */
   oppClub: number
+  /** 테스트 모드 (`?test=1` 일 때만 쓴다) — AI 대 AI 관전 · 키 입력 표시 · 원정 봇 난이도 */
+  testSpectate: boolean
+  testKeyView: boolean
+  testAwayDiff: number
   formation: string
   oppFormation: string
 }
@@ -30,6 +34,9 @@ export const DEFAULT_SETTINGS: Settings = {
   difficulty: 2,
   halfMin: 3,
   oppClub: -1,
+  testSpectate: true,
+  testKeyView: true,
+  testAwayDiff: 2,
   formation: '4-3-3',
   oppFormation: '4-4-2',
 }
@@ -45,6 +52,9 @@ export function loadSettings(): Settings {
     if (![2, 3, 4].includes(s.halfMin)) s.halfMin = 3
     if (s.resScale !== 0.75) s.resScale = 1
     if (!Number.isInteger(s.oppClub)) s.oppClub = -1
+    if (typeof s.testSpectate !== 'boolean') s.testSpectate = true
+    if (typeof s.testKeyView !== 'boolean') s.testKeyView = true
+    if (![1, 2, 3].includes(s.testAwayDiff)) s.testAwayDiff = 2
     if (typeof s.nick !== 'string') s.nick = ''
     s.nick = s.nick.slice(0, 12)
     return s

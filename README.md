@@ -22,7 +22,8 @@
 - **구단명은 지역명만** — 기업 이름·구단 고유 별칭을 쓰지 않습니다 (FC 안양 · 울산 FC · 전북 FC …). 구단 색 두 개는 유니폼에 그대로 씁니다.
 - **전후반 3분씩** 실시간(경기 시계 ×15). 오프사이드·파울·경고/퇴장·프리킥·PK·교체 3명. **심판 3명**이 뜁니다.
 - **방을 만들고 P2P 로** — 서버가 없어도 두 브라우저가 같은 경기를 봅니다(결정론 락스텝).
-- **혼자 하기** — 봇 3단계.
+- **혼자 하기** — 봇 3단계. 상대는 실제 구단입니다.
+- **소리도 코드로** — 관중석·휘슬·킥·골·로비 배경음까지 전부 Web Audio 절차 생성입니다. 음원 파일이 없습니다.
 
 ## 문서
 
@@ -59,6 +60,9 @@ npm run dev     # http://localhost:5175/KLO26/
 | `npm run clubs 90` | 실제 구단끼리 90판 계측 (1부/2부 차이 · 골) |
 | `npm run build:cards` | 원본 명단 → `src/data/cards.json` 다시 굽기 (원본은 저장소 밖) |
 
+**테스트 모드**: 주소 뒤에 `?test=1` 을 붙이면 로비에 테스트 타일이 생깁니다 — **AI 대 AI 관전**과 **키 입력 표시**.
+배포에서는 링크를 걸지 않으므로 보이지 않습니다.
+
 `main` 에 push 하면 GitHub Actions 가 테스트·빌드 후 GitHub Pages 로 배포합니다.
 커밋 작성자는 저장소마다 설정합니다: `git config user.name goormigrm` / `git config user.email 1117tkdrms@gmail.com`
 
@@ -76,7 +80,7 @@ src/net/      ✅ Trystero 로비·방, 2인 락스텝
 src/game/     ✅ 혼자 하기 세션 루프 · 키보드 입력 · Worker 틱 타이머
 src/render3d/ ✅ Three.js 방송 카메라 · 찰흙 선수(키 반영·동작) · 피치·골대·관중석 · 공
 src/render/   ✅ HUD(DOM 오버레이) · 레이더
-src/audio/       효과음 (Web Audio 절차 생성) — 아직 없음
+src/audio/    ✅ 효과음·배경음 (Web Audio 절차 생성 — 음원 파일 없음)
 src/ui/       ✅ 로비 · 스쿼드 · 대기실 · 설정 · 폰 차단
 tools/        ✅ 밸런스 계측 · 한 경기 진단 (카드 빌드·캘리브레이션은 단계 1)
 tests/        ✅ vitest

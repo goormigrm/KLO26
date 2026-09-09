@@ -10,7 +10,9 @@ import { matchKits } from '../render3d/kits'
 import { MAX_SUBS, TICK_MS, type Difficulty, type GameState } from '../core/state'
 import type { Lockstep } from '../net/lockstep'
 import type { RoomLink } from '../net/room'
+import { sfx } from '../audio/sfx'
 import { Hud } from '../render/hud'
+import { KeyView } from '../render/keyview'
 import { Renderer3D, capturePose, type PrevPose } from '../render3d/renderer3d'
 import type { Kit } from '../render3d/player3d'
 import type { Settings } from '../ui/settings'
@@ -30,6 +32,18 @@ export interface SoloConfig {
   squad?: Squad
   /** 온라인 대전이면 여기에 (DESIGN 6). 없으면 혼자 하기 */
   net?: NetConfig
+  /** 테스트 모드 (사용자 요청 2026-09-09) — 배포에서는 켜지 않는다 */
+  test?: TestConfig
+}
+
+/** 테스트 모드 설정 — 배포에서는 로비에 나오지 않는다 (`?test=1` 로만 연다) */
+export interface TestConfig {
+  /** 두 팀 다 봇 — 사람은 보기만 한다 */
+  spectate: boolean
+  /** 키 입력 표시 */
+  keyView: boolean
+  /** 원정 봇 난이도 (관전에서 양쪽 세기를 다르게 볼 때) */
+  awayDifficulty?: Difficulty
 }
 
 /** 온라인 대전 설정 — 대기실이 만들어 넘긴다 */
@@ -81,13 +95,19 @@ export class Session {
   private frames = 0
   private fpsT = 0
   private keysShown: boolean
+  private syncMute: () => void = () => {}
   /** 다음 틱에 실어 보낼 교체 명령 (Esc 메뉴에서 고른다) */
   private subOrder: { out: number; in: number } | null = null
+  /** 키 표시용 — 마지막으로 sim 에 보낸 입력 */
+  private lastInput: Input = { mx: 0, my: 0, buttons: 0, a: 0, b: 0 }
   /** 온라인: 상대 입력을 기다리기 시작한 시각 (−1 = 안 기다림) */
   private stallSince = -1
   /** 리싱크 횟수 · 끊김 횟수 — 결과 화면에 보여 준다 (DESIGN 4.13) */
   private stalls = 0
   private resyncs = 0
+  private snd = sfx()
+  private keyView: KeyView | null = null
+  private sndSeen = 0
   private hashes = new Map<number, number>()
   private peerLeft = false
 
@@ -104,7 +124,7 @@ export class Session {
       <div class="game-root">
         <div class="game-stage" id="stage"></div>
         <div class="game-ui">
-          <div class="top-right"><span class="fps" id="fps"></span><button class="btn secondary" id="btn-menu">메뉴 (Esc)</button></div>
+          <div class="top-right"><span class="fps" id="fps"></span><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-menu">메뉴 (Esc)</button></div>
           <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
         </div>
       </div>`
@@ -114,7 +134,21 @@ export class Session {
     this.renderer = new Renderer3D(stage, { shadows: cfg.settings.shadows, resScale: cfg.settings.resScale })
     this.renderer.setMatch(this.state, this.kits, this.gkKits)
     this.hud = new Hud(stage, this.radarColors, this.keysShown)
+    if (cfg.test?.keyView) this.keyView = new KeyView(stage)
     ;(host.querySelector('#btn-menu') as HTMLButtonElement).onclick = () => this.toggleMenu()
+    const muteBtn = host.querySelector('#btn-mute') as HTMLButtonElement
+    const syncMute = (): void => {
+      muteBtn.textContent = this.snd.muted ? '🔇 소리 꺼짐' : '🔊 소리 켜짐'
+    }
+    muteBtn.onclick = () => {
+      this.snd.toggle()
+      syncMute()
+    }
+    this.syncMute = syncMute
+    syncMute()
+    // 로비 배경음을 끄고 관중석을 켠다
+    this.snd.stopMusic()
+    this.snd.startCrowd()
 
     this.input.onEscape = () => this.toggleMenu()
     this.input.attach()
@@ -132,6 +166,7 @@ export class Session {
       info: () => this.renderer.info,
       // 두 브라우저가 같은 경기를 보고 있는지 대조할 때 쓴다 (60틱마다 쌓인다)
       hashes: () => [...this.hashes.entries()],
+      snd: () => this.snd,
       net: () =>
         this.cfg.net
           ? { me: this.cfg.net.me, delay: this.cfg.net.lockstep.delay, rtt: this.cfg.net.link.rtt, stalls: this.stalls, resyncs: this.resyncs }
@@ -161,7 +196,15 @@ export class Session {
     const awaySquad = clubSquad(oppClub.id, c.oppFormation)
     const away = toSquadConfig(awaySquad, oppClub.name, oppClub.short)
     this.applyKits(myClub, oppClub)
-    return createState({ seed, halfSec: c.halfSec, squads: [home, away], human: [true, false], bots: [2, c.difficulty] })
+    // 테스트 관전 — 두 팀 다 봇 (사용자는 보기만 한다)
+    const spectate = c.test?.spectate === true
+    return createState({
+      seed,
+      halfSec: c.halfSec,
+      squads: [home, away],
+      human: [!spectate, false],
+      bots: [spectate ? c.difficulty : 2, c.test?.awayDifficulty ?? c.difficulty],
+    })
   }
 
   /** 구단 색 → 유니폼·레이더 색 (DESIGN 7.1). 색이 가까우면 원정이 흰 상의로 */
@@ -242,6 +285,7 @@ export class Session {
         inp.b = this.subOrder.in
         this.subOrder = null
       }
+      this.lastInput = inp
       let inputs: [Input, Input]
       if (net) {
         net.lockstep.pushLocal(t, inp)
@@ -276,6 +320,8 @@ export class Session {
     if (this.acc > TICK_MS * 8) this.acc = TICK_MS * 8
     const ev = this.state.events
     this.renderer.onEvents(ev, this.evSeen)
+    this.snd.onEvents(ev, this.sndSeen)
+    this.sndSeen = ev.length
     for (; this.evSeen < ev.length; this.evSeen++) {
       const e = ev[this.evSeen]
       if (e.type === 'end') this.showResult()
@@ -303,6 +349,17 @@ export class Session {
     }
     this.renderer.draw(this.prev, this.state, alpha, dt, { humanTeam: me, controlled })
     this.hud.update(this.state, { humanTeam: me, controlled, message })
+    this.snd.update(this.state, dt)
+    if (this.keyView) {
+      const p = controlled >= 0 ? this.state.players[controlled] : null
+      this.keyView.update({
+        down: this.input.pressed,
+        input: this.lastInput,
+        controlled,
+        name: p ? `${p.spec.no} ${p.spec.name}` : '',
+        hasBall: this.state.ball.owner >= 0 && this.state.players[this.state.ball.owner].team === me,
+      })
+    }
     this.raf = requestAnimationFrame(this.frame)
   }
 
@@ -327,6 +384,7 @@ export class Session {
         <button class="btn main" id="ov-resume">계속 (Esc)</button>
         <button class="btn secondary" id="ov-sub">교체 (${this.state.teams[this.cfg.net ? this.cfg.net.me : 0].subsLeft}/${MAX_SUBS})</button>
         <button class="btn secondary" id="ov-keys">${this.keysShown ? '조작 안내 끄기' : '조작 안내 켜기'}</button>
+        <button class="btn secondary" id="ov-sound">${this.snd.muted ? '소리 켜기' : '소리 끄기'}</button>
         <button class="btn secondary" id="ov-quit">로비로</button>
       </div>`
     this.overlay.hidden = false
@@ -335,6 +393,11 @@ export class Session {
     ;(box.querySelector('#ov-keys') as HTMLButtonElement).onclick = () => {
       this.keysShown = !this.keysShown
       this.hud.setKeysShown(this.keysShown)
+      this.showMenu()
+    }
+    ;(box.querySelector('#ov-sound') as HTMLButtonElement).onclick = () => {
+      this.snd.toggle()
+      this.syncMute()
       this.showMenu()
     }
     ;(box.querySelector('#ov-quit') as HTMLButtonElement).onclick = () => this.exit()
@@ -464,8 +527,10 @@ export class Session {
     window.removeEventListener('resize', this.onResize)
     window.removeEventListener('beforeunload', this.onUnload)
     this.input.dispose()
+    this.keyView?.dispose()
     this.hud.dispose()
     this.renderer.dispose()
+    this.snd.stopCrowd()
     if (this.cfg.net) {
       if (!this.peerLeft) this.cfg.net.link.sendCtl({ t: 'leave' }, this.cfg.net.peerId)
       setTimeout(() => this.cfg.net?.link.leave(), 120)

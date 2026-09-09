@@ -272,7 +272,8 @@ export function step(st: GameState, inputs: [Input, Input]): void {
       doClear(st, o)
     }
   } else {
-    moveBall(b)
+    // 골대를 맞으면 이벤트로 남긴다 (소리·연출. 결정론에는 영향이 없다 — 물리는 그대로다)
+    if (moveBall(b)) st.events.push({ tick: st.tick, type: 'post', team: b.lastTeam, player: b.lastTouch, x: b.x, y: b.y })
     gkCatch(st, st.players[st.teams[0].gk])
     gkCatch(st, st.players[st.teams[1].gk])
     if (b.owner < 0) tryControl(st)

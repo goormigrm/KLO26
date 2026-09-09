@@ -105,4 +105,9 @@ export class LocalInput {
   isDown(code: string): boolean {
     return this.down.has(code)
   }
+
+  /** 눌려 있는 물리 키 전부 (테스트 모드 키 표시용) */
+  get pressed(): ReadonlySet<string> {
+    return this.down
+  }
 }

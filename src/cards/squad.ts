@@ -50,7 +50,10 @@ export function computeCap(pool: Card[] = POOL): { cap: number; best18: number; 
   for (const club of CLUBS) {
     const own = pool.filter((c) => c.club === club.id)
     if (own.length < SQUAD_SIZE) continue
-    const s = bestEighteen(own)
+    // 조건 2 는 **포지션을 가리지 않고** 그 구단에서 가장 비싼 18명으로 잰다.
+    // 포지션 몫을 정해 두고 재면 포메이션에 따라 그 몫을 벗어나 상한을 넘는 스쿼드가 나온다
+    // (2026-09-09: 강원 FC 4-3-3 이 231 로 상한 230 을 넘었다).
+    const s = topN(own, SQUAD_SIZE)
     if (s > clubMax) {
       clubMax = s
       clubWorst = club.name
@@ -61,7 +64,7 @@ export function computeCap(pool: Card[] = POOL): { cap: number; best18: number; 
   return { cap, best18, clubMax, clubWorst }
 }
 
-/** 포지션을 맞춘 최고 급여 18명 (GK 2 · DF 6 · MF 6 · FW 4) */
+/** 포지션을 맞춘 최고 급여 18명 (GK 2 · DF 6 · MF 6 · FW 4) — 올스타 팀의 값 */
 function bestEighteen(pool: Card[]): number {
   const need: Record<string, number> = { GK: 2, DF: 6, MF: 6, FW: 4 }
   let total = 0
@@ -72,6 +75,14 @@ function bestEighteen(pool: Card[]): number {
       .sort((a, b) => b - a)
     for (let i = 0; i < need[pos] && i < list.length; i++) total += list[i]
   }
+  return total
+}
+
+/** 포지션을 가리지 않은 최고 급여 n명 — 그 풀에서 나올 수 있는 가장 비싼 스쿼드 */
+function topN(pool: Card[], n: number): number {
+  const list = pool.map((c) => cardSalary(c)).sort((a, b) => b - a)
+  let total = 0
+  for (let i = 0; i < n && i < list.length; i++) total += list[i]
   return total
 }
 
@@ -169,18 +180,35 @@ export function clubById(id: number): Club | undefined {
   return CLUBS[id]
 }
 
-/** 빈 스쿼드 — 포메이션에 맞는 가장 싼 선수로 채운다 (스쿼드 화면 시작점) */
-export function starterSquad(formation = '4-3-3'): Squad {
+const DEFAULT_PRESETS = (): [Sliders, Sliders, Sliders] => [
+  { line: 1, press: 1, width: 2, mentality: 1 },
+  { line: 2, press: 2, width: 2, mentality: 2 },
+  { line: 3, press: 3, width: 3, mentality: 3 },
+]
+
+function bandPos(band: string): string {
+  return band === 'DF' || band === 'WB' ? 'DF' : band === 'FW' ? 'FW' : 'MF'
+}
+
+/**
+ * 한 구단의 선수만으로 스쿼드를 짠다 — **팀컬러 +4** 가 붙는 순수 구단 팀.
+ * 자리마다 그 구단에서 가장 좋은 선수를 넣되, 모자라면 다른 포지션에서 능숙도가 높은 쪽으로 메운다.
+ * 급여 상한은 여기서 보지 않는다 — 상한이 "어느 구단이든 자기 선수 18명은 들어간다"로 잡혀 있다 (DESIGN 5.4).
+ */
+export function clubSquad(clubId: number, formation = '4-3-3', name?: string): Squad {
   const shape = FORMATIONS[formation]
+  const own = POOL.filter((c) => c.club === clubId)
+  if (own.length < SQUAD_SIZE) throw new Error(`구단 ${clubId} 에 선수가 모자랍니다`)
   const used = new Set<number>()
   const pick = (pos: string): number => {
-    // 급여가 낮은 쪽부터 — 상한 걱정 없이 시작한다
     let best: Card | null = null
-    let bestS = 1e9
-    for (const c of POOL) {
-      if (used.has(c.id) || c.pos !== pos) continue
-      const s = cardSalary(c)
-      if (s < bestS) {
+    let bestS = -1
+    for (const c of own) {
+      if (used.has(c.id)) continue
+      // 제 포지션이면 그대로, 아니면 크게 깎아서 후보로만 남긴다
+      const fit = c.pos === pos ? 1 : 0.35
+      const s = cardOvr(c, 0) * fit
+      if (s > bestS) {
         bestS = s
         best = c
       }
@@ -189,19 +217,26 @@ export function starterSquad(formation = '4-3-3'): Squad {
     used.add(best.id)
     return best.id
   }
-  const bandPos = (band: string): string => (band === 'DF' || band === 'WB' ? 'DF' : band === 'FW' ? 'FW' : 'MF')
   const ids = [pick('GK'), ...shape.map(([band]) => pick(bandPos(band)))]
   for (const pos of ['GK', 'DF', 'DF', 'MF', 'MF', 'FW', 'FW']) ids.push(pick(pos))
   return {
-    name: '내 스쿼드',
+    name: name ?? clubById(clubId)?.name ?? '내 스쿼드',
     formation,
     ids,
     enh: new Array(SQUAD_SIZE).fill(0),
-    presets: [
-      { line: 1, press: 1, width: 2, mentality: 1 },
-      { line: 2, press: 2, width: 2, mentality: 2 },
-      { line: 3, press: 3, width: 3, mentality: 3 },
-    ],
+    presets: DEFAULT_PRESETS(),
     kickers: [-1, -1, -1],
   }
+}
+
+/** 처음 여는 사람에게 줄 스쿼드 — 1부 구단 하나의 순수 팀 (팀컬러 +4 가 붙는다) */
+export function starterSquad(formation = '4-3-3'): Squad {
+  const first = CLUBS.find((c) => c.div === 1) ?? CLUBS[0]
+  return clubSquad(first.id, formation, '내 스쿼드')
+}
+
+/** 스쿼드에서 가장 많은 구단 (유니폼 색을 여기서 가져온다) */
+export function squadClub(sq: Squad): Club | undefined {
+  const color = teamColorBonus(sq.ids.slice(0, START_SIZE))
+  return color.club >= 0 ? clubById(color.club) : undefined
 }

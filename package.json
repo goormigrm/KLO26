@@ -11,7 +11,9 @@
     "probe": "vite-node tools/probe.ts",
     "verify": "vite-node tools/verify.ts",
     "oneone": "vite-node tools/oneone.ts",
-    "cards": "vite-node tools/cards.ts"
+    "cards": "vite-node tools/cards.ts",
+    "clubs": "vite-node tools/clubs_balance.ts",
+    "build:cards": "python tools/build_cards.py"
   },
   "dependencies": {
     "three": "^0.185.1",

@@ -14,6 +14,8 @@ export interface Settings {
   keysHint: boolean
   difficulty: Difficulty
   halfMin: 2 | 3 | 4
+  /** 혼자 하기 상대 구단 (−1 = 무작위) */
+  oppClub: number
   formation: string
   oppFormation: string
 }
@@ -27,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   keysHint: true,
   difficulty: 2,
   halfMin: 3,
+  oppClub: -1,
   formation: '4-3-3',
   oppFormation: '4-4-2',
 }
@@ -41,6 +44,7 @@ export function loadSettings(): Settings {
     if (![1, 2, 3].includes(s.difficulty)) s.difficulty = 2
     if (![2, 3, 4].includes(s.halfMin)) s.halfMin = 3
     if (s.resScale !== 0.75) s.resScale = 1
+    if (!Number.isInteger(s.oppClub)) s.oppClub = -1
     if (typeof s.nick !== 'string') s.nick = ''
     s.nick = s.nick.slice(0, 12)
     return s

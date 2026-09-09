@@ -1,22 +1,23 @@
-// 카드 풀 — **자리표시자**다.
+// 카드 풀 — K리그 2026 29개 구단 1,024명.
 //
-// ⚠ 실제 K리그 2026 선수 데이터는 저장소에 없다. 원작자 허락 재확인(PREP A-1) 전에는 넣지 않기로 했다.
-// 그때까지 시드 하나로 생성한 합성 카드 1,024장(29구단)으로 스쿼드·급여·팀컬러·코드를 전부 돌린다.
-// 데이터가 오면 `tools/build_cards.py` 가 구운 JSON 을 여기에 끼우고 `POOL_HASH` 만 바꾸면 나머지는 그대로 돈다.
+// `cards.json` 은 `tools/build_cards.py` 가 구운 파일이다. 손으로 고치지 않는다.
+// **선수 이름은 보호명**이고(성씨를 다른 실재 성씨로 바꿔 실존 인물과 겹치지 않게 한다),
+// 구단명은 지역명만 남기고 기업·구단 고유 명칭을 쓰지 않는다 (DESIGN 10.2 · DECISIONS 3장 1).
+// 저장소에 실명은 한 건도 없다 — 빌드 도구가 그것을 확인하고 나서야 파일을 쓴다.
 //
-// 이름은 "가1-07" 처럼 자리표시자다 — 실존 인물과 무관하다.
+// 파일은 **컬럼 형식**이다. 키 이름을 1,024번 되풀이하지 않으려고 값만 배열로 넣었다.
+// 여기서 한 번 풀어 `Card` 로 만든다.
 
-import { makeRng, rand } from '../core/rng'
 import type { Card } from '../cards/cards'
 import type { Foot, PosGroup } from '../core/state'
+import raw from './cards.json'
 
-/** 구단 수 · 구단당 카드 수 (29 × 35 ≈ 1,015 + 9 = 1,024) */
-export const CLUB_COUNT = 29
-export const POOL_SIZE = 1024
-
-/** 자리표시자 구단 — 실제 구단 이름·색은 데이터가 올 때 (DESIGN 5.1) */
+/** 자리표시자였을 때와 같은 모양의 구단 정보 */
 export interface Club {
+  /** 배열 인덱스 (카드의 `club` 이 가리키는 값) */
   id: number
+  /** 원본 구단 키 (`ulsan` 같은 것) — 디버그·정렬용 */
+  key: string
   name: string
   short: string
   /** 1부 / 2부 */
@@ -25,140 +26,83 @@ export interface Club {
   col2: number
 }
 
-const SYL = ['가', '나', '다', '라', '마', '바', '사', '아', '자', '차', '카', '타', '파', '하']
-const HUES = [0, 20, 35, 90, 140, 175, 200, 220, 250, 280, 320, 345]
-
-function hsl(h: number, s: number, l: number): number {
-  const c = (1 - Math.abs(2 * l - 1)) * s
-  const hp = h / 60
-  const x = c * (1 - Math.abs((hp % 2) - 1))
-  let r = 0
-  let g = 0
-  let b = 0
-  if (hp < 1) [r, g, b] = [c, x, 0]
-  else if (hp < 2) [r, g, b] = [x, c, 0]
-  else if (hp < 3) [r, g, b] = [0, c, x]
-  else if (hp < 4) [r, g, b] = [0, x, c]
-  else if (hp < 5) [r, g, b] = [x, 0, c]
-  else [r, g, b] = [c, 0, x]
-  const m = l - c / 2
-  const to = (v: number): number => Math.round((v + m) * 255)
-  return (to(r) << 16) | (to(g) << 8) | to(b)
+function hexToInt(s: string): number {
+  const t = s.replace('#', '')
+  const v = parseInt(t, 16)
+  return Number.isFinite(v) ? v : 0x888888
 }
 
-export const CLUBS: Club[] = Array.from({ length: CLUB_COUNT }, (_, i) => {
-  const h = HUES[i % HUES.length] + (i >= HUES.length ? 12 : 0)
-  return {
-    id: i,
-    name: `${SYL[i % SYL.length]}${Math.floor(i / SYL.length) + 1} FC`,
-    short: `${SYL[i % SYL.length]}${Math.floor(i / SYL.length) + 1}`,
-    div: (i < 12 ? 1 : 2) as 1 | 2,
-    col: hsl(h, 0.62, 0.44),
-    col2: hsl((h + 180) % 360, 0.2, i % 3 === 0 ? 0.9 : 0.2),
-  }
-})
+export const CLUBS: Club[] = raw.clubs.map((c, i) => ({
+  id: i,
+  key: c.id,
+  name: c.name,
+  short: c.short,
+  div: (c.div === 1 ? 1 : 2) as 1 | 2,
+  col: hexToInt(c.col),
+  col2: hexToInt(c.col2),
+}))
 
-const FIELD_KEYS = ['pac', 'acc', 'agi', 'bal', 'jum', 'str', 'sta', 'fir', 'tec', 'dri', 'pas', 'vis', 'crs', 'fin', 'lon', 'pen', 'hea', 'cmp', 'dec', 'cnt', 'ant', 'pos', 'mar', 'tck', 'agg', 'bra', 'fla', 'wor', 'tea']
-const GK_KEYS = ['ref', 'one', 'han', 'cmd', 'aer', 'com', 'kic', 'pun', 'tro', 'ecc']
+export const CLUB_COUNT = CLUBS.length
 
-const BIAS: Record<PosGroup, Record<string, number>> = {
-  GK: { pac: -15, acc: -12, dri: -25, fin: -30, pas: -8, tck: -25, mar: -20, agi: 5, jum: 8 },
-  DF: { tck: 12, mar: 12, pos: 10, hea: 10, str: 8, ant: 6, fin: -18, dri: -8, lon: -10, crs: -6 },
-  MF: { pas: 12, vis: 10, tec: 8, sta: 8, dec: 6, fir: 6, tck: -2, hea: -6, fin: -6 },
-  FW: { fin: 14, dri: 10, acc: 8, pac: 6, lon: 6, cmp: 6, tck: -18, mar: -16, pos: -10 },
-}
+const ATTR_KEYS = raw.attrKeys as string[]
+const GK_KEYS = raw.gkKeys as string[]
+const FAM_KEYS = raw.famKeys as string[]
+const POS_LIST = raw.posList as PosGroup[]
+const FOOT_LIST = raw.footList as Foot[]
 
-/** 슬롯 능숙도 자리 — 주 포지션은 100, 이웃은 낮게 */
-const FAM_NEAR: Record<PosGroup, string[]> = {
-  GK: ['GK'],
-  DF: ['DC', 'DL', 'DR', 'WBL', 'WBR', 'DM'],
-  MF: ['DM', 'MC', 'ML', 'MR', 'AMC'],
-  FW: ['ST', 'AML', 'AMR', 'AMC'],
-}
-const ALL_FAM = ['GK', 'SW', 'DC', 'DL', 'DR', 'WBL', 'WBR', 'DM', 'MC', 'ML', 'MR', 'AMC', 'AML', 'AMR', 'ST']
+type Row = [number, string, number, number, number, number, number, number, number[], number[] | 0, number[]]
 
-type R = ReturnType<typeof makeRng>
-
-function n(r: R, mean: number, sd: number): number {
-  const z = (rand(r) + rand(r) + rand(r) - 1.5) * 2
-  const v = Math.round(mean + z * sd)
-  return v < 5 ? 5 : v > 99 ? 99 : v
-}
-
-/** 구단별 인원 구성 — GK 4 · DF 13 · MF 10 · FW 8 = 35 */
-const SHAPE: PosGroup[] = [
-  ...Array<PosGroup>(4).fill('GK'),
-  ...Array<PosGroup>(13).fill('DF'),
-  ...Array<PosGroup>(10).fill('MF'),
-  ...Array<PosGroup>(8).fill('FW'),
-]
-
-function makeCard(r: R, id: number, club: Club, no: number, pos: PosGroup, quality: number): Card {
+function toCard(r: Row): Card {
   const attr: Record<string, number> = {}
-  const bias = BIAS[pos]
-  for (const k of FIELD_KEYS) attr[k] = n(r, quality + (bias[k] ?? 0), 8)
-  const gkA: Record<string, number> = {}
-  for (const k of GK_KEYS) gkA[k] = n(r, pos === 'GK' ? quality + 4 : 25, 7)
-  const h = Math.round(pos === 'GK' ? 180 + rand(r) * 16 : 168 + rand(r) * 26)
-  const w = Math.round(h - 105 + (rand(r) - 0.5) * 10)
-  const fr = rand(r)
-  const foot: Foot = fr < 0.72 ? 'R' : fr < 0.94 ? 'L' : 'B'
+  for (let i = 0; i < ATTR_KEYS.length; i++) attr[ATTR_KEYS[i]] = r[8][i]
   const posFam: Record<string, number> = {}
-  const near = FAM_NEAR[pos]
-  for (const f of ALL_FAM) {
-    if (f === near[0]) posFam[f] = 100
-    else if (near.includes(f)) posFam[f] = 55 + Math.round(rand(r) * 40)
-    else posFam[f] = pos === 'GK' || f === 'GK' ? 5 : 12 + Math.round(rand(r) * 26)
+  for (let i = 0; i < FAM_KEYS.length; i++) posFam[FAM_KEYS[i]] = r[10][i]
+  let gkA: Record<string, number> | undefined
+  if (r[9] !== 0) {
+    gkA = {}
+    const g = r[9]
+    for (let i = 0; i < GK_KEYS.length; i++) gkA[GK_KEYS[i]] = g[i]
   }
   return {
-    id,
-    name: `${club.short}-${String(no).padStart(2, '0')}`,
-    no,
-    pos,
-    h,
-    w,
-    foot,
+    id: r[0],
+    name: r[1],
+    no: r[2],
+    pos: POS_LIST[r[3]] ?? 'MF',
+    h: r[4],
+    w: r[5],
+    foot: FOOT_LIST[r[6]] ?? 'R',
     attr,
     gkA,
     posFam,
-    club: club.id,
+    club: r[7],
   }
 }
 
-function build(): Card[] {
-  const r = makeRng(0x4b4c4f26)
-  const out: Card[] = []
-  let id = 1
-  for (const club of CLUBS) {
-    // 1부가 조금 세다 — 실제 리그 구조를 흉내 낸 것뿐이다
-    const base = club.div === 1 ? 64 : 58
-    const clubK = (rand(r) - 0.5) * 7
-    for (let i = 0; i < SHAPE.length && out.length < POOL_SIZE; i++) {
-      const pos = SHAPE[i]
-      // 주전일수록 세게 (구단 안 서열)
-      const depth = i < 1 || (i >= 4 && i < 8) || (i >= 17 && i < 21) || (i >= 27 && i < 30) ? 6 : i % 3 === 0 ? 2 : -3
-      out.push(makeCard(r, id, club, (i % 33) + 1, pos, base + clubK + depth))
-      id++
-    }
-  }
-  // 1,024장에 모자라면 채운다
-  while (out.length < POOL_SIZE) {
-    const club = CLUBS[out.length % CLUB_COUNT]
-    out.push(makeCard(r, id++, club, (out.length % 33) + 1, 'MF', 60))
-  }
-  return out
-}
+/** 카드 1,024장. 파일이 고정이라 어느 브라우저에서나 같다 */
+export const POOL: Card[] = (raw.players as unknown as Row[]).map(toCard)
+export const POOL_SIZE = POOL.length
 
-/** 카드 1,024장. 시드가 고정이라 어느 브라우저에서나 같다 */
-export const POOL: Card[] = build()
+/** id → 카드 (id 가 1..N 순서라는 보장이 없어 표를 만든다) */
+const BY_ID = new Map<number, Card>()
+for (const c of POOL) BY_ID.set(c.id, c)
 
-/** 데이터 지문 — 스쿼드 코드에 16비트로 박는다. 데이터가 다르면 붙지 않는다 (DESIGN 5.9) */
+/**
+ * 데이터 지문 — 스쿼드 코드에 16비트로 박는다. 데이터가 다른 사람끼리는 붙지 않는다 (DESIGN 5.9).
+ * 원본 `dataHash` 와 실제로 구운 값 둘 다 섞는다 — 도구가 바뀌어도 지문이 따라 움직인다.
+ */
 export const POOL_HASH: number = (() => {
   let h = 0x811c9dc5
+  const mixStr = (s: string): void => {
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i) & 0xff
+      h = Math.imul(h, 0x01000193)
+    }
+  }
+  mixStr(String(raw.dataHash ?? ''))
   for (const c of POOL) {
     h ^= c.id
     h = Math.imul(h, 0x01000193)
-    for (const k of FIELD_KEYS) {
+    for (const k of ATTR_KEYS) {
       h ^= c.attr[k]
       h = Math.imul(h, 0x01000193)
     }
@@ -167,7 +111,7 @@ export const POOL_HASH: number = (() => {
 })()
 
 export function cardById(id: number): Card | undefined {
-  return POOL[id - 1]?.id === id ? POOL[id - 1] : POOL.find((c) => c.id === id)
+  return BY_ID.get(id)
 }
 
 export function clubOf(c: Card): Club {

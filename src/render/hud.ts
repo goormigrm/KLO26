@@ -14,6 +14,17 @@ export interface HudView {
 
 const PRESET_NAMES = ['수비', '균형', '공격']
 
+/** '#rrggbb' 가 밝은 색인가 (글씨 색을 뒤집는 기준) */
+function isLight(css: string): boolean {
+  const t = css.replace('#', '')
+  const v = parseInt(t, 16)
+  if (!Number.isFinite(v)) return false
+  const r = (v >> 16) & 255
+  const g = (v >> 8) & 255
+  const b = v & 255
+  return (r * 299 + g * 587 + b * 114) / 1000 > 150
+}
+
 export class Hud {
   readonly root: HTMLElement
   private radar: Radar
@@ -48,8 +59,12 @@ export class Hud {
     parent.appendChild(this.root)
     this.root.querySelectorAll<HTMLElement>('[data-k]').forEach((e) => (this.el[e.dataset.k!] = e))
     this.radar = new Radar(this.root)
-    this.el.home.style.background = colors[0]
-    this.el.away.style.background = colors[1]
+    // 배경이 밝으면 글씨를 어둡게 — 원정이 흰 유니폼으로 갈아입으면 흰 글씨가 묻힌다 (2026-09-09)
+    for (const [el, c] of [[this.el.home, colors[0]], [this.el.away, colors[1]]] as [HTMLElement, string][]) {
+      el.style.background = c
+      el.style.color = isLight(c) ? '#15181d' : '#ffffff'
+      el.style.textShadow = isLight(c) ? 'none' : '0 1px 2px rgba(0,0,0,.5)'
+    }
     this.setKeysShown(keysShown)
   }
 

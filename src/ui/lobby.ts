@@ -4,7 +4,7 @@ import { FORMATION_LIST } from '../core/formation'
 import type { Difficulty } from '../core/state'
 import type { SoloConfig } from '../game/session'
 import { START_SIZE, cardSalary, checkSquad, clubById, computeCap, teamColorBonus } from '../cards/squad'
-import { cardById } from '../data/pool'
+import { CLUBS, cardById } from '../data/pool'
 import { loadSquad } from './squad'
 import type { LobbyLink, RoomInfo } from '../net/room'
 import { makeRoomCode } from '../net/room'
@@ -27,8 +27,9 @@ export class Lobby {
     const cap = computeCap().cap
     const chk = checkSquad(sq, cap)
     const color = teamColorBonus(sq.ids.slice(0, START_SIZE))
+    const myClub = color.club >= 0 ? clubById(color.club) : undefined
     const squadLine = chk.ok
-      ? `${sq.formation} · 급여 ${chk.salary}/${cap} · 강화 ${chk.enhTotal}/24${color.bonus ? ` · 팀컬러 ${clubById(color.club)?.short ?? ''} +${color.bonus}` : ''}`
+      ? `${myClub ? `${myClub.name} · ` : ''}${sq.formation} · 급여 ${chk.salary}/${cap} · 강화 ${chk.enhTotal}/24${color.bonus ? ` · 팀컬러 +${color.bonus}` : ''}`
       : `⚠ 규칙 위반 — ${chk.errors[0]}`
     const best = sq.ids
       .slice(0, START_SIZE)
@@ -52,7 +53,11 @@ export class Lobby {
               <button data-v="1">쉬움</button><button data-v="2">보통</button><button data-v="3">어려움</button></div></div>
             <div class="row"><label>전후반</label><div class="seg" data-opt="halfMin">
               <button data-v="2">2분</button><button data-v="3">3분</button><button data-v="4">4분</button></div></div>
-            <div class="row"><label>상대 포메이션 (원정 · 파랑)</label><select class="sel" data-opt="oppFormation"></select></div>
+            <div class="row"><label>상대 구단</label><select class="sel" id="opp-club">
+              <option value="-1"${this.s.oppClub < 0 ? ' selected' : ''}>무작위</option>
+              ${CLUBS.map((c) => `<option value="${c.id}"${c.id === this.s.oppClub ? ' selected' : ''}>${c.name}${c.div === 2 ? ' (2부)' : ''}</option>`).join('')}
+            </select></div>
+            <div class="row"><label>상대 포메이션</label><select class="sel" data-opt="oppFormation"></select></div>
             <div class="row"><label>내 스쿼드</label><span class="sqline">${squadLine}${best ? ` · 최고 ${best.name}` : ''}</span></div>
             <div class="row"><button class="btn main" id="btn-solo"${chk.ok ? '' : ' disabled'}>경기 시작</button><button class="btn secondary" id="btn-squad">스쿼드 짜기</button></div>
           </section>
@@ -153,6 +158,13 @@ export class Lobby {
         if (el) el.textContent = `접속 ${this.lobbyLink!.onlineCount()}명`
       }, 1500)
     }
+    const oppSel = this.root.querySelector('#opp-club') as HTMLSelectElement | null
+    if (oppSel) {
+      oppSel.onchange = () => {
+        this.s.oppClub = Number(oppSel.value)
+        saveSettings(this.s)
+      }
+    }
     ;(this.root.querySelector('#btn-squad') as HTMLButtonElement).onclick = () => this.onSquad()
     ;(this.root.querySelector('#btn-solo') as HTMLButtonElement).onclick = () => {
       const s = this.s
@@ -164,6 +176,7 @@ export class Lobby {
         // 시드는 sim 밖에서 뽑는다. 사람 대전(단계 6)은 스쿼드 코드·방 코드 해시로 (DESIGN 4.11)
         seed: (Math.random() * 0x7fffffff) >>> 0,
         settings: { ...s },
+        oppClub: s.oppClub >= 0 ? s.oppClub : undefined,
       })
     }
   }

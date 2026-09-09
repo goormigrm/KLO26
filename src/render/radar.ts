@@ -6,6 +6,19 @@ import { BOX_HALF_W, BOX_L, HALF_L, HALF_W, type GameState } from '../core/state
 export const RADAR_W = 236
 export const RADAR_H = 156
 
+/** 아주 밝은 색은 레이더에서 한 단 낮춘다 (흰 공과 구별) */
+function dim(css: string): string {
+  const v = parseInt(css.replace('#', ''), 16)
+  if (!Number.isFinite(v)) return css
+  const r = (v >> 16) & 255
+  const g = (v >> 8) & 255
+  const b = v & 255
+  if ((r * 299 + g * 587 + b * 114) / 1000 < 190) return css
+  const k = 0.72
+  const to = (x: number): string => Math.round(x * k).toString(16).padStart(2, '0')
+  return `#${to(r)}${to(g)}${to(b)}`
+}
+
 export class Radar {
   readonly canvas: HTMLCanvasElement
   private g: CanvasRenderingContext2D
@@ -24,6 +37,8 @@ export class Radar {
   }
 
   draw(st: GameState, colors: [string, string], controlled: number): void {
+    // 흰 유니폼은 흰 공과 겹친다 — 레이더에서만 살짝 어둡게
+    const dot: [string, string] = [dim(colors[0]), dim(colors[1])]
     const g = this.g
     const d = this.dpr
     g.setTransform(d, 0, 0, d, 0, 0)
@@ -55,7 +70,7 @@ export class Radar {
     for (const p of st.players) {
       if (p.sentOff) continue
       const r = p.idx === controlled ? 4 : 2.6
-      g.fillStyle = colors[p.team]
+      g.fillStyle = dot[p.team]
       g.beginPath()
       g.arc(X(p.x), Y(p.y), r, 0, Math.PI * 2)
       g.fill()

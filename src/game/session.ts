@@ -4,7 +4,9 @@
 import { BTN_SUB, EMPTY_INPUT, type Input } from '../core/input'
 import { createState, hashState, snapshot, step } from '../core/sim'
 import { synthSquad } from '../core/synth'
-import { toSquadConfig, type Squad } from '../cards/squad'
+import { clubSquad, squadClub, toSquadConfig, type Squad } from '../cards/squad'
+import { CLUBS } from '../data/pool'
+import { matchKits } from '../render3d/kits'
 import { MAX_SUBS, TICK_MS, type Difficulty, type GameState } from '../core/state'
 import type { Lockstep } from '../net/lockstep'
 import type { RoomLink } from '../net/room'
@@ -22,6 +24,8 @@ export interface SoloConfig {
   oppFormation: string
   seed: number
   settings: Settings
+  /** 혼자 하기 상대 구단 (없으면 시드로 고른다) */
+  oppClub?: number
   /** 사람이 짠 스쿼드. 없으면 합성 스쿼드로 (테스트·초기 상태) */
   squad?: Squad
   /** 온라인 대전이면 여기에 (DESIGN 6). 없으면 혼자 하기 */
@@ -40,16 +44,7 @@ export interface NetConfig {
   names: [string, string]
 }
 
-/** 합성 스쿼드 시절의 임시 킷 — 실제 구단 색은 단계 1 데이터가 오면 (DESIGN 7.1 유니폼) */
-const KITS: [Kit, Kit] = [
-  { shirt: 0xd62839, sleeve: 0xf4f4f4, shorts: 0x1c1c24, socks: 0xd62839, number: 0xffffff },
-  { shirt: 0x2b62d9, sleeve: 0xf4f4f4, shorts: 0xf4f4f4, socks: 0x2b62d9, number: 0xffffff },
-]
-const GK_KITS: [Kit, Kit] = [
-  { shirt: 0xe0c341, sleeve: 0x2a2a2a, shorts: 0x2a2a2a, socks: 0xe0c341, number: 0x1a1a1a },
-  { shirt: 0x39c7b9, sleeve: 0x1e2a2a, shorts: 0x1e2a2a, socks: 0x39c7b9, number: 0x0e1a1a },
-]
-const RADAR_COLORS: [string, string] = ['#e0475a', '#4f86ff']
+// 유니폼은 구단 색에서 만든다 (src/render3d/kits.ts). 경기마다 정해진다
 
 /** 전광판에 들어갈 짧은 이름 */
 function short(name: string): string {
@@ -58,6 +53,15 @@ function short(name: string): string {
 }
 
 export class Session {
+  private kits: [Kit, Kit] = [
+    { shirt: 0xd62839, sleeve: 0xf4f4f4, shorts: 0x1c1c24, socks: 0xd62839, number: 0xffffff },
+    { shirt: 0x2b62d9, sleeve: 0xf4f4f4, shorts: 0xf4f4f4, socks: 0x2b62d9, number: 0xffffff },
+  ]
+  private gkKits: [Kit, Kit] = [
+    { shirt: 0xe0c341, sleeve: 0x2a2a2a, shorts: 0x2a2a2a, socks: 0xe0c341, number: 0x1a1a1a },
+    { shirt: 0x39c7b9, sleeve: 0x1e2a2a, shorts: 0x1e2a2a, socks: 0x39c7b9, number: 0x0e1a1a },
+  ]
+  private radarColors: [string, string] = ['#e0475a', '#4f86ff']
   private state: GameState
   private prev: PrevPose
   private renderer: Renderer3D
@@ -108,8 +112,8 @@ export class Session {
     this.overlay = host.querySelector('#overlay') as HTMLElement
     this.fpsEl = host.querySelector('#fps') as HTMLElement
     this.renderer = new Renderer3D(stage, { shadows: cfg.settings.shadows, resScale: cfg.settings.resScale })
-    this.renderer.setMatch(this.state, KITS, GK_KITS)
-    this.hud = new Hud(stage, RADAR_COLORS, this.keysShown)
+    this.renderer.setMatch(this.state, this.kits, this.gkKits)
+    this.hud = new Hud(stage, this.radarColors, this.keysShown)
     ;(host.querySelector('#btn-menu') as HTMLButtonElement).onclick = () => this.toggleMenu()
 
     this.input.onEscape = () => this.toggleMenu()
@@ -141,13 +145,31 @@ export class Session {
       const [a, b] = c.net.squads
       const home = toSquadConfig(a, c.net.names[0], short(c.net.names[0]))
       const away = toSquadConfig(b, c.net.names[1], short(c.net.names[1]))
+      this.applyKits(squadClub(a), squadClub(b))
       return createState({ seed, halfSec: c.halfSec, squads: [home, away], human: [true, true] })
     }
-    const home = c.squad
-      ? toSquadConfig(c.squad, '홈', '홈')
+    const mySquad = c.squad
+    // 혼자 하기 상대는 **실제 구단** 하나다 (자기 선수만 쓰니 팀컬러 +4 가 붙는다).
+    // 내 스쿼드의 주력 구단과 겹치면 다음 구단으로 민다.
+    const myClub = mySquad ? squadClub(mySquad) : undefined
+    let oppIdx = c.oppClub ?? (seed % CLUBS.length)
+    if (myClub && CLUBS[oppIdx] && CLUBS[oppIdx].id === myClub.id) oppIdx = (oppIdx + 1) % CLUBS.length
+    const oppClub = CLUBS[oppIdx] ?? CLUBS[0]
+    const home = mySquad
+      ? toSquadConfig(mySquad, myClub?.name ?? '홈', myClub?.short ?? '홈')
       : synthSquad(11, { name: '홈', short: '홈', formation: c.formation, quality: 66 })
-    const away = synthSquad(22, { name: '원정', short: '원정', formation: c.oppFormation, quality: 66 })
+    const awaySquad = clubSquad(oppClub.id, c.oppFormation)
+    const away = toSquadConfig(awaySquad, oppClub.name, oppClub.short)
+    this.applyKits(myClub, oppClub)
     return createState({ seed, halfSec: c.halfSec, squads: [home, away], human: [true, false], bots: [2, c.difficulty] })
+  }
+
+  /** 구단 색 → 유니폼·레이더 색 (DESIGN 7.1). 색이 가까우면 원정이 흰 상의로 */
+  private applyKits(home: ReturnType<typeof squadClub>, away: ReturnType<typeof squadClub>): void {
+    const k = matchKits(home, away)
+    this.kits = k.kits
+    this.gkKits = k.gkKits
+    this.radarColors = k.css
   }
 
   /** 온라인 대전 배선 — 해시 대조 · 리싱크 · 상대 이탈 (DESIGN 6.5 · 6.6) */
@@ -181,7 +203,7 @@ export class Session {
         this.evSeen = this.state.events.length
         this.hashes.clear()
         net.lockstep.dropBefore(this.state.tick)
-        this.renderer.setMatch(this.state, KITS, GK_KITS)
+        this.renderer.setMatch(this.state, this.kits, this.gkKits)
       }
     })
   }
@@ -424,7 +446,7 @@ export class Session {
     this.state = this.newState(seed)
     this.prev = capturePose(this.state)
     this.evSeen = 0
-    this.renderer.setMatch(this.state, KITS, GK_KITS)
+    this.renderer.setMatch(this.state, this.kits, this.gkKits)
     this.hideOverlay()
   }
 

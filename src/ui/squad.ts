@@ -4,7 +4,7 @@
 import { FORMATIONS, FORMATION_LIST, SLOT_FAM } from '../core/formation'
 import { famColor, sixGKOf, sixOf } from '../cards/cards'
 import {
-  ENH_BUDGET, ENH_MAX, SQUAD_SIZE, START_SIZE, cardOvr, cardSalary, checkSquad, computeCap, clubById,
+  ENH_BUDGET, ENH_MAX, SQUAD_SIZE, START_SIZE, cardOvr, cardSalary, checkSquad, clubById, clubSquad, computeCap,
   starterSquad, teamColorBonus, type Squad,
 } from '../cards/squad'
 import { decodeSquad, encodeSquad } from '../cards/squadcode'
@@ -164,6 +164,7 @@ export class SquadScreen {
           <select class="sel" id="sq-form">${FORMATION_LIST.map((f) => `<option${f === sq.formation ? ' selected' : ''}>${f}</option>`).join('')}</select>
           <button class="btn secondary" id="sq-code">코드 복사</button>
           <button class="btn secondary" id="sq-paste">코드 붙여넣기</button>
+          <select class="sel" id="sq-club"><option value="-1">구단 통째로 불러오기…</option>${CLUBS.map((c) => `<option value="${c.id}">${c.name}${c.div === 2 ? ' (2부)' : ''}</option>`).join('')}</select>
           <button class="btn secondary" id="sq-slots">저장 슬롯</button>
           <button class="btn main" id="sq-done"${check.ok ? '' : ' disabled'}>이 스쿼드로</button>
           <button class="btn secondary" id="sq-back">로비로</button>
@@ -172,7 +173,7 @@ export class SquadScreen {
       <div class="gauges">
         <div class="g"><label>급여 <b>${check.salary}</b> / ${CAP}</label><div class="bar"><i class="${check.salary > CAP ? 'over' : ''}" style="width:${salPct}%"></i></div></div>
         <div class="g"><label>강화 <b>${check.enhTotal}</b> / ${ENH_BUDGET}</label><div class="bar"><i class="${check.enhTotal > ENH_BUDGET ? 'over' : ''}" style="width:${enhPct}%"></i></div></div>
-        <div class="g color">${color.bonus > 0 ? `팀컬러 <b>${club?.short ?? ''} ${color.count}명 → 전원 +${color.bonus}</b>` : `팀컬러 없음 (최다 ${club?.short ?? '-'} ${color.count}명 · 5명부터)`}</div>
+        <div class="g color">${color.bonus > 0 ? `팀컬러 <b>${club?.name ?? ''} ${color.count}명 → 전원 +${color.bonus}</b>` : `팀컬러 없음 (최다 ${club?.name ?? '-'} ${color.count}명 · 5명부터)`}</div>
       </div>
       ${check.errors.length ? `<div class="errs">${check.errors.map((e) => `<span>${e}</span>`).join('')}</div>` : ''}
       ${this.msg ? `<div class="okmsg">${this.msg}</div>` : ''}
@@ -319,6 +320,17 @@ export class SquadScreen {
           this.msg = '스쿼드를 불러왔습니다.'
         }
       }
+      this.draw()
+    }
+    const clubSel = $<HTMLSelectElement>('#sq-club')
+    clubSel.onchange = () => {
+      const id = Number(clubSel.value)
+      if (id < 0) return
+      // 그 구단 선수만으로 짠다 — 팀컬러 +4 가 붙는 순수 구단 팀 (DESIGN 5.6)
+      this.sq = clubSquad(id, this.sq.formation)
+      this.sel = -1
+      this.msg = `${clubById(id)?.name ?? ''} 선수로 짰습니다 — 팀컬러 +4`
+      saveSquad(this.sq)
       this.draw()
     }
     $<HTMLButtonElement>('#sq-slots').onclick = () => this.drawSlots()

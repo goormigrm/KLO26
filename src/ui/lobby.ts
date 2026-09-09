@@ -9,7 +9,7 @@ import { CLUBS, cardById } from '../data/pool'
 import { sfx } from '../audio/sfx'
 import type { LobbyLink, RoomInfo } from '../net/room'
 import { makeRoomCode } from '../net/room'
-import { loadSquad } from './squad'
+import { loadSquadOrDefault } from './squad'
 import { loadSettings, saveSettings, type Settings } from './settings'
 
 /** 테스트 모드는 주소에 `?test=1` 이 있을 때만 보인다 — 배포에서는 링크를 안 걸면 끝이다 */
@@ -37,7 +37,7 @@ export class Lobby {
   ) {
     this.host = host
     this.s = loadSettings()
-    const sq = loadSquad()
+    const sq = loadSquadOrDefault()
     const cap = computeCap().cap
     const chk = checkSquad(sq, cap)
     const color = teamColorBonus(sq.ids.slice(0, START_SIZE))
@@ -289,7 +289,7 @@ export class Lobby {
 
   private start(test?: TestConfig): void {
     const s = this.s
-    const sq = loadSquad()
+    const sq = loadSquadOrDefault()
     this.snd.ui('ok')
     this.onStart({
       difficulty: s.difficulty as Difficulty,

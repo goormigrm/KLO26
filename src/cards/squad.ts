@@ -16,6 +16,14 @@ export const START_SIZE = 11
 export interface Squad {
   name: string
   formation: string
+  /**
+   * 이 스쿼드를 짤 때의 **데이터 지문**. 카드 데이터가 바뀌면 저장된 id 가 딴 선수를 가리키므로
+   * (자리표시자 → 실제 명단으로 바꿨을 때 골키퍼 자리에 공격수가 앉았다, 2026-09-09 제보) 다르면 버린다.
+   * 스쿼드 코드에는 이미 같은 지문이 박혀 있다 (DESIGN 5.9).
+   */
+  hash?: number
+  /** 이 스쿼드의 주력 구단 (구단을 고르고 시작했으면) */
+  club?: number
   /** 18명 — [0] GK, [1..10] 포메이션 슬롯 순, [11..17] 벤치 (DESIGN 5.8) */
   ids: number[]
   /** 18명 강화 (0~5) */

@@ -6,7 +6,7 @@ import { openLobby, type LobbyLink } from './net/room'
 import { isBlockedDevice, renderBlocked } from './ui/device'
 import { Lobby } from './ui/lobby'
 import { loadSettings } from './ui/settings'
-import { SquadScreen, loadSquad } from './ui/squad'
+import { SquadScreen, loadSquadOrDefault } from './ui/squad'
 import { WaitRoom } from './ui/waitroom'
 
 const app = document.getElementById('app')!
@@ -43,7 +43,7 @@ function showWait(code: string, role: 'host' | 'guest'): void {
       code,
       role,
       name: s.nick.trim() || '이름 없음',
-      squad: loadSquad(),
+      squad: loadSquadOrDefault(),
       halfSec,
       offside: true,
       announce:
@@ -94,7 +94,7 @@ function showLobby(): void {
       lobby?.dispose()
       lobby = null
       app.innerHTML = ''
-      session = new Session(app, { ...cfg, squad: loadSquad() }, showLobby)
+      session = new Session(app, { ...cfg, squad: loadSquadOrDefault() }, showLobby)
     },
     showSquad,
     showWait,

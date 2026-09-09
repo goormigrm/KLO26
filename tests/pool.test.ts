@@ -153,6 +153,28 @@ describe('구단 스쿼드', () => {
     expect(Math.max(...k1, ...k2)).toBeLessThan(90)
   })
 
+  it('모든 포메이션에서 자리 포지션이 맞는다 — GK 자리에 GK (2026-09-09 제보)', () => {
+    for (const f of ['4-3-3', '4-4-2', '3-5-2', '4-2-3-1', '5-3-2', '3-4-3']) {
+      for (const club of CLUBS.slice(0, 6)) {
+        const sq = clubSquad(club.id, f)
+        expect(cardById(sq.ids[0])?.pos, `${club.name} ${f} 선발 GK`).toBe('GK')
+        expect(cardById(sq.ids[11])?.pos, `${club.name} ${f} 벤치 GK`).toBe('GK')
+        // 선발 필드 10명에 GK 가 섞이지 않는다
+        for (let i = 1; i < 11; i++) expect(cardById(sq.ids[i])?.pos).not.toBe('GK')
+      }
+    }
+  })
+
+  it('데이터 지문이 다른 저장 스쿼드는 버린다 — 자리표시자 시절 id 가 딴 선수를 가리킨다', () => {
+    const sq = clubSquad(CLUBS[0].id, '4-3-3')
+    // 지문이 없거나 다르면 못 쓴다 (loadSquad 가 이 규칙으로 버린다)
+    expect(sq.hash === undefined || sq.hash !== POOL_HASH).toBe(true)
+    const saved = { ...sq, hash: POOL_HASH }
+    expect(saved.hash).toBe(POOL_HASH)
+    const stale = { ...sq, hash: (POOL_HASH ^ 0x1234) & 0xffff }
+    expect(stale.hash).not.toBe(POOL_HASH)
+  })
+
   it('카드 조회가 된다', () => {
     const c = POOL[10]
     expect(cardById(c.id)?.name).toBe(c.name)

@@ -154,7 +154,7 @@
 
 ```bash
 npm install
-npm test               # 64개
+npm test               # 81개
 npm run build
 npm run dev            # http://localhost:5175/KLO26/
 npm run verify 200     # 단계 7 검증 (몇 분 걸린다)

@@ -1,12 +1,13 @@
-// 공을 다루는 판정 — 소유·드리블·태클·패스·슛·걷어내기·GK (DESIGN 4.4~4.8).
+// 공을 다루는 판정 — 소유·드리블·태클·패스·슛·걷어내기·GK·스로인·오프사이드 표시·파울 (DESIGN 4.4~4.9).
 // 난수는 전부 st.rng 에서 뽑고, 뽑는 순서를 바꾸지 않는다.
+// 반칙은 여기서 판정만 하고 `st.pending` 에 적어 둔다 — 세트피스로 바꾸는 것은 rules.ts(sim 이 부른다).
 
 import { atan2A, clamp, cosA, len, sinA } from './fixedmath'
 import { feetX, feetY } from './physics'
 import { rand, type Rng } from './rng'
 import {
   ACT_DIVE, ACT_KICK, ACT_RUN, ACT_SLIDE, BOX_HALF_W, BOX_L, CONTROL_R, DT, GOAL_H, GOAL_HALF, HALF_L, HALF_W,
-  goalX, type GameState, type Player,
+  THROW_SPEED_MAX, goalX, inBoxOf, ownGoalX, type GameState, type PendingCall, type Player,
 } from './state'
 
 /** 각도 단위(1024/360) — 도 → 각도 */
@@ -71,11 +72,17 @@ export function interceptPoint(st: GameState, p: Player, out: { x: number; y: nu
 export function nearestOppDist(st: GameState, p: Player): number {
   let best = 99
   for (const q of st.players) {
-    if (q.team === p.team) continue
+    if (q.team === p.team || q.sentOff) continue
     const d = dist(p.x, p.y, q.x, q.y)
     if (d < best) best = d
   }
   return best
+}
+
+/** 상대 GK (퇴장이면 −1) */
+export function oppGK(st: GameState, teamIdx: number): Player | null {
+  const gk = st.players[st.teams[1 - teamIdx].gk]
+  return gk.sentOff ? null : gk
 }
 
 /** 공을 발에 붙인다 — v1 드리블 모델: 서 있으면 0.30 m 앞, 달리면 drib 가 낮을수록 멀리 (뺏기기 쉽다) */
@@ -83,6 +90,7 @@ export function attachBall(st: GameState, p: Player): void {
   const b = st.ball
   const team = st.teams[p.team]
   if (p.holdT > 0) {
+    // GK 가 손에 들고 있다 — 가슴 높이. 아무도 뺏을 수 없다 (tryControl·contestBall·slideContest 가 막는다)
     b.x = feetX(p, 0.2)
     b.y = feetY(p, 0.2)
     b.z = 1.0
@@ -103,10 +111,59 @@ export function attachBall(st: GameState, p: Player): void {
   b.vz = 0
 }
 
+// ---------------------------------------------------------------- 오프사이드
+
+/** 상대 팀에서 골문 쪽으로 두 번째 선수의 x (teamIdx 가 공격하는 방향 기준, 절대 좌표) */
+export function offsideLineX(st: GameState, teamIdx: number): number {
+  const dir = st.teams[teamIdx].dir
+  let m1 = -99
+  let m2 = -99
+  for (const q of st.players) {
+    if (q.team === teamIdx || q.sentOff) continue
+    const v = q.x * dir
+    if (v > m1) {
+      m2 = m1
+      m1 = v
+    } else if (v > m2) m2 = v
+  }
+  return m2 * dir
+}
+
+/** 오프사이드 표시를 전부 지운다 (스로인·골킥·코너·재개 뒤) */
+export function clearOffside(st: GameState): void {
+  for (const p of st.players) p.offside = false
+}
+
+/**
+ * 공이 아군 발을 떠나는 순간, 오프사이드 **위치**에 있는 아군을 표시한다 (DESIGN 4.9).
+ * 판정(반칙)은 표시된 선수가 공을 먼저 만졌을 때 난다 — 관여해야 오프사이드다.
+ * 세 조건: 상대 진영 · 공보다 앞 · 뒤에서 두 번째 상대보다 앞.
+ */
+export function markOffside(st: GameState, kicker: Player): void {
+  const dir = st.teams[kicker.team].dir
+  const line = offsideLineX(st, kicker.team) * dir
+  const bx = st.ball.x * dir
+  for (const q of st.players) {
+    if (q.team !== kicker.team) {
+      q.offside = false
+      continue
+    }
+    if (q.idx === kicker.idx || q.sentOff) {
+      q.offside = false
+      continue
+    }
+    const v = q.x * dir
+    q.offside = v > 0.05 && v > bx + 0.05 && v > line + 0.05
+  }
+}
+
+// ---------------------------------------------------------------- 소유
+
 function giveBall(st: GameState, p: Player): void {
   const b = st.ball
-  const wasPassTo = b.passTo
+  const wasLive = b.passLive
   const sameTeam = b.lastTeam === p.team && b.lastTouch !== p.idx
+  const fromRestart = b.restartBy
   b.owner = p.idx
   b.lastTouch = p.idx
   b.lastTeam = p.team
@@ -114,8 +171,37 @@ function giveBall(st: GameState, p: Player): void {
   b.onTarget = false
   b.passTo = -1
   b.vz = 0
+  b.fromThrow = false
+  b.passLive = false
   p.gotT = st.tick
-  if (wasPassTo >= 0 && sameTeam) st.stats[p.team].passOk++
+  if (wasLive && sameTeam) st.stats[p.team].passOk++
+  touchedBall(st, p, fromRestart)
+}
+
+/**
+ * 누가 공을 만졌다 — 오프사이드와 "두 번 터치"를 여기서 한 곳에서 본다.
+ * fromRestart 는 만지기 **직전**의 `ball.restartBy`.
+ */
+function touchedBall(st: GameState, p: Player, fromRestart: number): void {
+  const b = st.ball
+  if (fromRestart === p.idx) {
+    // 리스타트를 찬 사람이 남이 만지기 전에 또 만졌다 — 상대 프리킥
+    b.restartBy = -1
+    call(st, { kind: 'twice', team: 1 - p.team, by: p.idx, x: b.x, y: b.y, card: 0, penalty: false })
+    return
+  }
+  b.restartBy = -1
+  if (!p.offside) return
+  if (b.lastTeam !== p.team) return
+  p.offside = false
+  st.stats[p.team].offsides++
+  call(st, { kind: 'offside', team: 1 - p.team, by: p.idx, x: p.x, y: p.y, card: 0, penalty: false })
+}
+
+/** 반칙을 적어 둔다. 한 틱에 하나만 — 먼저 난 것이 이긴다 */
+function call(st: GameState, c: PendingCall): void {
+  if (st.pending) return
+  st.pending = c
 }
 
 /**
@@ -132,6 +218,7 @@ export function tryControl(st: GameState): void {
   const px = b.x - b.vx * DT
   const py = b.y - b.vy * DT
   for (const p of st.players) {
+    if (p.sentOff) continue
     if (p.action !== ACT_RUN && p.action !== ACT_KICK) continue
     if (st.tick - p.lastKick <= 8) continue
     if (p.sk.isGK && p.holdT > 0) continue
@@ -144,48 +231,83 @@ export function tryControl(st: GameState): void {
   }
   if (!best) return
   const p = best
+  // 받으라고 보낸 선수는 공을 **기다리고 있다** — 퍼스트 터치가 훨씬 잘 붙는다.
+  // 예전엔 남의 공을 가로채는 것과 같은 확률이라 패스 성공률이 44% 에 머물렀다 (2026-09-09 계측).
+  const intended = b.passTo === p.idx
   let chance: number
-  if (b.z > 1.2) chance = 0.3 + 0.5 * p.sk.head
+  if (b.z > 1.2) chance = (intended ? 0.52 : 0.3) + 0.5 * p.sk.head
+  else if (intended) chance = 0.74 + 0.24 * p.sk.ctl - clamp((speed - 16) / 34, 0, 0.28)
   else chance = 0.6 + 0.4 * p.sk.ctl - clamp((speed - 6) / 30, 0, 0.5)
-  if (b.passTo === p.idx) chance += 0.15
   if (rand(st.rng) < chance) {
     giveBall(st, p)
     return
   }
-  // 튕김
+  // 튕김 — 이것도 "만진" 것이다 (오프사이드·두 번 터치가 걸린다)
+  const fromRestart = b.restartBy
   const a = atan2A(b.vy, b.vx) + Math.round(randN(st.rng) * 40 * DEG)
   const ns = speed * 0.35 + 1
   b.vx = cosA(a) * ns
   b.vy = sinA(a) * ns
   b.vz = Math.max(b.vz * 0.3, 0)
+  const wasTeam = b.lastTeam
   b.lastTouch = p.idx
-  b.lastTeam = p.team
   b.shotBy = -1
   b.passTo = -1
   p.lastKick = st.tick
+  if (wasTeam === p.team) touchedBall(st, p, fromRestart)
+  else {
+    b.restartBy = -1
+    b.passLive = false
+    b.fromThrow = false
+  }
+  b.lastTeam = p.team
+}
+
+// ---------------------------------------------------------------- 태클 · 파울
+
+/** 뒤에서 들어갔나 — 0(정면) ~ 1(등 뒤) */
+function fromBehind(o: Player, q: Player): number {
+  const rel = atan2A(q.y - o.y, q.x - o.x)
+  let dd = (rel - o.facing) & 1023
+  if (dd > 512) dd = 1024 - dd
+  return 1 - dd / 512
+}
+
+/** 파울을 선언한다. 박스 안이면 PK. card: 0 없음 · 1 경고 (두 번째 경고면 퇴장으로 올린다) */
+function foul(st: GameState, offender: Player, x: number, y: number, cardChance: number, kind: 'foul' | 'gkcharge'): void {
+  const victimTeam = 1 - offender.team
+  const defTeam = st.teams[offender.team]
+  // 반칙한 팀이 지키는 박스 안이면 PK. GK 차징(공격수가 GK 를 덮친 것)은 PK 가 아니다
+  const pk = kind === 'foul' && inBoxOf(defTeam, x, y)
+  let card = 0
+  if (rand(st.rng) < cardChance) card = offender.yellow >= 1 ? 2 : 1
+  st.stats[offender.team].fouls++
+  call(st, { kind, team: victimTeam, by: offender.idx, x, y, card, penalty: pk })
 }
 
 /** 볼 소유자에게 붙은 상대가 뺏으려 한다 — 한 틱에 한 명만 (DESIGN 4.8 압박) */
 export function contestBall(st: GameState, o: Player): void {
-  if (o.holdT > 0) return
   const b = st.ball
   const team = st.teams[o.team]
   const slow = team.human && team.controlled === o.idx && team.slow
-  const reach = 0.6 + (1 - o.sk.drib) * 0.5 - (slow ? 0.15 : 0)
+  const gkHolding = o.holdT > 0
+  const reach = gkHolding ? 1.0 : 0.6 + (1 - o.sk.drib) * 0.5 - (slow ? 0.15 : 0)
   for (const q of st.players) {
-    if (q.team === o.team || q.action !== ACT_RUN) continue
+    if (q.team === o.team || q.action !== ACT_RUN || q.sentOff) continue
     if (!q.press && q.tackleT <= 0) continue
     const d = dist(feetX(q, 0.3), feetY(q, 0.3), b.x, b.y)
     if (d > reach) continue
-    // 정면이면 1.0, 뒤에서면 0.55
-    const rel = atan2A(q.y - o.y, q.x - o.x)
-    let dd = (rel - o.facing) & 1023
-    if (dd > 512) dd = 1024 - dd
-    const angleF = 0.55 + 0.45 * (dd / 512)
+    if (gkHolding) {
+      // 골키퍼가 손에 들고 있는 공은 뺏을 수 없다 — 도전 자체가 반칙 (DESIGN 4.7)
+      foul(st, q, b.x, b.y, 0.18, 'gkcharge')
+      return
+    }
+    const angleF = 0.55 + 0.45 * (1 - fromBehind(o, q))
     let p = 0.05 * (0.5 + q.sk.tck) * (1.4 - 0.8 * o.sk.drib) * angleF * (0.6 + 0.8 * (q.sk.str / (q.sk.str + o.sk.str + 0.0001)))
     if (q.tackleT > 0) p *= 3
     if (slow) p *= 0.6
-    if (rand(st.rng) < p) {
+    const roll = rand(st.rng)
+    if (roll < p) {
       // 뺏겼다 — 공이 태클한 쪽으로 튄다
       const a = atan2A(q.y - o.y, q.x - o.x)
       b.owner = -1
@@ -196,41 +318,86 @@ export function contestBall(st: GameState, o: Player): void {
       b.lastTeam = q.team
       b.shotBy = -1
       b.passTo = -1
+      b.restartBy = -1
+      b.passLive = false
+      b.fromThrow = false
       o.lastKick = st.tick
       q.lastKick = st.tick - 6
       st.stats[q.team].tackles++
       st.events.push({ tick: st.tick, type: 'tackle', team: q.team, player: q.idx, x: b.x, y: b.y })
       return
     }
+    // 실패 — 뒤에서 밀었으면 파울 (스탠딩 태클은 더 거칠다)
+    const behind = fromBehind(o, q)
+    let foulP = 0.010 + 0.035 * behind + 0.020 * q.sk.agg
+    if (q.tackleT > 0) foulP *= 2.2
+    if (roll < p + foulP) {
+      foul(st, q, b.x, b.y, 0.02 + 0.08 * behind, 'foul')
+      return
+    }
   }
 }
 
-/** 슬라이딩 중인 선수가 공(자유 또는 상대 소유)에 닿으면 걷어낸다. 늦으면 파울 — 단계 4. v1 은 실패하면 그냥 지나간다 */
+/** 슬라이딩 중인 선수가 공에 닿으면 걷어낸다. 못 닿고 사람만 치면 파울 (뒤에서면 카드) */
 export function slideContest(st: GameState, q: Player): void {
   const b = st.ball
-  if (q.action !== ACT_SLIDE) return
-  const d = dist(feetX(q, 0.5), feetY(q, 0.5), b.x, b.y)
-  if (d > 0.7 || b.z > 0.8) return
+  if (q.action !== ACT_SLIDE || q.sentOff) return
+  const fx = feetX(q, 0.5)
+  const fy = feetY(q, 0.5)
+  const d = dist(fx, fy, b.x, b.y)
   if (b.owner >= 0) {
     const o = st.players[b.owner]
     if (o.team === q.team) return
-    if (rand(st.rng) >= 0.45 + 0.4 * q.sk.tck) return
+    // 골키퍼가 손에 든 공에는 슬라이딩으로 도전할 수 없다 — 반칙 (사용자 지적 2)
+    if (o.holdT > 0) {
+      if (dist(fx, fy, o.x, o.y) < 1.4) {
+        q.actT = 0
+        foul(st, q, o.x, o.y, 0.28, 'gkcharge')
+      }
+      return
+    }
+    if (d > 0.7 || b.z > 0.8) {
+      // 공은 못 건드리고 사람만 쳤다 → 파울
+      if (dist(fx, fy, o.x, o.y) < 1.0 && st.tick - q.lastKick > 20) {
+        const behind = fromBehind(o, q)
+        q.lastKick = st.tick
+        foul(st, q, o.x, o.y, 0.08 + 0.22 * behind, 'foul')
+      }
+      return
+    }
+    if (rand(st.rng) >= 0.45 + 0.4 * q.sk.tck) {
+      // 태클 실패 — 발을 걸었다
+      const behind = fromBehind(o, q)
+      q.lastKick = st.tick
+      foul(st, q, o.x, o.y, 0.06 + 0.20 * behind, 'foul')
+      return
+    }
     o.lastKick = st.tick
     st.stats[q.team].tackles++
     st.events.push({ tick: st.tick, type: 'tackle', team: q.team, player: q.idx, x: b.x, y: b.y })
-  }
+  } else if (d > 0.7 || b.z > 0.8) return
+  const fromRestart = b.restartBy
   b.owner = -1
   b.vx = cosA(q.facing) * 6 + randN(st.rng)
   b.vy = sinA(q.facing) * 6 + randN(st.rng)
   b.vz = 0.5
+  const wasTeam = b.lastTeam
   b.lastTouch = q.idx
-  b.lastTeam = q.team
   b.shotBy = -1
   b.passTo = -1
   q.lastKick = st.tick
+  if (wasTeam === q.team) touchedBall(st, q, fromRestart)
+  else {
+    b.restartBy = -1
+    b.passLive = false
+    b.fromThrow = false
+  }
+  b.lastTeam = q.team
 }
 
-function releaseBall(st: GameState, p: Player): void {
+// ---------------------------------------------------------------- 차기
+
+function releaseBall(st: GameState, p: Player, markOff = true): void {
   const b = st.ball
   b.owner = -1
   b.kickTick = st.tick
@@ -239,10 +406,15 @@ function releaseBall(st: GameState, p: Player): void {
   b.shotBy = -1
   b.passTo = -1
   b.onTarget = false
+  b.fromThrow = false
+  b.restartBy = -1
+  b.passLive = false
   p.lastKick = st.tick
   p.holdT = 0
+  p.throwing = false
   p.action = ACT_KICK
   p.actT = 6
+  if (markOff) markOffside(st, p)
 }
 
 export type PassKind = 'ground' | 'through' | 'lob' | 'lowcross' | 'highcross'
@@ -256,7 +428,7 @@ export function pickPassTarget(st: GameState, p: Player, dx: number, dy: number,
   let bestS = -99
   for (let cone = 45; cone <= 90; cone += 45) {
     for (const q of st.players) {
-      if (q.team !== p.team || q.idx === p.idx) continue
+      if (q.team !== p.team || q.idx === p.idx || q.sentOff) continue
       if (through && q.sk.isGK) continue
       const d = dist(p.x, p.y, q.x, q.y)
       if (d < 2) continue
@@ -265,7 +437,11 @@ export function pickPassTarget(st: GameState, p: Player, dx: number, dy: number,
       if (dd > 512) dd = 1024 - dd
       const deg = dd / DEG
       if (deg > cone) continue
-      const s = 1 - deg / cone - (d > 40 ? 0.4 : d > 25 ? 0.15 : 0)
+      let s = 1 - deg / cone - (d > 40 ? 0.4 : d > 25 ? 0.15 : 0)
+      // 오프사이드 위치의 동료에게는 보내지 않는다
+      const dir = st.teams[p.team].dir
+      const line = offsideLineX(st, p.team) * dir
+      if (q.x * dir > line + 0.05 && q.x * dir > 0 && q.x * dir > p.x * dir) s -= 0.8
       if (s > bestS) {
         bestS = s
         best = q.idx
@@ -333,9 +509,10 @@ export function doPass(
   let vz = 0
   const aerial = kind === 'lob' || kind === 'highcross'
   if (aerial) {
-    const T = clamp(d / 14, 0.9, 2.2)
-    speed = (d / T) * 1.08
-    vz = 0.5 * G * T
+    // 공기 저항(선형 0.25)이 있어 이론 포물선보다 짧게 떨어진다 — 보정 계수로 되돌린다
+    const T = clamp(d / 13, 0.9, 2.6)
+    speed = (d / T) * (1.08 + 0.13 * T)
+    vz = 0.5 * G * T * 1.06
   } else if (kind === 'lowcross') {
     speed = clamp(12 + 0.6 * d, 14, 24)
     vz = 0.8
@@ -358,12 +535,71 @@ export function doPass(
   b.vy = sinA(a) * speed
   b.vz = vz
   b.passTo = target
+  b.passLive = true
   st.stats[p.team].passes++
 }
 
 /**
- * 슛. 사람: (dx,dy) 가 골문 쪽 ±35° 안이면 옆 성분으로 코너를 고르고, 밖이면 그 방향 그대로(빗나감).
- * AI: aimSide(−1·0·1)로 코너를 준다.
+ * 스로인 — **손으로 던진다** (사용자 지적 4). 킥이 아니므로:
+ * 최대 14 m/s, 반드시 뜬다, 직접 골이 인정되지 않고(`fromThrow`), 던진 사람은 두 번 만질 수 없다.
+ */
+export function doThrow(st: GameState, p: Player, target: number, dx: number, dy: number, hold: number): void {
+  const b = st.ball
+  const bx = b.x
+  const by = b.y
+  let ax: number
+  let ay: number
+  if (target >= 0) {
+    const q = st.players[target]
+    ax = q.x + q.vx * 0.35
+    ay = q.y + q.vy * 0.35
+  } else {
+    let ux = dx
+    let uy = dy
+    const l = len(ux, uy)
+    if (l === 0) {
+      ux = -Math.sign(bx) || 1
+      uy = -Math.sign(by) || 1
+    } else {
+      ux /= l
+      uy /= l
+    }
+    const d = 8 + 12 * hold
+    ax = bx + ux * d
+    ay = by + uy * d
+  }
+  let d = dist(bx, by, ax, ay)
+  // 던지기 사거리는 팔심 — str 이 높으면 멀리. 최대 THROW_SPEED_MAX 로 자른다
+  const maxD = 14 + 16 * p.sk.str
+  if (d > maxD) {
+    const k = maxD / d
+    ax = bx + (ax - bx) * k
+    ay = by + (ay - by) * k
+    d = maxD
+  }
+  const T = clamp(d / 12, 0.55, 1.5)
+  const speed = Math.min(THROW_SPEED_MAX, (d / T) * 1.1)
+  const sigma = (1 - p.sk.pas) * 5
+  const a = atan2A(ay - by, ax - bx) + Math.round(randN(st.rng) * sigma * DEG)
+  releaseBall(st, p, false)
+  b.vx = cosA(a) * speed
+  b.vy = sinA(a) * speed
+  b.vz = 0.5 * G * T
+  b.z = 2.0 // 머리 위에서 놓는다
+  b.passTo = target
+  b.passLive = true
+  b.fromThrow = true
+  b.restartBy = p.idx
+  p.action = ACT_RUN
+  p.actT = 0
+  st.stats[p.team].passes++
+}
+
+/**
+ * 슛. 사람: (dx,dy) 가 골문 쪽 ±35° 안이면 **골키퍼가 비운 코너**를 기본값으로 잡고 스틱 옆 성분으로 옮긴다.
+ * 밖이면 그 방향 그대로(빗나감). AI: aimSide(−1·0·1)로 코너를 준다.
+ *
+ * 옛날에는 스틱을 옆으로 안 밀면 정중앙(=골키퍼 자리)을 겨눠 1대1 이 거의 안 들어갔다 (사용자 제보 2026-09-09).
  */
 export function doShoot(st: GameState, p: Player, dx: number, dy: number, power: number, chip: boolean, aimSide: number | null): void {
   const b = st.ball
@@ -374,26 +610,34 @@ export function doShoot(st: GameState, p: Player, dx: number, dy: number, power:
   const toGoal = atan2A(0 - by, gx - bx)
   let ty = 0
   let straight = false
+  const gk = oppGK(st, p.team)
   if (aimSide !== null) ty = aimSide * 2.9
   else {
     const l = len(dx, dy)
+    let lat = 0
+    let aimed = true
     if (l > 0) {
       const ia = atan2A(dy, dx)
       let dd = (ia - toGoal) & 1023
       if (dd > 512) dd -= 1024
-      if (Math.abs(dd) <= 35 * DEG) {
-        // 옆 성분: 골문 방향에 수직인 만큼 코너로
-        const lat = (dd / (35 * DEG)) * 3.0
-        ty = clamp(lat, -3, 3)
-      } else straight = true
+      if (Math.abs(dd) <= 35 * DEG) lat = (dd / (35 * DEG)) * 3.0
+      else {
+        straight = true
+        aimed = false
+      }
+    }
+    if (aimed) {
+      // 자동 보조 (DESIGN 3.3): 골키퍼가 서 있는 반대쪽 코너를 기본으로 잡고, 스틱 옆 성분으로 옮긴다
+      const open = gk ? (gk.y > 0.3 ? -1 : gk.y < -0.3 ? 1 : p.y > 0 ? -1 : 1) : p.y > 0 ? -1 : 1
+      ty = clamp(open * 2.4 + lat, -3.0, 3.0)
     }
   }
   const dG = dist(bx, by, gx, 0)
   let speed = 16 + 14 * power
   let sigma = 3.0 * (1.35 - p.sk.sho)
   if (dG > 25) sigma *= 1.3 - 0.5 * p.sk.lon
-  const lat = Math.abs(by) / Math.max(1, Math.abs(gx - bx))
-  if (lat > 1) sigma *= 1.3
+  const latK = Math.abs(by) / Math.max(1, Math.abs(gx - bx))
+  if (latK > 1) sigma *= 1.3
   if (nearestOppDist(st, p) < 1.5) sigma *= 1.5
   // 약발: 왼발이 오른쪽 코너를 노리거나 그 반대
   const foot = p.spec.foot
@@ -446,21 +690,40 @@ export function doClear(st: GameState, p: Player): void {
   b.vz = 7
 }
 
-/** GK 가 자유 공을 잡거나 쳐낸다 (DESIGN 4.7) */
+// ---------------------------------------------------------------- 골키퍼
+
+/**
+ * GK 가 자유 공을 잡거나 쳐낸다 (DESIGN 4.7).
+ *
+ * 닿는 거리는 **반응 시간과 몸을 날릴 시간**으로 정한다. 예전에는 `gkReach`(약 2.2 m) 안이면 무조건
+ * 시도할 수 있어서 1대1 이 거의 안 들어갔다 (사용자 제보 2026-09-09) — 가까이서 세게 찬 공은
+ * 반응할 시간이 없어야 한다.
+ */
 export function gkCatch(st: GameState, gk: Player): void {
   const b = st.ball
-  if (b.owner >= 0 || gk.holdT > 0) return
+  if (b.owner >= 0 || gk.holdT > 0 || gk.sentOff) return
   if (gk.action !== ACT_RUN) return
   if (st.tick - gk.lastKick <= 8) return
   const d = dist(gk.x, gk.y, b.x, b.y)
-  const reach = gk.sk.gkReach
-  if (d > reach + 0.3 || b.z > 2.6) return
+  if (d > gk.sk.gkReach + 0.3 || b.z > 2.6) return
   const speed = len(b.vx, b.vy)
   const isShot = b.shotBy >= 0
-  if (isShot && st.tick - b.kickTick < gk.sk.gkReact * 60) return
+  // 찬 뒤 흐른 시간이 반응 시간보다 짧으면 아직 못 움직인다
+  const since = (st.tick - b.kickTick) / 60
+  if (isShot && since < gk.sk.gkReact) return
+  // 몸을 날려 닿을 수 있는 거리 — 반응 뒤 흐른 시간 × 다이브 속도. 손 닿는 0.6 m 는 기본
+  const diveSpeed = 4.5 + 2.5 * gk.sk.gkHand
+  const canReach = isShot ? Math.min(gk.sk.gkReach, 0.6 + (since - gk.sk.gkReact) * diveSpeed) : gk.sk.gkReach
+  if (d > canReach) return
   let chance: number
   if (speed < 6) chance = 0.95
-  else chance = 0.35 + 0.55 * gk.sk.gkHand - clamp((speed - 15) / 40, 0, 0.35) - (d > reach * 0.6 ? 0.15 : 0)
+  else {
+    // 멀리 뻗을수록·빠를수록 어렵다. 계수는 계측으로 정했다 (2026-09-09):
+    // 1대1 14 m 전환율 39% · 봇전 평균 2.4골 — 사용자 제보 "1대1 인데도 안 들어간다" 를 여기서 잡았다
+    const stretch = clamp(d / Math.max(0.8, gk.sk.gkReach), 0, 1)
+    chance = 0.86 - 0.46 * stretch - clamp((speed - 14) / 26, 0, 0.32)
+    chance *= 0.72 + 0.42 * gk.sk.gkHand
+  }
   const S = st.stats[gk.team]
   if (rand(st.rng) < chance) {
     const wasShot = isShot && b.onTarget
@@ -476,7 +739,8 @@ export function gkCatch(st: GameState, gk: Player): void {
     }
     return
   }
-  // 쳐내기
+  // 쳐내기 — 잡을 확률에서 남은 만큼만. 완전히 놓칠 수도 있다
+  if (rand(st.rng) > 0.55 + 0.35 * gk.sk.gkHand) return
   if (isShot && b.onTarget) {
     S.saves++
     st.events.push({ tick: st.tick, type: 'save', team: gk.team, player: gk.idx, x: b.x, y: b.y })
@@ -490,18 +754,44 @@ export function gkCatch(st: GameState, gk: Player): void {
   b.shotBy = -1
   b.onTarget = false
   b.passTo = -1
+  b.restartBy = -1
+  b.fromThrow = false
   gk.lastKick = st.tick
   gk.action = ACT_DIVE
   gk.actT = 20
 }
 
-/** GK 가 손에 든 공을 내보낸다 — 열린 수비수에게 짧게, 없으면 멀리 */
-export function gkDistribute(st: GameState, gk: Player): void {
+/**
+ * GK 펀트 — 손에 든 공을 발로 멀리 찬다 (사용자 지적 3).
+ * 로빙 패스와 달리 초기 속도가 크고 체공이 길어 하프라인을 넘긴다.
+ */
+export function gkPunt(st: GameState, gk: Player, aimY: number): void {
+  const b = st.ball
   const team = st.teams[gk.team]
+  const dir = team.dir
+  // 55~72 m — kic 이 높을수록 멀리
+  const d = 55 + 17 * gk.sk.gkKick
+  const T = 2.3 + 0.35 * gk.sk.gkKick
+  const speed = (d / T) * (1.08 + 0.13 * T)
+  const tx = clamp(gk.x + dir * d, -HALF_L + 3, HALF_L - 3)
+  const ty = clamp(aimY, -HALF_W + 3, HALF_W - 3)
+  const sigma = (1 - gk.sk.gkKick) * 7 + 2
+  const a = atan2A(ty - b.y, tx - b.x) + Math.round(randN(st.rng) * sigma * DEG)
+  releaseBall(st, gk)
+  b.vx = cosA(a) * speed
+  b.vy = sinA(a) * speed
+  b.vz = 0.5 * G * T * 1.06
+  b.z = 0.3
+  b.passLive = true
+  st.stats[gk.team].passes++
+}
+
+/** GK 가 손에 든 공을 내보낸다 — 열린 수비수에게 짧게, 없으면 **펀트로 멀리** */
+export function gkDistribute(st: GameState, gk: Player): void {
   let best = -1
   let bestOpen = 6
   for (const q of st.players) {
-    if (q.team !== gk.team || q.idx === gk.idx) continue
+    if (q.team !== gk.team || q.idx === gk.idx || q.sentOff) continue
     const d = dist(gk.x, gk.y, q.x, q.y)
     if (d > 28 || d < 4) continue
     const open = nearestOppDist(st, q)
@@ -511,13 +801,13 @@ export function gkDistribute(st: GameState, gk: Player): void {
     }
   }
   if (best >= 0) doPass(st, gk, 'ground', best, 0, 0, 0.3)
-  else doPass(st, gk, 'lob', -1, team.dir, 0, 1, { x: clamp(gk.x + team.dir * 48, -HALF_L + 5, HALF_L - 5), y: (rand(st.rng) - 0.5) * 30 })
+  else gkPunt(st, gk, (rand(st.rng) - 0.5) * 34)
 }
 
 /** 자기 박스 안인가 */
 export function inOwnBox(p: Player, dir: number): boolean {
-  const ownGoal = -dir * HALF_L
-  return Math.abs(p.x - ownGoal) < BOX_L && Math.abs(p.y) < BOX_HALF_W
+  const own = -dir * HALF_L
+  return Math.abs(p.x - own) < BOX_L && Math.abs(p.y) < BOX_HALF_W
 }
 
-export { HALF_W as BALL_HALF_W }
+export { HALF_W as BALL_HALF_W, ownGoalX }

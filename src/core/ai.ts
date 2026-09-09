@@ -4,8 +4,10 @@
 import { atan2A, clamp, cosA, len, sinA } from './fixedmath'
 import { anchorOf, type Band } from './formation'
 import { rand } from './rng'
-import { dist, doClear, doPass, doShoot, inOwnBox, interceptPoint, nearestOppDist, randN, type PassKind } from './ball'
-import { HALF_L, HALF_W, goalX, type GameState, type Player } from './state'
+import {
+  dist, doClear, doPass, doShoot, inOwnBox, interceptPoint, nearestOppDist, offsideLineX, randN, type PassKind,
+} from './ball'
+import { CIRCLE_R, HALF_L, HALF_W, THROWIN_CLEAR, goalX, type GameState, type Player } from './state'
 
 const tmp = { x: 0, y: 0 }
 
@@ -32,28 +34,12 @@ export function updateAnchors(st: GameState): void {
   }
 }
 
-/** 오프사이드 라인 — 상대 팀에서 골문 쪽으로 두 번째 선수의 x (절대 좌표) */
-export function offsideLineX(st: GameState, teamIdx: number): number {
-  const dir = st.teams[teamIdx].dir
-  let m1 = -99
-  let m2 = -99
-  for (const q of st.players) {
-    if (q.team === teamIdx) continue
-    const v = q.x * dir
-    if (v > m1) {
-      m2 = m1
-      m1 = v
-    } else if (v > m2) m2 = v
-  }
-  return m2 * dir
-}
-
 /** (x,y) 에 p 보다 가까운 같은 팀 선수 수 (동률은 idx 로) */
 function rankByDist(st: GameState, teamIdx: number, x: number, y: number, p: Player, excludeGK: boolean, exclude = -1): number {
   const dp = dist(p.x, p.y, x, y)
   let rank = 0
   for (const q of st.players) {
-    if (q.team !== teamIdx || q.idx === p.idx || q.idx === exclude) continue
+    if (q.team !== teamIdx || q.idx === p.idx || q.idx === exclude || q.sentOff) continue
     if (excludeGK && q.sk.isGK) continue
     const dq = dist(q.x, q.y, x, y)
     if (dq < dp || (dq === dp && q.idx < p.idx)) rank++
@@ -66,11 +52,29 @@ function goAnchor(p: Player, fwd: number, dir: number): void {
   p.ty = p.ay
 }
 
+/**
+ * 오프사이드 라인을 넘지 않게 목표 x 를 자른다.
+ * 여유를 1.5 m 두는 것은 선수가 목표를 지나쳐 달리기 때문이다 — 0.5 m 였을 때 판당 오프사이드가 11.5회였다(2026-09-09 계측).
+ */
+const LINE_MARGIN = 1.5
+function holdLine(st: GameState, p: Player, tx: number, dir: number): number {
+  const line = offsideLineX(st, p.team) * dir
+  const t = tx * dir
+  return t > line - LINE_MARGIN ? (line - LINE_MARGIN) * dir : tx
+}
+
+/** 지금 오프사이드 위치인가 (달려 나가도 되는지 AI 가 스스로 본다) */
+function inOffsidePosition(st: GameState, p: Player): boolean {
+  const dir = st.teams[p.team].dir
+  const v = p.x * dir
+  return v > 0 && v > st.ball.x * dir && v > offsideLineX(st, p.team) * dir
+}
+
 /** q 앞(공격 방향 ±40°, 8 m) 가장 가까운 상대까지 거리. 없으면 99 */
 function spaceAhead(st: GameState, q: Player, dir: number): number {
   let best = 99
   for (const o of st.players) {
-    if (o.team === q.team) continue
+    if (o.team === q.team || o.sentOff) continue
     const dx = (o.x - q.x) * dir
     if (dx <= 0 || dx > 8) continue
     const dy = Math.abs(o.y - q.y)
@@ -90,7 +94,7 @@ function laneClear(st: GameState, p: Player, q: Player): number {
   const l2 = bx * bx + by * by
   let best = 3
   for (const o of st.players) {
-    if (o.team === p.team) continue
+    if (o.team === p.team || o.sentOff) continue
     let t = l2 > 0 ? ((o.x - ax) * bx + (o.y - ay) * by) / l2 : 0
     t = clamp(t, 0, 1)
     const d = dist(ax + bx * t, ay + by * t, o.x, o.y)
@@ -127,7 +131,7 @@ function gkDecide(st: GameState, gk: Player): void {
     const dc = dist(c.x, c.y, ownGoalX, 0)
     if (dc < 14) {
       let between = 0
-      for (const q of st.players) if (q.team === ti && !q.sk.isGK && dist(q.x, q.y, c.x, c.y) < 3) between++
+      for (const q of st.players) if (q.team === ti && !q.sk.isGK && !q.sentOff && dist(q.x, q.y, c.x, c.y) < 3) between++
       if (between === 0) d = clamp(dc * 0.5, 2, 7)
     }
   }
@@ -161,7 +165,7 @@ function carrierDecide(st: GameState, p: Player, noise: number): void {
   if (dG < 34) {
     const lat = Math.abs(p.y) / Math.max(1, Math.abs(gx - p.x))
     const angF = 1 / (1 + lat * 1.2)
-    shoot = (1 - dG / 34) * (0.5 + 0.5 * p.sk.sho) * angF * 1.6 + (dG < 16 ? 0.3 : 0)
+    shoot = (1 - dG / 34) * (0.5 + 0.5 * p.sk.sho) * angF * 2.3 + (dG < 16 ? 0.35 : 0)
     if (opD < 1.5) shoot *= 0.7
     shoot += randN(r) * noise
   }
@@ -170,10 +174,12 @@ function carrierDecide(st: GameState, p: Player, noise: number): void {
   let bestScore = -1
   let bestKind: PassKind = 'ground'
   for (const q of st.players) {
-    if (q.team !== ti || q.idx === p.idx) continue
+    if (q.team !== ti || q.idx === p.idx || q.sentOff) continue
     if (q.sk.isGK && !(p.x * dir < -10 && opD < 3)) continue
     const dq = dist(p.x, p.y, q.x, q.y)
     if (dq < 3) continue
+    // 오프사이드 위치의 동료에게는 보내지 않는다 — 보내면 심판이 끊는다
+    if (inOffsidePosition(st, q)) continue
     const gain = clamp(((q.x - p.x) * dir) / 30, -1, 1)
     const open = Math.min(8, nearestOppDist(st, q)) / 8
     const lane = laneClear(st, p, q) / 3
@@ -211,7 +217,7 @@ function carrierDecide(st: GameState, p: Player, noise: number): void {
     let gkY = 0
     let gkFar = false
     for (const q of st.players) {
-      if (q.team === ti || !q.sk.isGK) continue
+      if (q.team === ti || !q.sk.isGK || q.sentOff) continue
       gkY = q.y
       gkFar = dist(q.x, q.y, gx, 0) > 8
     }
@@ -241,7 +247,7 @@ function carrierDecide(st: GameState, p: Player, noise: number): void {
       let oy = 0
       let od = 99
       for (const o of st.players) {
-        if (o.team === ti) continue
+        if (o.team === ti || o.sentOff) continue
         const d = dist(p.x, p.y, o.x, o.y)
         if (d < od && (o.x - p.x) * dir > 0) {
           od = d
@@ -278,17 +284,32 @@ export function aiDecide(st: GameState, p: Player): void {
   const params = BOT[team.bot || 2]
   p.press = false
   p.sprint = false
+  if (p.sentOff) {
+    // 퇴장 — 터치라인 밖에 서 있는다
+    p.tx = p.x
+    p.ty = p.y
+    return
+  }
   if (p.sk.isGK) {
     gkDecide(st, p)
     return
   }
-  // 리스타트 중 상대 팀: 자리로 가되 공에서 9.15 m 는 떨어진다
+  // 리스타트 중 상대 팀: 자리로 가되 규정 거리만큼 떨어진다 (스로인 2 m · 나머지 9.15 m)
   if (st.phase !== 'play' && st.restart && st.restart.team !== ti) {
     goAnchor(p, -2, dir)
+    const clear = st.phase === 'throwin' ? THROWIN_CLEAR + 0.5 : CIRCLE_R + 0.5
     const d = dist(p.x, p.y, b.x, b.y)
-    if (d < 9.15 && d > 0) {
-      p.tx = clamp(p.x + ((p.x - b.x) / d) * 6, -HALF_L + 1, HALF_L - 1)
-      p.ty = clamp(p.y + ((p.y - b.y) / d) * 6, -HALF_W + 1, HALF_W - 1)
+    if (d < clear && d > 0) {
+      p.tx = clamp(p.x + ((p.x - b.x) / d) * (clear + 1), -HALF_L + 1, HALF_L - 1)
+      p.ty = clamp(p.y + ((p.y - b.y) / d) * (clear + 1), -HALF_W + 1, HALF_W - 1)
+    }
+    return
+  }
+  // 우리 팀 리스타트인데 내가 킥커가 아니면 자리로 (킥오프는 자기 진영·서클 밖을 rules 가 강제한다)
+  if (st.phase !== 'play' && st.restart && st.restart.kicker !== p.idx) {
+    goAnchor(p, st.phase === 'corner' || st.phase === 'freekick' ? 4 : 0, dir)
+    if (st.phase === 'kickoff') {
+      if (p.tx * dir > -1.5) p.tx = -dir * 1.5
     }
     return
   }
@@ -304,6 +325,12 @@ export function aiDecide(st: GameState, p: Player): void {
   if (ot < 0) {
     // 자유 공: 받으라고 보낸 사람과 가장 가까운 둘이 요격 지점으로 달린다
     interceptPoint(st, p, tmp)
+    // 아군이 찬 공을 오프사이드 위치에서 쫓으면 판정이 난다 — 물러선다
+    if (p.offside && b.lastTeam === ti) {
+      goAnchor(p, -1, dir)
+      p.tx = holdLine(st, p, p.tx, dir)
+      return
+    }
     const rank = rankByDist(st, ti, tmp.x, tmp.y, p, true)
     if (rank < 2 || b.passTo === p.idx) {
       p.tx = clamp(tmp.x, -HALF_L - 1, HALF_L + 1)
@@ -337,13 +364,14 @@ export function aiDecide(st: GameState, p: Player): void {
         ty = o.y - side * 12
       }
       const line = offsideLineX(st, ti)
-      if ((tx - line) * dir > -0.5) tx = line - dir * 0.5
+      if ((tx - line) * dir > -LINE_MARGIN) tx = line - dir * LINE_MARGIN
       p.tx = clamp(tx, -HALF_L + 1, HALF_L - 1)
       p.ty = clamp(ty, -HALF_W + 1, HALF_W - 1)
       p.sprint = dist(p.x, p.y, p.tx, p.ty) > 8 && p.stamina > 0.25
       return
     }
     goAnchor(p, 3, dir)
+    p.tx = holdLine(st, p, p.tx, dir)
     return
   }
   // 상대가 공을 가졌다
@@ -369,7 +397,7 @@ export function aiDecide(st: GameState, p: Player): void {
   let mk = -1
   let mkd = 8
   for (const q of st.players) {
-    if (q.team === ti || q.idx === b.owner || q.sk.isGK) continue
+    if (q.team === ti || q.idx === b.owner || q.sk.isGK || q.sentOff) continue
     const dq = dist(p.x, p.y, q.x, q.y)
     if (dq < mkd && q.x * dir < 5) {
       mkd = dq
@@ -391,7 +419,7 @@ export function nearestToBall(st: GameState, teamIdx: number, exclude: number): 
   let best = -1
   let bestD = 999
   for (const q of st.players) {
-    if (q.team !== teamIdx || q.sk.isGK || q.idx === exclude) continue
+    if (q.team !== teamIdx || q.sk.isGK || q.idx === exclude || q.sentOff) continue
     const d = dist(q.x, q.y, b.x + b.vx * 0.3, b.y + b.vy * 0.3)
     if (d < bestD) {
       bestD = d

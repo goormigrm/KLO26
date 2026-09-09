@@ -12,8 +12,11 @@ export const BTN_A = 1 << 2
 export const BTN_D = 1 << 3
 /** E — 전력질주 (홀드) */
 export const BTN_E = 1 << 4
-/** Ctrl — 페이스 컨트롤 (천천히 드리블, 볼을 붙인다) */
-export const BTN_CTRL = 1 << 5
+/**
+ * Shift — 페이스 컨트롤 (천천히 드리블, 볼을 붙인다).
+ * 설계 3.1 은 원래 Ctrl 이었으나 **Ctrl+W 가 크롬에서 탭을 닫아** 사용자 결정으로 Shift 로 옮겼다 (DECISIONS C-1).
+ */
+export const BTN_PACE = 1 << 5
 /** Space — 태클/밀치기 (스탠딩) */
 export const BTN_SPACE = 1 << 6
 /** C — 견제 (홀드 — 마주 보며 천천히) */
@@ -26,7 +29,7 @@ export const BTN_Z = 1 << 9
 export const BTN_PRESET_NEXT = 1 << 10
 /** [ — 전술 프리셋 이전 */
 export const BTN_PRESET_PREV = 1 << 11
-/** 교체 명령 — a = 나가는 선발 인덱스, b = 들어오는 벤치 인덱스 (단계 4) */
+/** 교체 명령 — a = 나가는 선발(팀 안 0~10), b = 들어오는 벤치(0~6). 다음 데드볼에 적용 */
 export const BTN_SUB = 1 << 12
 
 export interface Input {

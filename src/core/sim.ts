@@ -10,12 +10,16 @@ import {
   attachBall, contestBall, doClear, doPass, doShoot, gkCatch, gkDistribute, pickPassTarget, slideContest, tryControl,
   type PassKind,
 } from './ball'
-import { BTN_A, BTN_C, BTN_CTRL, BTN_D, BTN_E, BTN_PRESET_NEXT, BTN_PRESET_PREV, BTN_Q, BTN_S, BTN_SPACE, BTN_W, type Input } from './input'
-import { drainStamina, moveBall, movePlayer, resolveCollisions } from './physics'
-import { advanceClock, checkOut, performRestartKick, setupKickoff, tickPhase } from './rules'
 import {
-  ACT_DIVE, ACT_FALLEN, ACT_KICK, ACT_RUN, ACT_SLIDE, DECIDE_TICKS, DEFAULT_HALF_SEC, DEFAULT_SLIDERS, DT, PLAYER_R,
-  emptyStats, type GameState, type MatchConfig, type Player, type PlayerSpec, type Sliders, type SquadConfig, type Team,
+  BTN_A, BTN_C, BTN_D, BTN_E, BTN_PACE, BTN_PRESET_NEXT, BTN_PRESET_PREV, BTN_Q, BTN_S, BTN_SPACE, BTN_SUB, BTN_W,
+  type Input,
+} from './input'
+import { drainStamina, moveBall, movePlayer, resolveCollisions } from './physics'
+import { advanceClock, checkOut, performRestartKick, resolvePending, setupKickoff, tickPhase, type RestartAim } from './rules'
+import {
+  ACT_DIVE, ACT_FALLEN, ACT_KICK, ACT_RUN, ACT_SLIDE, BENCH_SIZE, DECIDE_TICKS, DEFAULT_HALF_SEC, DEFAULT_SLIDERS, DT,
+  MAX_SUBS, PLAYER_R, emptyStats,
+  type GameState, type MatchConfig, type Player, type PlayerSpec, type Sliders, type SquadConfig, type Team,
 } from './state'
 
 function copySliders(s: Sliders): Sliders {
@@ -31,6 +35,7 @@ function mkPlayer(idx: number, team: number, spec: PlayerSpec, slot: string, ban
     ax: 0, ay: 0, tx: 0, ty: 0,
     sprint: false, press: false, lastKick: -100, holdT: 0, yellow: 0, sentOff: false,
     dribX: 0, dribY: 0, gotT: -100, tackleT: 0, clearNext: false,
+    offside: false, throwing: false, subbedIn: false,
   }
 }
 
@@ -45,6 +50,9 @@ function mkTeam(t: number, sq: SquadConfig, human: boolean, bot: number): Team {
     controlled: -1, goals: 0, prevButtons: 0, holdShoot: 0, holdPass: 0, lastA: -1000,
     inX: 0, inY: 0, sprint: false, slow: false, jockey: false, assist: false,
     start: t * 11, gk: t * 11,
+    bench: sq.players.slice(11, 11 + BENCH_SIZE).map((s) => s),
+    subsLeft: MAX_SUBS,
+    pendingSub: null,
   }
 }
 
@@ -68,13 +76,18 @@ export function createState(cfg: MatchConfig): GameState {
     tick: 0, half: 1, clock: 0, halfSec: cfg.halfSec ?? DEFAULT_HALF_SEC,
     phase: 'kickoff', phaseT: 0, restart: null, kickoffTeam: 0, firstKickoff: 0, prevBallX: 0,
     players,
-    ball: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, owner: -1, lastTouch: -1, lastTeam: -1, kickTick: -100, shotBy: -1, passTo: -1, onTarget: false },
+    ball: {
+      x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, owner: -1, lastTouch: -1, lastTeam: -1, kickTick: -100,
+      shotBy: -1, passTo: -1, onTarget: false, fromThrow: false, restartBy: -1, passLive: false,
+    },
     teams,
     rng: makeRng(cfg.seed),
     botRng: makeRng((cfg.seed ^ 0x9e3779b9) >>> 0),
     events: [],
     stats: [emptyStats(), emptyStats()],
     done: false,
+    pending: null,
+    callText: '',
   }
   setupKickoff(st, 0)
   st.firstKickoff = 0
@@ -101,14 +114,17 @@ function handleInput(st: GameState, t: number, inp: Input): void {
   team.inX = inp.mx / 127
   team.inY = inp.my / 127
   team.sprint = (held & BTN_E) !== 0
-  team.slow = hasBall && (held & BTN_CTRL) !== 0
+  team.slow = hasBall && (held & BTN_PACE) !== 0
   team.jockey = !hasBall && (held & BTN_C) !== 0
   team.assist = !hasBall && (held & BTN_Q) !== 0
+
+  // 교체 명령 — 아무 때나 넣고 다음 데드볼에 적용 (DESIGN 2장)
+  if (edge & BTN_SUB) team.pendingSub = { out: inp.a, in: inp.b }
 
   if (hasBall) team.controlled = b.owner
   else {
     const cur = team.controlled
-    const valid = cur >= 0 && st.players[cur].team === t && !st.players[cur].sk.isGK
+    const valid = cur >= 0 && st.players[cur].team === t && !st.players[cur].sk.isGK && !st.players[cur].sentOff
     if (!valid) team.controlled = nearestToBall(st, t, -1)
     else if (edge & BTN_S) team.controlled = nearestToBall(st, t, cur)
   }
@@ -120,11 +136,15 @@ function handleInput(st: GameState, t: number, inp: Input): void {
     team.prevButtons = held
     return
   }
-  // 리스타트 킥커: 킥 키를 누르면 방향키 쪽으로 찬다. 방향키가 없으면 AI 가 고른다 (rules.performRestartKick)
+  // 리스타트 킥커: 킥 키를 누르면 방향키 쪽으로 (스로인은 손, 골킥의 D 는 길게 — rules 가 가른다)
   if (st.phase !== 'play' && st.restart && st.restart.team === t && st.restart.kicker === c.idx) {
-    if (edge & (BTN_S | BTN_W | BTN_A | BTN_D)) {
-      const kind = edge & BTN_D ? 'D' : edge & BTN_W ? 'W' : edge & BTN_A ? 'A' : 'S'
-      performRestartKick(st, { kind, dx: team.inX, dy: team.inY })
+    if (held & BTN_D) team.holdShoot++
+    const fire = edge & (BTN_S | BTN_W | BTN_A)
+    const dRelease = (prev & BTN_D) && !(held & BTN_D)
+    if (fire || dRelease) {
+      const kind: RestartAim['kind'] = dRelease ? 'D' : edge & BTN_W ? 'W' : edge & BTN_A ? 'A' : 'S'
+      performRestartKick(st, { kind, dx: team.inX, dy: team.inY, power: clamp(team.holdShoot / 36, 0, 1) })
+      team.holdShoot = 0
     }
     team.prevButtons = held
     return
@@ -176,6 +196,7 @@ export function step(st: GameState, inputs: [Input, Input]): void {
   const b = st.ball
 
   for (const p of st.players) {
+    if (p.sentOff) continue
     const team = st.teams[p.team]
     const ctl = team.human && team.controlled === p.idx
     if (p.action === ACT_SLIDE) {
@@ -244,7 +265,7 @@ export function step(st: GameState, inputs: [Input, Input]): void {
     }
     if (b.owner === o.idx) {
       attachBall(st, o)
-      if (st.phase === 'play') contestBall(st, o)
+      if (st.phase === 'play' || o.holdT > 0) contestBall(st, o)
     }
     if (o.clearNext && b.owner === o.idx && o.holdT === 0) {
       o.clearNext = false
@@ -266,13 +287,17 @@ export function step(st: GameState, inputs: [Input, Input]): void {
   for (const p of st.players) if (p.action === ACT_SLIDE) slideContest(st, p)
   resolveCollisions(st.players, PLAYER_R)
   if (st.phase === 'play') checkOut(st)
+  // 반칙은 한 틱에 하나만, 흐름이 끝난 뒤 세트피스로 (ball.ts 가 rules.ts 를 import 하지 않게)
+  if (st.pending) resolvePending(st)
   advanceClock(st)
   const ot = ballOwnerTeam(st)
   if (ot >= 0) st.stats[ot].poss++
   st.tick++
 }
 
-const PHASE_CODE: Record<string, number> = { kickoff: 1, play: 2, goal: 3, throwin: 4, goalkick: 5, corner: 6, halftime: 7, end: 8 }
+const PHASE_CODE: Record<string, number> = {
+  kickoff: 1, play: 2, goal: 3, throwin: 4, goalkick: 5, corner: 6, halftime: 7, end: 8, freekick: 9, penalty: 10,
+}
 
 /** 상태 해시 (FNV-1a). 위치·속도는 mm 단위로 양자화 */
 export function hashState(st: GameState): number {
@@ -296,9 +321,12 @@ export function hashState(st: GameState): number {
   mix(q(st.clock))
   const b = st.ball
   mix(q(b.x)); mix(q(b.y)); mix(q(b.z)); mix(q(b.vx)); mix(q(b.vy)); mix(q(b.vz)); mix(b.owner)
+  mix(b.restartBy); mix(b.fromThrow ? 1 : 0)
   for (const p of st.players) {
     mix(q(p.x)); mix(q(p.y)); mix(q(p.vx)); mix(q(p.vy)); mix(p.facing); mix(q(p.stamina)); mix(p.action); mix(p.actT); mix(p.holdT)
+    mix(p.yellow); mix(p.sentOff ? 1 : 0); mix(p.offside ? 1 : 0); mix(p.spec.id)
   }
+  for (const t of st.teams) mix(t.subsLeft)
   mix(st.rng.s)
   mix(st.botRng.s)
   return h >>> 0

@@ -26,6 +26,12 @@ let possB = 0
 let ticks = 0
 let big = 0
 let nil = 0
+let fouls = 0
+let yellows = 0
+let reds = 0
+let offs = 0
+let corners = 0
+let saves = 0
 const t0 = performance.now()
 for (let i = 0; i < n; i++) {
   const st = createState({ seed: 1000 + i, halfSec, squads: [home, away] })
@@ -44,6 +50,12 @@ for (let i = 0; i < n; i++) {
     passes += st.stats[t].passes
     passOk += st.stats[t].passOk
     tackles += st.stats[t].tackles
+    fouls += st.stats[t].fouls
+    yellows += st.stats[t].yellows
+    reds += st.stats[t].reds
+    offs += st.stats[t].offsides
+    corners += st.stats[t].corners
+    saves += st.stats[t].saves
   }
   possA += st.stats[0].poss
   possB += st.stats[1].poss
@@ -54,5 +66,6 @@ console.log(`판 ${n} · 하프 ${halfSec}s · 틱당 ${(ms / ticks).toFixed(4)}
 console.log(`평균 골 ${(goals / n).toFixed(2)} · 0:0 ${((nil / n) * 100).toFixed(0)}% · 5골+ ${((big / n) * 100).toFixed(0)}%`)
 console.log(`홈 승 ${hw} · 무 ${dr} · 원정 승 ${aw}`)
 console.log(`판당 슛 ${(shots / n).toFixed(1)} · 유효 ${(onT / n).toFixed(1)} · 패스 ${(passes / n).toFixed(0)} (성공 ${((passOk / Math.max(1, passes)) * 100).toFixed(0)}%) · 태클 ${(tackles / n).toFixed(1)}`)
+console.log(`판당 파울 ${(fouls / n).toFixed(1)} · 경고 ${(yellows / n).toFixed(2)} · 퇴장 ${(reds / n).toFixed(2)} · 오프사이드 ${(offs / n).toFixed(1)} · 코너 ${(corners / n).toFixed(1)} · 선방 ${(saves / n).toFixed(1)}`)
 console.log(`점유 홈 ${((possA / (possA + possB)) * 100).toFixed(0)}%`)
 console.log('골 분포', [...dist.entries()].sort((a, b) => a[0] - b[0]).map(([g, c]) => `${g}골×${c}`).join(' '))

@@ -1,6 +1,6 @@
 // 키보드 → Input 매핑 (DESIGN 3.1). 순수 함수 keysToInput 만 본다 — DOM 없이.
 import { describe, expect, it } from 'vitest'
-import { BTN_A, BTN_C, BTN_CTRL, BTN_D, BTN_E, BTN_PRESET_NEXT, BTN_Q, BTN_S, BTN_SPACE, BTN_W, BTN_Z } from '../src/core/input'
+import { BTN_A, BTN_C, BTN_D, BTN_E, BTN_PACE, BTN_PRESET_NEXT, BTN_Q, BTN_S, BTN_SPACE, BTN_W, BTN_Z } from '../src/core/input'
 import { HOLD_KEYS, isGameKey, keysToInput } from '../src/game/localInput'
 
 describe('키보드 입력', () => {
@@ -13,15 +13,17 @@ describe('키보드 입력', () => {
     expect(keysToInput(new Set(['ArrowUp', 'ArrowRight']), 0)).toMatchObject({ mx: 127, my: 127 })
   })
 
-  it('표준 키 배치 — S/W/A/D/E/Ctrl/Space/C/Q/Z 가 각 비트로', () => {
+  it('표준 키 배치 — S/W/A/D/E/Shift/Space/C/Q/Z 가 각 비트로', () => {
     const one = (code: string): number => keysToInput(new Set([code]), 0).buttons
     expect(one('KeyS')).toBe(BTN_S)
     expect(one('KeyW')).toBe(BTN_W)
     expect(one('KeyA')).toBe(BTN_A)
     expect(one('KeyD')).toBe(BTN_D)
     expect(one('KeyE')).toBe(BTN_E)
-    expect(one('ControlLeft')).toBe(BTN_CTRL)
-    expect(one('ControlRight')).toBe(BTN_CTRL)
+    // 페이스 컨트롤은 Shift — Ctrl+W 가 크롬 탭을 닫아 사용자 결정으로 옮겼다 (DECISIONS C-1)
+    expect(one('ShiftLeft')).toBe(BTN_PACE)
+    expect(one('ShiftRight')).toBe(BTN_PACE)
+    expect(one('ControlLeft')).toBe(0)
     expect(one('Space')).toBe(BTN_SPACE)
     expect(one('KeyC')).toBe(BTN_C)
     expect(one('KeyQ')).toBe(BTN_Q)

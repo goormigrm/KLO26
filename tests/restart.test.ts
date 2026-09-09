@@ -23,7 +23,6 @@ describe('리스타트 킥 (사람)', () => {
     run(st, [{ ...EMPTY_INPUT, buttons: BTN_S }])
     expect(st.phase).toBe('play')
     expect(st.restart).toBeNull()
-    // 공이 킥커 발을 떠났다 (짧은 패스라 같은 틱에 동료가 잡을 수도 있다)
     expect(st.ball.owner).not.toBe(kicker)
   })
 
@@ -34,12 +33,16 @@ describe('리스타트 킥 (사람)', () => {
     expect(st.ball.vx).toBeLessThan(0)
   })
 
-  it('킥오프 — 방향키 →(+x) + D 면 골문 쪽으로 슛이 나간다', () => {
+  it('킥오프 — D 는 홀드해서 놓는 순간 길게 찬다 (슛이 아니다)', () => {
     const st = humanMatch(7)
-    run(st, [{ mx: 127, my: 0, buttons: BTN_D, a: 0, b: 0 }])
+    // 20틱 홀드
+    run(st, new Array(20).fill(0).map(() => ({ mx: 127, my: 0, buttons: BTN_D, a: 0, b: 0 })))
+    expect(st.phase).toBe('kickoff')
+    // 놓는다
+    run(st, [{ mx: 127, my: 0, buttons: 0, a: 0, b: 0 }])
     expect(st.phase).toBe('play')
-    expect(st.ball.vx).toBeGreaterThan(10)
-    expect(st.stats[0].shots).toBe(1)
+    expect(st.ball.vx).toBeGreaterThan(8)
+    expect(st.stats[0].shots).toBe(0)
   })
 
   it('사람 킥커는 기다려 준다 — 키를 안 누르면 phaseT 가 −300 이 될 때까지 kickoff 로 남는다', () => {
@@ -52,7 +55,7 @@ describe('리스타트 킥 (사람)', () => {
 
   it('같은 입력이면 같은 해시 (사람 입력도 결정론 안)', () => {
     const seq: Input[] = []
-    for (let i = 0; i < 600; i++) {
+    for (let i = 0; i < 900; i++) {
       const mx = i % 90 < 45 ? 127 : -127
       const my = i % 60 < 30 ? 127 : 0
       const buttons = i % 120 === 5 ? BTN_S : i % 120 === 70 ? BTN_D : i % 7 === 0 ? BTN_D : 0
@@ -63,6 +66,6 @@ describe('리스타트 킥 (사람)', () => {
     run(a, seq)
     run(b, seq)
     expect(hashState(a)).toBe(hashState(b))
-    expect(a.tick).toBe(600)
+    expect(a.tick).toBe(900)
   })
 })

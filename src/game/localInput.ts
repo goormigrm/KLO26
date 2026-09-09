@@ -3,10 +3,11 @@
 // - 키는 `e.code`(물리 키)로 읽는다. 한글 IME 가 켜져 있으면 `e.key` 가 'ㅅ' 처럼 나와 's' 와 안 맞는다.
 // - 방향키는 sim 월드 방향 그대로다 — 카메라가 사이드라인에 고정(요 0)이라 화면 오른쪽 = +x, 위 = +y (camera.ts).
 // - `[` `]` 는 눌린 순간만 한 번 보낸다(프리셋 전환). 나머지는 홀드.
+// - 페이스 컨트롤은 **Shift** 다. 설계 3.1 의 Ctrl 은 Ctrl+W 가 크롬 탭을 닫아 사용자 결정으로 옮겼다 (DECISIONS C-1).
 // - 같은 키가 공수에서 뜻이 바뀌는 것은 여기서 가르지 않는다 — sim 이 "우리 팀이 공을 갖고 있나"로 가른다.
 
 import {
-  BTN_A, BTN_C, BTN_CTRL, BTN_D, BTN_E, BTN_PRESET_NEXT, BTN_PRESET_PREV, BTN_Q, BTN_S, BTN_SPACE, BTN_W, BTN_Z, type Input,
+  BTN_A, BTN_C, BTN_D, BTN_E, BTN_PACE, BTN_PRESET_NEXT, BTN_PRESET_PREV, BTN_Q, BTN_S, BTN_SPACE, BTN_W, BTN_Z, type Input,
 } from '../core/input'
 
 /** 홀드 키 (e.code → 비트) */
@@ -16,8 +17,8 @@ export const HOLD_KEYS: Readonly<Record<string, number>> = {
   KeyA: BTN_A,
   KeyD: BTN_D,
   KeyE: BTN_E,
-  ControlLeft: BTN_CTRL,
-  ControlRight: BTN_CTRL,
+  ShiftLeft: BTN_PACE,
+  ShiftRight: BTN_PACE,
   Space: BTN_SPACE,
   KeyC: BTN_C,
   KeyQ: BTN_Q,

@@ -35,6 +35,18 @@ export const RESTART_TICKS = 90
 export const KICKOFF_TICKS = 60
 export const GOAL_TICKS = 150
 export const HALFTIME_TICKS = 300
+export const FOUL_TICKS = 110
+export const PENALTY_TICKS = 150
+
+/** 센터 서클 반지름 = 프리킥 벽 거리 = 코너킥 거리 (m) */
+export const CIRCLE_R = 9.15
+/** 스로인 때 상대가 떨어져 있어야 하는 거리 (m) */
+export const THROWIN_CLEAR = 2
+/** 스로인 최대 속도 (m/s) — 손으로 던지므로 킥보다 훨씬 느리다 */
+export const THROW_SPEED_MAX = 14
+/** 교체 가능 인원 · 벤치 크기 */
+export const MAX_SUBS = 3
+export const BENCH_SIZE = 7
 
 export type PosGroup = 'GK' | 'DF' | 'MF' | 'FW'
 export type Foot = 'L' | 'R' | 'B'
@@ -104,6 +116,12 @@ export interface Player {
   tackleT: number
   /** 루즈볼을 잡는 순간 바로 걷어낸다 (수비 D) */
   clearNext: boolean
+  /** 마지막으로 아군이 공을 찬 순간 오프사이드 위치였나 (DESIGN 4.9) */
+  offside: boolean
+  /** 스로인을 던지는 중 — 렌더가 두 팔을 올린다 */
+  throwing: boolean
+  /** 이 선수가 교체로 들어온 사람인가 (결과 화면 표시용) */
+  subbedIn: boolean
 }
 
 export interface Ball {
@@ -124,15 +142,50 @@ export interface Ball {
   passTo: number
   /** 슛이 골문 안으로 향하고 있었나 (선방 통계) */
   onTarget: boolean
+  /** 스로인으로 들어온 공 — 직접 골이 인정되지 않는다 */
+  fromThrow: boolean
+  /** 리스타트를 찬 선수 — 남이 만지기 전에 다시 만지면 두 번 터치 반칙 */
+  restartBy: number
+  /** 패스가 아직 살아 있다 (아무도 못 받았다) — 공간으로 보낸 패스도 성공률에 세기 위해 */
+  passLive: boolean
 }
 
-export type Phase = 'kickoff' | 'play' | 'goal' | 'throwin' | 'goalkick' | 'corner' | 'halftime' | 'end'
+export type Phase =
+  | 'kickoff' | 'play' | 'goal' | 'throwin' | 'goalkick' | 'corner'
+  | 'freekick' | 'penalty' | 'halftime' | 'end'
 
+/** 세트피스 재개 정보 */
 export interface Restart {
   team: number
   kicker: number
   x: number
   y: number
+  /** 손으로 던진다 (스로인) — 차기 금지 */
+  hands: boolean
+  /** 이 재개에서는 오프사이드를 보지 않는다 (스로인·골킥·코너) */
+  noOffside: boolean
+}
+
+/** 반칙 판정. ball.ts 가 rules.ts 를 import 하지 않도록, 틱 끝에서 sim 이 세트피스로 바꾼다 */
+export interface PendingCall {
+  kind: 'offside' | 'foul' | 'gkcharge' | 'twice'
+  /** 재개를 얻는 팀 */
+  team: number
+  /** 반칙한 선수 (카드 대상). 없으면 −1 */
+  by: number
+  x: number
+  y: number
+  /** 0 없음 · 1 경고 · 2 퇴장 */
+  card: number
+  penalty: boolean
+}
+
+/** 교체 명령 — 다음 데드볼에 적용 (DESIGN 2장) */
+export interface SubOrder {
+  /** 나가는 선발 (팀 안 0~10) */
+  out: number
+  /** 들어오는 벤치 (0~6) */
+  in: number
 }
 
 export interface Sliders {
@@ -182,6 +235,12 @@ export interface Team {
   /** 선수 idx 범위 [start, start+11) */
   start: number
   gk: number
+  /** 벤치 — 교체로 들어올 수 있는 선수 (DESIGN 2장 · 7명) */
+  bench: PlayerSpec[]
+  /** 남은 교체 횟수 */
+  subsLeft: number
+  /** 넣어 둔 교체 명령 — 다음 데드볼에 적용 */
+  pendingSub: SubOrder | null
 }
 
 export interface TeamStats {
@@ -193,9 +252,15 @@ export interface TeamStats {
   poss: number
   corners: number
   saves: number
+  fouls: number
+  yellows: number
+  reds: number
+  offsides: number
 }
 
-export type EventType = 'goal' | 'shot' | 'save' | 'kickoff' | 'half' | 'end' | 'corner' | 'throwin' | 'goalkick' | 'tackle'
+export type EventType =
+  | 'goal' | 'shot' | 'save' | 'kickoff' | 'half' | 'end' | 'corner' | 'throwin' | 'goalkick' | 'tackle'
+  | 'foul' | 'card' | 'offside' | 'penalty' | 'freekick' | 'sub' | 'post'
 
 export interface SimEvent {
   tick: number
@@ -204,6 +269,8 @@ export interface SimEvent {
   player: number
   x: number
   y: number
+  /** 카드면 1 경고 · 2 퇴장. 교체면 들어온 선수 idx. 그 밖엔 0 */
+  n?: number
 }
 
 export interface GameState {
@@ -229,6 +296,10 @@ export interface GameState {
   events: SimEvent[]
   stats: [TeamStats, TeamStats]
   done: boolean
+  /** 이번 틱에 나온 반칙 — sim 이 틱 끝에서 세트피스로 바꾼다. 한 틱에 하나만 */
+  pending: PendingCall | null
+  /** 마지막 판정 문구용 — 배너가 읽는다 (렌더 전용, 해시에 안 들어간다) */
+  callText: string
 }
 
 export interface SquadConfig {
@@ -257,5 +328,23 @@ export function goalX(team: Team): number {
 }
 
 export function emptyStats(): TeamStats {
-  return { shots: 0, onTarget: 0, passes: 0, passOk: 0, tackles: 0, poss: 0, corners: 0, saves: 0 }
+  return {
+    shots: 0, onTarget: 0, passes: 0, passOk: 0, tackles: 0, poss: 0, corners: 0, saves: 0,
+    fouls: 0, yellows: 0, reds: 0, offsides: 0,
+  }
+}
+
+/** 자기 진영 골문의 x */
+export function ownGoalX(team: Team): number {
+  return -team.dir * HALF_L
+}
+
+/** 경기에 뛰고 있는가 (퇴장 아님) */
+export function onPitch(p: Player): boolean {
+  return !p.sentOff
+}
+
+/** (x, y) 가 team 이 지키는 페널티 박스 안인가 */
+export function inBoxOf(team: Team, x: number, y: number): boolean {
+  return Math.abs(x - ownGoalX(team)) < BOX_L && Math.abs(y) < BOX_HALF_W
 }

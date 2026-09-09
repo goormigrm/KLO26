@@ -5,7 +5,7 @@ import { FORMATION_LIST } from '../core/formation'
 import type { Difficulty } from '../core/state'
 import type { SoloConfig, TestConfig } from '../game/session'
 import { START_SIZE, cardSalary, checkSquad, clubById, computeCap, teamColorBonus } from '../cards/squad'
-import { CLUBS, cardById } from '../data/pool'
+import { CLUBS, POOL_SIZE, cardById } from '../data/pool'
 import { sfx } from '../audio/sfx'
 import type { LobbyLink, RoomInfo } from '../net/room'
 import { makeRoomCode } from '../net/room'
@@ -65,7 +65,7 @@ export class Lobby {
         <h1><span class="t1">개리그</span> <span class="t2">온라인 2026</span></h1>
         <p class="tag">K리그 2026 선수로 스쿼드를 짜서 브라우저에서 P2P 로 붙는 <b>1:1 실시간 조작 축구</b>. 설치·가입·서버 없음.</p>
         <div class="feats">
-          <span>PC 키보드 전용 · 게임패드 없음</span><span>카드 1,024장 전원 개방 · 급여 상한</span><span>방송 카메라 · 찰흙 선수</span><span>오프사이드·파울·카드·PK·교체</span><span>전후반 3분</span><span>광고·결제 없음</span>
+          <span>PC 키보드 전용 · 게임패드 없음</span><span>카드 ${POOL_SIZE.toLocaleString('ko-KR')}장 전원 개방 · 급여 상한</span><span>방송 카메라 · 찰흙 선수</span><span>오프사이드·파울·카드·PK·교체</span><span>전후반 3분</span><span>광고·결제 없음</span>
         </div>
 
         <div class="squad-bar">

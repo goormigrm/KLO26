@@ -18,7 +18,7 @@ function clone(s: Squad): Squad {
 }
 
 describe('카드 풀', () => {
-  it('1,024장 · 29구단 · id 가 겹치지 않는다', () => {
+  it('풀 전체 · 29구단 · id 가 겹치지 않는다', () => {
     expect(POOL.length).toBe(POOL_SIZE)
     expect(CLUBS.length).toBe(29)
     expect(new Set(POOL.map((c) => c.id)).size).toBe(POOL_SIZE)

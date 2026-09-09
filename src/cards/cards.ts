@@ -1,7 +1,7 @@
 // 카드 — 6스탯 · OVR · 급여 (DESIGN 5.2~5.4). 시뮬은 원본 능력치 40종을 읽고, 6스탯은 표시·급여용이다.
 //
 // ⚠ 실제 K리그 선수 데이터는 **아직 저장소에 없다** (PREP A-1 원작자 허락 재확인 대기).
-// 지금은 `src/data/pool.ts` 가 만든 합성 카드 1,024장으로 돈다. 데이터가 오면 그 파일만 갈아 끼운다.
+// 카드는 `src/data/pool.ts` 가 `cards.json` 에서 읽는다 — 원본(KM26) 명단이 갱신되면 그 파일만 다시 굽는다.
 
 import type { PlayerSpec, PosGroup } from '../core/state'
 

@@ -3,7 +3,7 @@
 //
 // 흐름 (사용자 요청 2026-09-09):
 //   1. 구단 고르기 → 2. 그 구단 선수로 선발 11 + 벤치 7 자동 → 3. 전술판에서 자리를 옮기거나 선수를 바꾼다
-// 기본 목록은 **그 구단 선수**만 보여 준다. "전 구단"을 켜면 1,024장 전부 — 급여 상한이 규칙이다 (DESIGN 5.8).
+// 기본 목록은 **그 구단 선수**만 보여 준다. "전 구단"을 켜면 풀 전부 — 급여 상한이 규칙이다 (DESIGN 5.8).
 //
 // 규칙 검사는 화면이 아니라 `cards/squad.ts` 가 한다 — 받는 쪽도 같은 함수로 다시 센다.
 
@@ -14,7 +14,7 @@ import {
   teamColorBonus, type Squad,
 } from '../cards/squad'
 import { decodeSquad, encodeSquad } from '../cards/squadcode'
-import { CLUBS, POOL, POOL_HASH, cardById } from '../data/pool'
+import { CLUBS, POOL, POOL_HASH, POOL_SIZE, cardById } from '../data/pool'
 import type { Card } from '../cards/cards'
 import { sfx } from '../audio/sfx'
 
@@ -291,7 +291,7 @@ export class SquadScreen {
         <div class="sq-list">
           <div class="seg wide" id="scope">
             <button data-v="own"${this.ownOnly ? ' class="on"' : ''}>${club?.short ?? '내 구단'} 선수</button>
-            <button data-v="all"${this.ownOnly ? '' : ' class="on"'}>전 구단 1,024장</button>
+            <button data-v="all"${this.ownOnly ? '' : ' class="on"'}>전 구단 ${POOL_SIZE.toLocaleString('ko-KR')}장</button>
           </div>
           <div class="row filters">
             <input class="nick" id="f-search" placeholder="이름 찾기" value="${this.search}" />

@@ -11,10 +11,19 @@ import { skillsOf } from '../src/core/skills'
 const CAP = computeCap().cap
 
 describe('카드 데이터', () => {
-  it('1,024장 · 29구단 · id 가 겹치지 않는다', () => {
-    expect(POOL_SIZE).toBe(1024)
+  it('29구단 · 한 구단 18명 이상 · id 가 겹치지 않고 11비트에 들어간다', () => {
+    // 장수를 못 박지 않는다 — 원본(KM26)이 명단을 갱신하면 늘고 준다 (2026-09-09: 1,024 → 1,056).
+    // 대신 **깨지면 안 되는 것**을 본다: 구단 수 · 구단마다 스쿼드를 짤 수 있는 인원 · id 규격.
+    expect(POOL_SIZE).toBeGreaterThanOrEqual(29 * 18)
     expect(CLUBS.length).toBe(29)
     expect(new Set(POOL.map((c) => c.id)).size).toBe(POOL_SIZE)
+    // 스쿼드 코드가 id 를 11비트로 접는다 (squadcode.ts). 넘으면 코드가 조용히 딴 선수를 가리킨다.
+    for (const c of POOL) expect(c.id).toBeLessThanOrEqual(2047)
+    for (const club of CLUBS) {
+      const own = POOL.filter((c) => c.club === club.id)
+      expect(own.length, `${club.name} 인원`).toBeGreaterThanOrEqual(18)
+      expect(own.filter((c) => c.pos === 'GK').length, `${club.name} GK`).toBeGreaterThanOrEqual(1)
+    }
   })
 
   it('구단은 1부 12팀 · 2부 17팀이고 색 두 개를 갖는다', () => {

@@ -3,6 +3,9 @@
 import { FORMATION_LIST } from '../core/formation'
 import type { Difficulty } from '../core/state'
 import type { SoloConfig } from '../game/session'
+import { START_SIZE, cardSalary, checkSquad, clubById, computeCap, teamColorBonus } from '../cards/squad'
+import { cardById } from '../data/pool'
+import { loadSquad } from './squad'
 import { loadSettings, saveSettings, type Settings } from './settings'
 
 export class Lobby {
@@ -12,34 +15,47 @@ export class Lobby {
   constructor(
     host: HTMLElement,
     private onStart: (cfg: SoloConfig) => void,
+    private onSquad: () => void,
   ) {
     this.s = loadSettings()
+    const sq = loadSquad()
+    const cap = computeCap().cap
+    const chk = checkSquad(sq, cap)
+    const color = teamColorBonus(sq.ids.slice(0, START_SIZE))
+    const squadLine = chk.ok
+      ? `${sq.formation} · 급여 ${chk.salary}/${cap} · 강화 ${chk.enhTotal}/24${color.bonus ? ` · 팀컬러 ${clubById(color.club)?.short ?? ''} +${color.bonus}` : ''}`
+      : `⚠ 규칙 위반 — ${chk.errors[0]}`
+    const best = sq.ids
+      .slice(0, START_SIZE)
+      .map((id) => cardById(id))
+      .filter((c): c is NonNullable<typeof c> => c !== undefined)
+      .sort((a, b) => cardSalary(b) - cardSalary(a))[0]
     host.innerHTML = `
       <div class="lobby">
-        <div class="season">K LEAGUE 2026 · FAN GAME · 개발 중 (단계 3)</div>
+        <div class="season">K LEAGUE 2026 · FAN GAME · 개발 중</div>
         <h1><span class="t1">개리그</span> <span class="t2">온라인 2026</span></h1>
         <p class="tag">K리그 2026 선수로 스쿼드를 짜서 브라우저에서 P2P 로 붙는 <b>1:1 실시간 조작 축구</b>. 설치·가입·서버 없음.</p>
         <div class="feats">
-          <span>PC 키보드 전용 · 게임패드 없음</span><span>카드 1,024장 전원 개방 · 급여 상한</span><span>방송 카메라 · 찰흙 선수</span><span>전후반 3분</span><span>광고·결제 없음</span>
+          <span>PC 키보드 전용 · 게임패드 없음</span><span>카드 1,024장 전원 개방 · 급여 상한</span><span>방송 카메라 · 찰흙 선수</span><span>오프사이드·파울·카드·PK·교체</span><span>전후반 3분</span><span>광고·결제 없음</span>
         </div>
 
         <div class="modes">
           <section class="mode">
             <h2>혼자 하기 <span class="k">SOLO</span></h2>
-            <p>봇과 한 판. 지금은 합성 스쿼드(가짜 선수)로 돕니다 — 실제 카드는 단계 1 데이터가 오면.</p>
+            <p>내 스쿼드로 봇과 한 판. 카드는 아직 <b>자리표시자</b>입니다 — 실제 K리그 선수 데이터는 허락 확인 뒤에.</p>
             <div class="row"><label>봇 난이도</label><div class="seg" data-opt="difficulty">
               <button data-v="1">쉬움</button><button data-v="2">보통</button><button data-v="3">어려움</button></div></div>
             <div class="row"><label>전후반</label><div class="seg" data-opt="halfMin">
               <button data-v="2">2분</button><button data-v="3">3분</button><button data-v="4">4분</button></div></div>
-            <div class="row"><label>내 포메이션 (홈 · 빨강)</label><select class="sel" data-opt="formation"></select></div>
             <div class="row"><label>상대 포메이션 (원정 · 파랑)</label><select class="sel" data-opt="oppFormation"></select></div>
-            <div class="row"><button class="btn main" id="btn-solo">경기 시작</button></div>
+            <div class="row"><label>내 스쿼드</label><span class="sqline">${squadLine}${best ? ` · 최고 ${best.name}` : ''}</span></div>
+            <div class="row"><button class="btn main" id="btn-solo"${chk.ok ? '' : ' disabled'}>경기 시작</button><button class="btn secondary" id="btn-squad">스쿼드 짜기</button></div>
           </section>
           <section class="mode dim">
             <h2>온라인 대전 <span class="k">P2P</span></h2>
             <p>방을 만들고 P2P 로 붙는 1:1. <b>단계 6</b> 에서 붙습니다 — 지금은 없습니다.</p>
             <div class="row"><button class="btn" disabled>방 만들기</button><button class="btn secondary" disabled>방 목록</button></div>
-            <p class="hintline dim">스쿼드 짜기(카드·급여 상한·팀컬러)는 단계 5.</p>
+            <p class="hintline dim">스쿼드는 이미 짤 수 있습니다 — 왼쪽 <b>스쿼드 짜기</b>.</p>
           </section>
           <section class="mode">
             <h2>설정 <span class="k">PC</span></h2>
@@ -66,9 +82,9 @@ export class Lobby {
             <tr><td><b>Space</b></td><td>—</td><td>태클 / 밀치기</td></tr>
             <tr><td><b>C</b> 홀드</td><td>—</td><td>견제 (마주 보며 천천히)</td></tr>
             <tr><td><b>Q</b> 홀드</td><td>조합키</td><td>팀 지원 요청 (두 번째 수비수 압박)</td></tr>
-            <tr><td><b>Ctrl</b> 홀드</td><td>페이스 컨트롤 (천천히, 볼을 붙임) — ⚠ <b>Ctrl+W</b> 는 브라우저가 탭을 닫습니다</td><td>—</td></tr>
+            <tr><td><b>Shift</b> 홀드</td><td>페이스 컨트롤 (천천히, 볼을 붙임)</td><td>—</td></tr>
             <tr><td><b>[</b> · <b>]</b></td><td colspan="2">전술 프리셋 이전 · 다음 (수비 → 균형 → 공격)</td></tr>
-            <tr><td><b>Esc</b></td><td colspan="2">메뉴 (일시정지 · 로비로)</td></tr>
+            <tr><td><b>Esc</b></td><td colspan="2">메뉴 (일시정지 · <b>교체</b> · 로비로)</td></tr>
           </tbody>
         </table>
         <p class="hintline">세트피스 — 킥커일 때 방향키로 방향을 잡고 <b>S</b>(그라운드) · <b>W</b>(스루) · <b>A</b>(로빙·크로스) · <b>D</b>(슛). 방향키가 없으면 AI 가 대신 고릅니다.</p>
@@ -105,12 +121,13 @@ export class Lobby {
         }
       }
     }
+    ;(this.root.querySelector('#btn-squad') as HTMLButtonElement).onclick = () => this.onSquad()
     ;(this.root.querySelector('#btn-solo') as HTMLButtonElement).onclick = () => {
       const s = this.s
       this.onStart({
         difficulty: s.difficulty as Difficulty,
         halfSec: s.halfMin * 60,
-        formation: s.formation,
+        formation: sq.formation,
         oppFormation: s.oppFormation,
         // 시드는 sim 밖에서 뽑는다. 사람 대전(단계 6)은 스쿼드 코드·방 코드 해시로 (DESIGN 4.11)
         seed: (Math.random() * 0x7fffffff) >>> 0,

@@ -4,6 +4,7 @@
 import { BTN_SUB, EMPTY_INPUT, type Input } from '../core/input'
 import { createState, step } from '../core/sim'
 import { synthSquad } from '../core/synth'
+import { toSquadConfig, type Squad } from '../cards/squad'
 import { MAX_SUBS, TICK_MS, type Difficulty, type GameState } from '../core/state'
 import { Hud } from '../render/hud'
 import { Renderer3D, capturePose, type PrevPose } from '../render3d/renderer3d'
@@ -19,6 +20,8 @@ export interface SoloConfig {
   oppFormation: string
   seed: number
   settings: Settings
+  /** 사람이 짠 스쿼드. 없으면 합성 스쿼드로 (테스트·초기 상태) */
+  squad?: Squad
 }
 
 /** 합성 스쿼드 시절의 임시 킷 — 실제 구단 색은 단계 1 데이터가 오면 (DESIGN 7.1 유니폼) */
@@ -98,7 +101,9 @@ export class Session {
 
   private newState(seed: number): GameState {
     const c = this.cfg
-    const home = synthSquad(11, { name: '홈', short: '홈', formation: c.formation, quality: 66 })
+    const home = c.squad
+      ? toSquadConfig(c.squad, '홈', '홈')
+      : synthSquad(11, { name: '홈', short: '홈', formation: c.formation, quality: 66 })
     const away = synthSquad(22, { name: '원정', short: '원정', formation: c.oppFormation, quality: 66 })
     return createState({ seed, halfSec: c.halfSec, squads: [home, away], human: [true, false], bots: [2, c.difficulty] })
   }

@@ -6,7 +6,7 @@
 //   3. 둘 다 준비되면 방장이 `start`(시드 · 지연 · 시간)를 보내고 동시에 경기를 연다.
 // 시드는 두 스쿼드 코드와 방 코드로 만든다 — 누구도 고를 수 없다 (DESIGN 4.11).
 
-import { checkSquad, computeCap, type Squad } from '../cards/squad'
+import { checkSquad, computeCap, squadClub, type Squad } from '../cards/squad'
 import { decodeSquad, encodeSquad } from '../cards/squadcode'
 import type { NetConfig } from '../game/session'
 import { Lockstep } from '../net/lockstep'
@@ -156,7 +156,7 @@ export class WaitRoom {
           <div class="side">
             <div class="sub-h">나</div>
             <b>${this.me.name}</b>
-            <small>${this.opts.squad.formation} · 코드 ${this.me.squadCode.length}자</small>
+            <small>${squadClub(this.opts.squad)?.name ?? '혼합 스쿼드'} · ${this.opts.squad.formation}</small>
             <div class="rd ${this.me.ready ? 'on' : ''}">${this.me.ready ? '준비 완료' : '준비 안 됨'}</div>
           </div>
           <div class="side">
@@ -164,7 +164,7 @@ export class WaitRoom {
             ${
               this.other
                 ? `<b>${this.other.name}</b>
-                   <small>${chk?.ok ? `${chk.squad!.formation} · 규칙 통과` : (chk?.why ?? '')}</small>
+                   <small>${chk?.ok ? `${squadClub(chk.squad!)?.name ?? '혼합 스쿼드'} · ${chk.squad!.formation} · 규칙 통과` : (chk?.why ?? '')}</small>
                    <div class="rd ${this.other.ready ? 'on' : ''}">${this.other.ready ? '준비 완료' : '준비 안 됨'}</div>`
                 : '<b class="dimtext">기다리는 중…</b><small>상대가 이 방에 들어오면 보입니다</small>'
             }

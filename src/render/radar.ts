@@ -53,6 +53,7 @@ export class Radar {
       g.strokeRect(Math.min(X(s * HALF_L), X(s * (HALF_L - BOX_L))), Y(BOX_HALF_W), BOX_L * sx, BOX_HALF_W * 2 * sy)
     }
     for (const p of st.players) {
+      if (p.sentOff) continue
       const r = p.idx === controlled ? 4 : 2.6
       g.fillStyle = colors[p.team]
       g.beginPath()

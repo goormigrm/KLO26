@@ -40,9 +40,10 @@ export class Hud {
         <div class="bar pow" data-k="powbar" hidden><i data-k="pow"></i></div>
         <div class="pre" data-k="preset"></div>
       </div>
+      <div class="subs" data-k="subs"></div>
       <div class="keys" data-k="keys">
         <b>방향키</b> 이동 · <b>E</b> 전력질주 · <b>S</b> 패스 / 선수 변경 · <b>W</b> 스루 · <b>A</b> 로빙 / 슬라이딩 · <b>D</b> 슛(홀드) / 압박 ·
-        <b>Space</b> 태클 · <b>C</b> 견제 · <b>Q</b> 팀 압박 · <b>Q+D</b> 칩슛 · <b>Q+A</b> 하이 크로스 · <b>Ctrl</b> 페이스 컨트롤 · <b>[ ]</b> 전술 · <b>Esc</b> 메뉴
+        <b>Space</b> 태클 · <b>C</b> 견제 · <b>Q</b> 팀 압박 · <b>Q+D</b> 칩슛 · <b>Q+A</b> 하이 크로스 · <b>Shift</b> 페이스 컨트롤 · <b>[ ]</b> 전술 · <b>Esc</b> 메뉴·교체
       </div>`
     parent.appendChild(this.root)
     this.root.querySelectorAll<HTMLElement>('[data-k]').forEach((e) => (this.el[e.dataset.k!] = e))
@@ -98,6 +99,11 @@ export class Hud {
       this.set('preset', `전술 ${PRESET_NAMES[team.preset] ?? ''}`)
     } else me.hidden = true
 
+    // 교체·카드 요약
+    const myTeam = st.teams[v.humanTeam]
+    const cards = st.players.filter((p) => p.team === v.humanTeam && (p.yellow > 0 || p.sentOff)).length
+    this.set('subs', `교체 ${myTeam.subsLeft}/3${myTeam.pendingSub ? ' (대기)' : ''}${cards ? ` · 카드 ${cards}` : ''}`)
+
     this.radar.draw(st, this.colors, v.controlled)
   }
 
@@ -119,6 +125,12 @@ export class Hud {
         return mine ? '코너킥 — 방향키 + A(크로스) / S' : `${who(r!.team)} 코너킥`
       case 'goalkick':
         return mine ? '골킥 — 방향키 + S / A / D' : `${who(r!.team)} 골킥`
+      case 'freekick': {
+        const call = st.callText ? `${st.callText} — ` : ''
+        return mine ? `${call}프리킥 — 방향키 + S / A / D(홀드=슛)` : `${call}${who(r!.team)} 프리킥`
+      }
+      case 'penalty':
+        return mine ? '⚽ 페널티킥 — 방향키(코너) + D 홀드(파워)' : `${who(r!.team)} 페널티킥`
       case 'halftime':
         return '하프타임'
       case 'end':

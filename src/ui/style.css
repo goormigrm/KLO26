@@ -129,6 +129,18 @@ select.sel { background: var(--bg-2); color: var(--ink); border: 1px solid var(-
 .overlay .stats td:first-child { text-align: right; color: var(--home); }
 .overlay .stats td:last-child { text-align: left; color: var(--away); }
 
+/* ---- 교체 화면 ---- */
+.overlay .box.wide { min-width: 720px; }
+.sub-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 6px 0 14px; text-align: left; }
+.sub-h { font: 700 11px 'IBM Plex Mono', monospace; color: var(--ink-3); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
+.sub-grid { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+.pick { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 6px 10px; cursor: pointer; color: var(--ink); text-align: left; display: flex; flex-direction: column; }
+.pick b { font-size: 13.5px; font-weight: 600; }
+.pick small { color: var(--ink-3); font-size: 11px; }
+.pick:hover:not(:disabled) { border-color: var(--gold); }
+.pick.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+.pick:disabled { opacity: .4; cursor: default; }
+
 /* ---- HUD (DOM 오버레이) ---- */
 .hud { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
 .hud .sb { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 0; background: rgba(8,12,18,.78); border: 1px solid #2c3644; border-radius: 10px; overflow: hidden; font-weight: 700; }
@@ -148,6 +160,7 @@ select.sel { background: var(--bg-2); color: var(--ink); border: 1px solid var(-
 .hud .bar.pow i { background: linear-gradient(90deg, #ffe27a, #f85149); }
 .hud .bar[hidden] { display: none; }
 .hud .radar { position: absolute; right: 16px; bottom: 52px; }
+.hud .subs { position: absolute; left: 16px; bottom: 24px; font: 600 11px 'IBM Plex Mono', monospace; color: var(--ink-3); background: rgba(8,12,18,.6); border-radius: 6px; padding: 2px 8px; }
 .hud .keys { position: absolute; left: 0; right: 0; bottom: 0; height: 34px; display: flex; align-items: center; justify-content: center;
   font: 500 11px 'IBM Plex Mono', monospace; color: var(--ink-3); background: linear-gradient(180deg, rgba(13,17,23,0), rgba(13,17,23,.85) 55%); white-space: nowrap; }
 .hud .keys b { color: #ffe14a; font-weight: 600; }

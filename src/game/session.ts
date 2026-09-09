@@ -1,10 +1,10 @@
 // 혼자 하기 세션 (DESIGN 6.7) — 사람(홈) vs 봇(원정). 락스텝 없이 같은 sim 을 돈다.
 // 틱은 Worker 타이머(60Hz), 그리기는 requestAnimationFrame. 렌더는 prev/curr 보간만 하고 sim 을 바꾸지 않는다.
 
-import { EMPTY_INPUT } from '../core/input'
+import { BTN_SUB, EMPTY_INPUT, type Input } from '../core/input'
 import { createState, step } from '../core/sim'
 import { synthSquad } from '../core/synth'
-import { TICK_MS, type Difficulty, type GameState } from '../core/state'
+import { MAX_SUBS, TICK_MS, type Difficulty, type GameState } from '../core/state'
 import { Hud } from '../render/hud'
 import { Renderer3D, capturePose, type PrevPose } from '../render3d/renderer3d'
 import type { Kit } from '../render3d/player3d'
@@ -52,6 +52,8 @@ export class Session {
   private frames = 0
   private fpsT = 0
   private keysShown: boolean
+  /** 다음 틱에 실어 보낼 교체 명령 (Esc 메뉴에서 고른다) */
+  private subOrder: { out: number; in: number } | null = null
 
   constructor(
     host: HTMLElement,
@@ -118,15 +120,24 @@ export class Session {
     // 탭이 뒤로 갔다 오면 밀린 틱을 몰아서 처리하되 한 번에 4틱까지
     while (this.acc >= TICK_MS && steps < 4) {
       capturePose(this.state, this.prev)
-      const inp = this.input.sample()
+      const inp: Input = this.input.sample()
+      if (this.subOrder) {
+        inp.buttons |= BTN_SUB
+        inp.a = this.subOrder.out
+        inp.b = this.subOrder.in
+        this.subOrder = null
+      }
       step(this.state, [inp, EMPTY_INPUT])
       this.acc -= TICK_MS
       steps++
     }
     if (this.acc > TICK_MS * 8) this.acc = TICK_MS * 8
     const ev = this.state.events
+    this.renderer.onEvents(ev, this.evSeen)
     for (; this.evSeen < ev.length; this.evSeen++) {
-      if (ev[this.evSeen].type === 'end') this.showResult()
+      const e = ev[this.evSeen]
+      if (e.type === 'end') this.showResult()
+      else if (e.type === 'sub') this.renderer.rebuildRig(this.state, e.player)
     }
   }
 
@@ -160,16 +171,19 @@ export class Session {
     this.paused = true
     this.message = '일시정지'
     const box = this.overlay.querySelector('#overlay-box') as HTMLElement
+    box.classList.remove('wide')
     box.innerHTML = `
       <h2>일시정지</h2>
       <p>혼자 하기 — 봇 ${['', '쉬움', '보통', '어려움'][this.cfg.difficulty]} · 전후반 ${Math.round(this.cfg.halfSec / 60)}분</p>
       <div class="row">
         <button class="btn main" id="ov-resume">계속 (Esc)</button>
+        <button class="btn secondary" id="ov-sub">교체 (${this.state.teams[0].subsLeft}/${MAX_SUBS})</button>
         <button class="btn secondary" id="ov-keys">${this.keysShown ? '조작 안내 끄기' : '조작 안내 켜기'}</button>
         <button class="btn secondary" id="ov-quit">로비로</button>
       </div>`
     this.overlay.hidden = false
     ;(box.querySelector('#ov-resume') as HTMLButtonElement).onclick = () => this.hideOverlay()
+    ;(box.querySelector('#ov-sub') as HTMLButtonElement).onclick = () => this.showSubs()
     ;(box.querySelector('#ov-keys') as HTMLButtonElement).onclick = () => {
       this.keysShown = !this.keysShown
       this.hud.setKeysShown(this.keysShown)
@@ -178,7 +192,55 @@ export class Session {
     ;(box.querySelector('#ov-quit') as HTMLButtonElement).onclick = () => this.exit()
   }
 
+  /** 교체 화면 — 나갈 선수와 들어올 선수를 고른다. 명령은 다음 데드볼에 적용된다 (DESIGN 2장) */
+  private showSubs(): void {
+    const st = this.state
+    const team = st.teams[0]
+    let out = -1
+    const box = this.overlay.querySelector('#overlay-box') as HTMLElement
+    const draw = (): void => {
+      const onPitch = st.players
+        .slice(team.start, team.start + 11)
+        .map((p, i) => {
+          const tag = p.sentOff ? ' 🟥' : p.yellow ? ' 🟨' : ''
+          const sta = Math.round(p.stamina * 100)
+          const cls = i === out ? 'pick on' : 'pick'
+          const dis = p.sentOff ? ' disabled' : ''
+          return `<button class="${cls}" data-out="${i}"${dis}><b>${p.spec.no} ${p.spec.name}</b><small>${p.slot} · 체력 ${sta}%${tag}</small></button>`
+        })
+        .join('')
+      const bench = team.bench
+        .map((b, i) => `<button class="pick" data-in="${i}"${out < 0 ? ' disabled' : ''}><b>${b.no} ${b.name}</b><small>${b.pos}</small></button>`)
+        .join('')
+      box.classList.add('wide')
+      box.innerHTML = `
+        <h2>교체</h2>
+        <p>남은 교체 <b>${team.subsLeft}</b> / ${MAX_SUBS} · ${out < 0 ? '나갈 선수를 고르세요' : '들어올 선수를 고르세요'}</p>
+        <div class="sub-cols">
+          <div><div class="sub-h">뛰는 선수</div><div class="sub-grid">${onPitch}</div></div>
+          <div><div class="sub-h">벤치</div><div class="sub-grid">${bench || '<small>없음</small>'}</div></div>
+        </div>
+        <div class="row"><button class="btn secondary" id="ov-back">돌아가기</button></div>`
+      box.querySelectorAll<HTMLButtonElement>('[data-out]').forEach((b) => {
+        b.onclick = () => {
+          out = Number(b.dataset.out)
+          draw()
+        }
+      })
+      box.querySelectorAll<HTMLButtonElement>('[data-in]').forEach((b) => {
+        b.onclick = () => {
+          if (out < 0) return
+          this.subOrder = { out, in: Number(b.dataset.in) }
+          this.hideOverlay()
+        }
+      })
+      ;(box.querySelector('#ov-back') as HTMLButtonElement).onclick = () => this.showMenu()
+    }
+    draw()
+  }
+
   private hideOverlay(): void {
+    ;(this.overlay.querySelector('#overlay-box') as HTMLElement).classList.remove('wide')
     this.paused = false
     this.message = ''
     this.overlay.hidden = true
@@ -210,6 +272,9 @@ export class Session {
         ${row('태클', String(S[0].tackles), String(S[1].tackles))}
         ${row('코너킥', String(S[0].corners), String(S[1].corners))}
         ${row('선방', String(S[0].saves), String(S[1].saves))}
+        ${row('파울', String(S[0].fouls), String(S[1].fouls))}
+        ${row('경고 · 퇴장', `${S[0].yellows} · ${S[0].reds}`, `${S[1].yellows} · ${S[1].reds}`)}
+        ${row('오프사이드', String(S[0].offsides), String(S[1].offsides))}
       </table>
       <div class="row">
         <button class="btn main" id="ov-again">다시 하기</button>

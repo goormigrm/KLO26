@@ -3,9 +3,10 @@
 
 import * as THREE from 'three'
 import { angleToRad } from '../core/fixedmath'
-import { ACT_DIVE, HALF_L, HALF_W, type GameState, type Player } from '../core/state'
+import { ACT_DIVE, HALF_L, HALF_W, type GameState, type Player, type SimEvent } from '../core/state'
 import { FOV_WIDE, broadcastTarget, cameraLookAt, cameraPosition, fovForAspect } from './camera'
 import { buildPitch, type Pitch3D } from './pitch3d'
+import { Referees } from './referee3d'
 import { animateRig, buildPlayer, facingToRotY, type Kit, type PlayerRig } from './player3d'
 
 /** 보간에 필요한 만큼만 — 매 틱 22명 pose 와 공을 복사한다 (상태 전체 JSON 복사는 무겁다) */
@@ -104,6 +105,7 @@ export class Renderer3D {
   private scene = new THREE.Scene()
   private camera: THREE.PerspectiveCamera
   private pitch: Pitch3D
+  private refs: Referees
   private rigs: PlayerRig[] = []
   private ball: THREE.Mesh
   private ballTex: THREE.CanvasTexture
@@ -119,6 +121,8 @@ export class Renderer3D {
   private camInit = false
   private t = 0
   private opts: RenderOptions
+  private kits: [Kit, Kit] | null = null
+  private gkKits: [Kit, Kit] | null = null
 
   constructor(
     readonly container: HTMLElement,
@@ -138,6 +142,7 @@ export class Renderer3D {
     this.camera = new THREE.PerspectiveCamera(FOV_WIDE, 16 / 9, 0.5, 500)
     this.pitch = buildPitch({ shadows: opts.shadows })
     this.scene.add(this.pitch.group)
+    this.refs = new Referees(this.scene)
 
     this.ballTex = ballTexture()
     this.ball = new THREE.Mesh(new THREE.SphereGeometry(BALL_VIS_R, 18, 14), new THREE.MeshLambertMaterial({ map: this.ballTex }))
@@ -182,8 +187,33 @@ export class Renderer3D {
     }
     this.rigs = st.players.map((p) => buildPlayer(p.spec, p.sk.isGK ? gkKits[p.team] : kits[p.team]))
     for (const r of this.rigs) this.scene.add(r.root)
+    this.kits = kits
+    this.gkKits = gkKits
     this.camInit = false
     this.nameFor = -1
+    this.refs.place(st)
+  }
+
+  /** 교체로 등번호·유니폼이 바뀐 선수 하나만 다시 만든다 */
+  rebuildRig(st: GameState, idx: number): void {
+    if (!this.kits || !this.gkKits) return
+    const p = st.players[idx]
+    const old = this.rigs[idx]
+    this.scene.remove(old.root)
+    old.dispose()
+    const rig = buildPlayer(p.spec, p.sk.isGK ? this.gkKits[p.team] : this.kits[p.team])
+    this.rigs[idx] = rig
+    this.scene.add(rig.root)
+    if (this.nameFor === idx) this.nameFor = -1
+  }
+
+  /** sim 이벤트를 렌더에 반영 — 카드·오프사이드 깃발 */
+  onEvents(events: SimEvent[], from: number): void {
+    for (let i = from; i < events.length; i++) {
+      const e = events[i]
+      if (e.type === 'card') this.refs.showCard(e.n ?? 1, e.x, e.y)
+      else if (e.type === 'offside') this.refs.raiseFlag(e.y)
+    }
   }
 
   resize(): void {
@@ -207,6 +237,7 @@ export class Renderer3D {
       const y = q.y + (p.y - q.y) * alpha
       const fr = lerpAngle(angleToRad(q.facing), angleToRad(p.facing), alpha)
       const rig = this.rigs[i]
+      rig.root.visible = !p.sentOff
       rig.root.position.set(x, 0, -y)
       rig.root.rotation.y = facingToRotY(fr)
       animateRig(rig, this.animOf(p, fr), dt)
@@ -264,6 +295,8 @@ export class Renderer3D {
       this.oppRing.position.set(rig.root.position.x, 0.02, rig.root.position.z)
     } else this.oppRing.visible = false
 
+    this.refs.update(curr, dt)
+
     // ---- 카메라 ----
     const tgt = broadcastTarget(bx, by, b.vx)
     if (!this.camInit) {
@@ -300,7 +333,7 @@ export class Renderer3D {
       const l = p.vx * rx + p.vy * ry
       lateral = l > 0.05 ? 1 : l < -0.05 ? -1 : 0
     }
-    return { action: p.action, actT: p.actT, speed, holding: p.holdT > 0, lateral }
+    return { action: p.action, actT: p.actT, speed, holding: p.holdT > 0, lateral, throwing: p.throwing }
   }
 
   /** 프레임 시간(ms) 계측용 */
@@ -311,6 +344,7 @@ export class Renderer3D {
   dispose(): void {
     for (const r of this.rigs) r.dispose()
     this.rigs = []
+    this.refs.dispose()
     this.pitch.dispose()
     this.ballTex.dispose()
     this.gl.dispose()

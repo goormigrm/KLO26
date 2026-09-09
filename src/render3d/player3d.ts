@@ -218,6 +218,8 @@ export interface AnimInput {
   holding: boolean
   /** 다이브 방향 (−1/1, 정면 기준 오른쪽이 +) */
   lateral: number
+  /** 스로인을 던지려고 두 팔을 머리 위로 올렸다 */
+  throwing: boolean
 }
 
 /** 코드 애니메이션 — 걷기/달리기 · 킥 · 슬라이딩 · 넘어짐 · GK 다이브 */
@@ -267,6 +269,11 @@ export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
   if (a.holding) {
     armL = -1.35
     armR = -1.35
+  }
+  // 스로인 — 두 팔을 머리 뒤로 (손으로 던진다, 사용자 지적 4)
+  if (a.throwing) {
+    armL = -2.7
+    armR = -2.7
   }
   rig.legL.rotation.x = legL * (1 - lie)
   rig.legR.rotation.x = legR * (1 - lie) + 0.35 * lie

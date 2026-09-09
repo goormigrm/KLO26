@@ -360,6 +360,20 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
 .bchip small { grid-column: 2; font: 600 9.5px 'IBM Plex Mono', monospace; color: var(--ink-3); }
 .bchip.empty { justify-items: center; grid-template-columns: 1fr; border-style: dashed; color: var(--ink-3); font-size: 11px; }
 
+/* ---- 스쿼드 수정 — 지금 고른 자리와 바꿀 수 있는 자리 ---- */
+.chip.can { outline: 2px solid var(--ok); outline-offset: 1px; z-index: 3; }
+.bchip.can { outline: 2px solid var(--ok); outline-offset: -1px; }
+.chip.cant, .bchip.cant { opacity: .34; cursor: not-allowed; }
+.chip.cant:hover { transform: translate(-50%, -50%); }
+.swaprow { margin-top: 10px; }
+.swaprow .btn { display: block; width: 100%; text-align: center; }
+.swaprow .btn em { font-style: normal; font-weight: 400; color: var(--ink-3); }
+.swaprow .btn:disabled { opacity: .4; cursor: not-allowed; }
+.sq-top h1 .subtitle { font-family: 'IBM Plex Sans KR', 'Malgun Gothic', sans-serif;
+  font-size: 13px; font-weight: 600; color: var(--ink-3); letter-spacing: .02em; }
+.edit-hint { margin-top: 2px; }
+.edit-hint b { color: var(--ink-2); font-weight: 700; }
+
 .seg.wide { display: flex; width: 100%; margin-bottom: 8px; }
 .seg.wide button { flex: 1; }
 .sq-body { grid-template-columns: minmax(420px, 1.35fr) 260px minmax(0, 1fr); }

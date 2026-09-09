@@ -20,15 +20,19 @@ let wait: WaitRoom | null = null
  */
 let lobbyLink: LobbyLink | null = null
 
-function showSquad(): void {
+function showSquad(at: 'edit' | 'club' = 'edit'): void {
   lobby?.dispose()
   lobby = null
   app.innerHTML = ''
-  squad = new SquadScreen(app, () => {
-    squad?.dispose()
-    squad = null
-    showLobby()
-  })
+  squad = new SquadScreen(
+    app,
+    () => {
+      squad?.dispose()
+      squad = null
+      showLobby()
+    },
+    at,
+  )
 }
 
 function showWait(code: string, role: 'host' | 'guest'): void {

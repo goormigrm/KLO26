@@ -104,16 +104,21 @@ export class SquadScreen {
   private msg = ''
   /** 'club' = 구단 고르기 · 'board' = 전술판 */
   private mode: 'club' | 'board'
+  /** 저장돼 있던 스쿼드가 있는가 — 구단 고르기에서 "그만두고 돌아가기" 를 띄울지 정한다 */
+  private hasSquad: boolean
   private snd = sfx()
 
   constructor(
     host: HTMLElement,
     private onDone: (s: Squad) => void,
+    /** 'club' 이면 구단 고르기부터 연다 (로비의 "구단 바꾸기") */
+    startAt: 'edit' | 'club' = 'edit',
   ) {
     const saved = loadSquad()
     this.sq = saved ?? defaultSquad()
-    // 저장된 스쿼드가 없거나 버려졌으면 구단 고르기부터 (사용자 요청)
-    this.mode = saved ? 'board' : 'club'
+    this.hasSquad = !!saved
+    // 저장된 스쿼드가 없거나 버려졌으면 구단 고르기부터. 있으면 바로 **수정**으로 (사용자 요청 2026-09-09)
+    this.mode = saved && startAt === 'edit' ? 'board' : 'club'
     if (!saved) this.msg = '구단을 고르면 그 구단 선수로 선발 11명과 벤치 7명을 채웁니다.'
     this.root = document.createElement('div')
     this.root.className = 'squad'
@@ -158,7 +163,10 @@ export class SquadScreen {
     this.root.innerHTML = `
       <div class="sq-top">
         <h1>구단 고르기</h1>
-        <div class="row"><button class="btn secondary" id="sq-back">로비로</button></div>
+        <div class="row">
+          ${this.hasSquad ? '<button class="btn secondary" id="sq-keep">그만두고 스쿼드 수정으로</button>' : ''}
+          <button class="btn secondary" id="sq-back">로비로</button>
+        </div>
       </div>
       <p class="hintline">구단을 고르면 <b>그 구단 선수로 선발 11명과 벤치 7명을 자동으로 채웁니다.</b>
       그 뒤 전술판에서 자리를 옮기거나 다른 선수로 바꿀 수 있습니다. 한 구단으로만 채우면 <b>팀컬러 +4</b> 가 붙습니다.</p>
@@ -171,12 +179,22 @@ export class SquadScreen {
         this.ownOnly = true
         this.sel = -1
         this.mode = 'board'
+        this.hasSquad = true
         this.msg = `${clubById(id)?.name ?? ''} 선수로 채웠습니다 — 팀컬러 +4`
         this.snd.ui('ok')
         saveSquad(this.sq)
         this.draw()
       }
     })
+    const keep = this.root.querySelector<HTMLButtonElement>('#sq-keep')
+    if (keep) {
+      keep.onclick = () => {
+        this.mode = 'board'
+        this.msg = ''
+        this.snd.ui('click')
+        this.draw()
+      }
+    }
     ;(this.root.querySelector('#sq-back') as HTMLButtonElement).onclick = () => this.finish()
   }
 
@@ -200,7 +218,7 @@ export class SquadScreen {
       const c = cardById(sq.ids[i])
       const slot = i === 0 ? 'GK' : shape[i - 1][1]
       const xy = SLOT_XY[slot] ?? { x: 0.5, y: 0.5 }
-      const on = this.sel === i ? ' on' : ''
+      const on = this.sel === i ? ' on' : this.mark(i)
       const style = `left:${xy.x * 100}%;top:${xy.y * 100}%`
       if (!c) return `<button class="chip empty${on}" data-slot="${i}" style="${style}"><b>${slot}</b></button>`
       const fam = this.famAt(c, i)
@@ -217,7 +235,7 @@ export class SquadScreen {
     const benchRow = Array.from({ length: SQUAD_SIZE - START_SIZE }, (_, k) => {
       const i = k + START_SIZE
       const c = cardById(sq.ids[i])
-      const on = this.sel === i ? ' on' : ''
+      const on = this.sel === i ? ' on' : this.mark(i)
       if (!c) return `<button class="bchip empty${on}" data-slot="${i}">비어 있음</button>`
       return `<button class="bchip${on}" data-slot="${i}" draggable="true">
         <span class="no">${c.no}</span><b>${c.name}</b><span class="ov">${cardOvr(c, sq.enh[i] ?? 0)}</span><small>${c.pos}</small>
@@ -229,7 +247,7 @@ export class SquadScreen {
 
     this.root.innerHTML = `
       <div class="sq-top">
-        <h1>${club ? club.name : '스쿼드'}</h1>
+        <h1>${club ? club.name : '스쿼드'} <small class="subtitle">스쿼드 수정</small></h1>
         <div class="row">
           <select class="sel" id="sq-form">${FORMATION_LIST.map((f) => `<option${f === sq.formation ? ' selected' : ''}>${f}</option>`).join('')}</select>
           <button class="btn secondary" id="sq-club">구단 바꾸기</button>
@@ -257,8 +275,17 @@ export class SquadScreen {
             <div class="p-arrow">공격 방향 →</div>
             ${pitch}
           </div>
-          <div class="sub-h">벤치 7 <small>자리를 눌러 고른 뒤 다른 자리를 누르면 서로 바뀝니다 (끌어다 놓아도 됩니다)</small></div>
+          <div class="sub-h">벤치 7 <small>${
+            this.sel >= 0
+              ? '<b>초록 테두리</b>가 지금 고른 선수와 바꿀 수 있는 자리입니다'
+              : '자리를 눌러 고른 뒤 다른 자리를 누르면 서로 바뀝니다 (끌어다 놓아도 됩니다)'
+          }</small></div>
           <div class="bench">${benchRow}</div>
+          <p class="hintline edit-hint">
+            <b>자리 옮기기</b> 두 자리를 차례로 누르면 서로 바뀝니다 ·
+            <b>선발↔벤치</b> 오른쪽 카드의 버튼 한 번 ·
+            <b>선수 교체</b> 자리를 고르고 오른쪽 목록에서 고릅니다
+          </p>
         </div>
         <div class="sq-detail">${detail}</div>
         <div class="sq-list">
@@ -304,12 +331,20 @@ export class SquadScreen {
     const bars = Object.values(s)
       .map((v, i) => `<div class="st"><span>${names[i]}</span><i style="width:${v}%"></i><b>${v}</b></div>`)
       .join('')
+    const starter = this.sel < START_SIZE
+    const partner = this.bestPartner(this.sel)
+    const partnerName = partner >= 0 ? cardById(this.sq.ids[partner])?.name ?? '' : ''
     return `
       <div class="dtl">
         <div class="dhead"><b>${c.name}</b> <span class="ov">${cardOvr(c, enh)}</span></div>
         <small>${clubById(c.club)?.name ?? ''} · ${c.pos} · ${c.h}cm ${c.w}kg · ${c.foot === 'R' ? '오른발' : c.foot === 'L' ? '왼발' : '양발'}</small>
         <div class="fam" style="color:${famColor(fam)}">${this.slotName(this.sel)} 능숙도 ${fam}</div>
         ${bars}
+        <div class="row swaprow">
+          <button class="btn secondary wide" id="quick-swap"${partner < 0 ? ' disabled' : ''}>
+            ${starter ? '벤치로 내리기' : '선발로 올리기'}${partnerName ? ` <em>↔ ${partnerName}</em>` : ''}
+          </button>
+        </div>
         <div class="row enh">
           <label>강화 (예산 ${enhTotal}/${ENH_BUDGET})</label>
           <button class="btn secondary" id="enh-minus">−</button>
@@ -354,6 +389,50 @@ export class SquadScreen {
     if (slot === 0) return c.pos === 'GK'
     if (slot < START_SIZE) return c.pos !== 'GK'
     return true
+  }
+
+  /** 지금 고른 자리와 바꿀 수 있는 자리인가 — 전술판·벤치에 초록/흐림 테두리를 준다 */
+  private mark(i: number): string {
+    if (this.sel < 0 || this.sel === i) return ''
+    const ca = cardById(this.sq.ids[this.sel])
+    const cb = cardById(this.sq.ids[i])
+    return this.canPlace(i, ca) && this.canPlace(this.sel, cb) ? ' can' : ' cant'
+  }
+
+  /**
+   * 선발 ↔ 벤치를 한 번에 바꿀 짝을 고른다 (사용자 요청 — "선발 후보 교체만 하고 싶을 때").
+   * · 선발을 골랐으면: 그 자리에 설 수 있는 벤치 선수 중 **가장 잘하는 사람**
+   * · 벤치를 골랐으면: 그 선수가 설 수 있는 선발 자리 중 **능숙도가 가장 높고, 지금 있는 사람이 가장 약한 자리**
+   * 못 찾으면 −1 (골키퍼가 벤치에 없을 때 등).
+   */
+  private bestPartner(i: number): number {
+    const me = cardById(this.sq.ids[i])
+    if (!me) return -1
+    let best = -1
+    let bestScore = -1e9
+    if (i < START_SIZE) {
+      for (let b = START_SIZE; b < SQUAD_SIZE; b++) {
+        const c = cardById(this.sq.ids[b])
+        if (!c || !this.canPlace(i, c)) continue
+        const score = this.famAt(c, i) * 2 + cardOvr(c, 0)
+        if (score > bestScore) {
+          bestScore = score
+          best = b
+        }
+      }
+    } else {
+      for (let a = 0; a < START_SIZE; a++) {
+        const c = cardById(this.sq.ids[a])
+        if (!this.canPlace(a, me) || !this.canPlace(i, c)) continue
+        // 능숙도가 높을수록, 지금 그 자리에 있는 사람이 약할수록 좋다
+        const score = this.famAt(me, a) * 2 - cardOvr(c ?? me, 0)
+        if (score > bestScore) {
+          bestScore = score
+          best = a
+        }
+      }
+    }
+    return best
   }
 
   /** 두 자리의 선수를 맞바꾼다 (강화도 따라간다) */
@@ -441,6 +520,20 @@ export class SquadScreen {
       this.draw()
     }
 
+    const quick = this.root.querySelector<HTMLButtonElement>('#quick-swap')
+    if (quick) {
+      quick.onclick = () => {
+        const partner = this.bestPartner(this.sel)
+        if (partner < 0) {
+          this.msg = '바꿀 수 있는 자리가 없습니다.'
+          this.snd.ui('no')
+        } else if (this.swap(this.sel, partner)) {
+          this.msg = ''
+          this.sel = partner
+        }
+        this.draw()
+      }
+    }
     const minus = this.root.querySelector<HTMLButtonElement>('#enh-minus')
     if (minus) {
       minus.onclick = () => {

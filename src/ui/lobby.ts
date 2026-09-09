@@ -31,7 +31,7 @@ export class Lobby {
   constructor(
     host: HTMLElement,
     private onStart: (cfg: SoloConfig) => void,
-    private onSquad: () => void,
+    private onSquad: (at: 'edit' | 'club') => void,
     private onRoom?: (code: string, role: 'host' | 'guest') => void,
     private lobbyLink?: LobbyLink,
   ) {
@@ -73,7 +73,10 @@ export class Lobby {
             <div class="sub-h">내 스쿼드</div>
             <span class="sqline">${squadLine}${best ? ` · 최고 ${best.name}` : ''}</span>
           </div>
-          <button class="btn secondary" id="btn-squad">스쿼드 짜기</button>
+          <div class="row">
+            <button class="btn secondary" id="btn-squad">스쿼드 수정</button>
+            <button class="btn secondary" id="btn-club">구단 바꾸기</button>
+          </div>
         </div>
 
         <div class="tiles">
@@ -205,7 +208,11 @@ export class Lobby {
     if (testBtn) testBtn.onclick = () => open('#dlg-test')
     ;(h.querySelector('#btn-squad') as HTMLButtonElement).onclick = () => {
       this.snd.ui('click')
-      this.onSquad()
+      this.onSquad('edit')
+    }
+    ;(h.querySelector('#btn-club') as HTMLButtonElement).onclick = () => {
+      this.snd.ui('click')
+      this.onSquad('club')
     }
     // 닫기 · 바깥 클릭 · Esc
     h.querySelectorAll<HTMLElement>('.dlg').forEach((d) => {

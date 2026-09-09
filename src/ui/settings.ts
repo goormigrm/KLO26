@@ -4,6 +4,8 @@ import { FORMATION_LIST } from '../core/formation'
 import type { Difficulty } from '../core/state'
 
 export interface Settings {
+  /** 닉네임 — 방 목록·대기실에 보인다 */
+  nick: string
   /** 그림자 (저사양 PC 는 끈다 — DESIGN 7.1) */
   shadows: boolean
   /** 렌더 해상도 배율 1 / 0.75 */
@@ -19,6 +21,7 @@ export interface Settings {
 const KEY = 'klo26.settings'
 
 export const DEFAULT_SETTINGS: Settings = {
+  nick: '',
   shadows: true,
   resScale: 1,
   keysHint: true,
@@ -38,6 +41,8 @@ export function loadSettings(): Settings {
     if (![1, 2, 3].includes(s.difficulty)) s.difficulty = 2
     if (![2, 3, 4].includes(s.halfMin)) s.halfMin = 3
     if (s.resScale !== 0.75) s.resScale = 1
+    if (typeof s.nick !== 'string') s.nick = ''
+    s.nick = s.nick.slice(0, 12)
     return s
   } catch {
     return { ...DEFAULT_SETTINGS }

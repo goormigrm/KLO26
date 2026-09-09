@@ -2,10 +2,12 @@
 // 틱은 Worker 타이머(60Hz), 그리기는 requestAnimationFrame. 렌더는 prev/curr 보간만 하고 sim 을 바꾸지 않는다.
 
 import { BTN_SUB, EMPTY_INPUT, type Input } from '../core/input'
-import { createState, step } from '../core/sim'
+import { createState, hashState, snapshot, step } from '../core/sim'
 import { synthSquad } from '../core/synth'
 import { toSquadConfig, type Squad } from '../cards/squad'
 import { MAX_SUBS, TICK_MS, type Difficulty, type GameState } from '../core/state'
+import type { Lockstep } from '../net/lockstep'
+import type { RoomLink } from '../net/room'
 import { Hud } from '../render/hud'
 import { Renderer3D, capturePose, type PrevPose } from '../render3d/renderer3d'
 import type { Kit } from '../render3d/player3d'
@@ -22,6 +24,20 @@ export interface SoloConfig {
   settings: Settings
   /** 사람이 짠 스쿼드. 없으면 합성 스쿼드로 (테스트·초기 상태) */
   squad?: Squad
+  /** 온라인 대전이면 여기에 (DESIGN 6). 없으면 혼자 하기 */
+  net?: NetConfig
+}
+
+/** 온라인 대전 설정 — 대기실이 만들어 넘긴다 */
+export interface NetConfig {
+  link: RoomLink
+  lockstep: Lockstep
+  /** 내 팀 (0 = 방장·홈, 1 = 게스트·원정) */
+  me: 0 | 1
+  peerId: string
+  /** 두 팀의 스쿼드 (이미 검사를 통과한 것) */
+  squads: [Squad, Squad]
+  names: [string, string]
 }
 
 /** 합성 스쿼드 시절의 임시 킷 — 실제 구단 색은 단계 1 데이터가 오면 (DESIGN 7.1 유니폼) */
@@ -34,6 +50,12 @@ const GK_KITS: [Kit, Kit] = [
   { shirt: 0x39c7b9, sleeve: 0x1e2a2a, shorts: 0x1e2a2a, socks: 0x39c7b9, number: 0x0e1a1a },
 ]
 const RADAR_COLORS: [string, string] = ['#e0475a', '#4f86ff']
+
+/** 전광판에 들어갈 짧은 이름 */
+function short(name: string): string {
+  const t = name.trim()
+  return t.length <= 4 ? t || '팀' : t.slice(0, 4)
+}
 
 export class Session {
   private state: GameState
@@ -57,6 +79,13 @@ export class Session {
   private keysShown: boolean
   /** 다음 틱에 실어 보낼 교체 명령 (Esc 메뉴에서 고른다) */
   private subOrder: { out: number; in: number } | null = null
+  /** 온라인: 상대 입력을 기다리기 시작한 시각 (−1 = 안 기다림) */
+  private stallSince = -1
+  /** 리싱크 횟수 · 끊김 횟수 — 결과 화면에 보여 준다 (DESIGN 4.13) */
+  private stalls = 0
+  private resyncs = 0
+  private hashes = new Map<number, number>()
+  private peerLeft = false
 
   constructor(
     host: HTMLElement,
@@ -88,6 +117,7 @@ export class Session {
     window.addEventListener('resize', this.onResize)
     // Ctrl+W(페이스 컨트롤 + 스루 패스)가 크롬에서는 탭을 닫는다 — 막을 수 없으니 한 번 묻는다
     window.addEventListener('beforeunload', this.onUnload)
+    if (cfg.net) this.attachNet(cfg.net)
     this.ticker = new Ticker(() => this.tick())
     this.ticker.start()
     this.raf = requestAnimationFrame(this.frame)
@@ -96,16 +126,73 @@ export class Session {
       state: () => this.state,
       tick: () => this.state.tick,
       info: () => this.renderer.info,
+      // 두 브라우저가 같은 경기를 보고 있는지 대조할 때 쓴다 (60틱마다 쌓인다)
+      hashes: () => [...this.hashes.entries()],
+      net: () =>
+        this.cfg.net
+          ? { me: this.cfg.net.me, delay: this.cfg.net.lockstep.delay, rtt: this.cfg.net.link.rtt, stalls: this.stalls, resyncs: this.resyncs }
+          : null,
     }
   }
 
   private newState(seed: number): GameState {
     const c = this.cfg
+    if (c.net) {
+      const [a, b] = c.net.squads
+      const home = toSquadConfig(a, c.net.names[0], short(c.net.names[0]))
+      const away = toSquadConfig(b, c.net.names[1], short(c.net.names[1]))
+      return createState({ seed, halfSec: c.halfSec, squads: [home, away], human: [true, true] })
+    }
     const home = c.squad
       ? toSquadConfig(c.squad, '홈', '홈')
       : synthSquad(11, { name: '홈', short: '홈', formation: c.formation, quality: 66 })
     const away = synthSquad(22, { name: '원정', short: '원정', formation: c.oppFormation, quality: 66 })
     return createState({ seed, halfSec: c.halfSec, squads: [home, away], human: [true, false], bots: [2, c.difficulty] })
+  }
+
+  /** 온라인 대전 배선 — 해시 대조 · 리싱크 · 상대 이탈 (DESIGN 6.5 · 6.6) */
+  private attachNet(net: NetConfig): void {
+    net.link.onPeerJoin((id) => {
+      if (id === net.peerId) net.lockstep.resendTo(id)
+    })
+    net.link.onPeerLeave((id) => {
+      if (id !== net.peerId || this.peerLeft) return
+      this.peerLeft = true
+      net.lockstep.dropOther()
+      this.endByLeave()
+    })
+    net.link.onCtl((m, from) => {
+      if (from !== net.peerId) return
+      if (m.t === 'leave') {
+        if (this.peerLeft) return
+        this.peerLeft = true
+        net.lockstep.dropOther()
+        this.endByLeave()
+      } else if (m.t === 'hash' && net.me === 0) {
+        const mine = this.hashes.get(m.tick)
+        if (mine === undefined || mine === m.h) return
+        // 어긋났다 — 방장이 지금 판을 통째로 보낸다
+        this.resyncs++
+        net.link.sendCtl({ t: 'resync', tick: this.state.tick, state: snapshot(this.state) }, net.peerId)
+      } else if (m.t === 'resync' && net.me === 1) {
+        this.resyncs++
+        this.state = m.state as GameState
+        this.prev = capturePose(this.state)
+        this.evSeen = this.state.events.length
+        this.hashes.clear()
+        net.lockstep.dropBefore(this.state.tick)
+        this.renderer.setMatch(this.state, KITS, GK_KITS)
+      }
+    })
+  }
+
+  /** 상대가 나갔다 — 그 시점 스코어로 끝낸다 (DESIGN 2장 "몰수승은 없다") */
+  private endByLeave(): void {
+    if (this.state.done) return
+    this.state.done = true
+    this.state.phase = 'end'
+    this.message = ''
+    this.showResult('상대가 나갔습니다 — 이 시점 스코어로 종료')
   }
 
   private onResize = (): void => this.renderer.resize()
@@ -122,9 +209,10 @@ export class Session {
     if (this.paused || this.state.done) return
     this.acc += dt * 1000
     let steps = 0
+    const net = this.cfg.net
     // 탭이 뒤로 갔다 오면 밀린 틱을 몰아서 처리하되 한 번에 4틱까지
     while (this.acc >= TICK_MS && steps < 4) {
-      capturePose(this.state, this.prev)
+      const t = this.state.tick
       const inp: Input = this.input.sample()
       if (this.subOrder) {
         inp.buttons |= BTN_SUB
@@ -132,7 +220,34 @@ export class Session {
         inp.b = this.subOrder.in
         this.subOrder = null
       }
-      step(this.state, [inp, EMPTY_INPUT])
+      let inputs: [Input, Input]
+      if (net) {
+        net.lockstep.pushLocal(t, inp)
+        if (!net.lockstep.hasAll(t)) {
+          // 상대 입력이 아직 없다 — 두 브라우저가 같은 경기를 보려면 여기서 멈춰야 한다
+          if (this.stallSince < 0) this.stallSince = now
+          break
+        }
+        if (this.stallSince >= 0) {
+          if (now - this.stallSince > 400) this.stalls++
+          this.stallSince = -1
+        }
+        inputs = net.lockstep.get(t)
+      } else {
+        inputs = [inp, EMPTY_INPUT]
+      }
+      capturePose(this.state, this.prev)
+      step(this.state, inputs)
+      if (net) {
+        // 60틱마다 해시 — 게스트가 방장에게 보내고, 다르면 방장이 스냅샷을 보낸다 (DESIGN 4.13)
+        if (this.state.tick % 60 === 0) {
+          const h = hashState(this.state)
+          this.hashes.set(this.state.tick, h)
+          if (this.hashes.size > 12) this.hashes.delete(Math.min(...this.hashes.keys()))
+          if (net.me === 1) net.link.sendCtl({ t: 'hash', tick: this.state.tick, h }, net.peerId)
+          net.lockstep.prune(this.state.tick)
+        }
+      }
       this.acc -= TICK_MS
       steps++
     }
@@ -158,9 +273,14 @@ export class Session {
       this.fpsT = 0
     }
     const alpha = this.paused ? 1 : Math.min(1, this.acc / TICK_MS)
-    const controlled = this.state.teams[0].controlled
-    this.renderer.draw(this.prev, this.state, alpha, dt, { humanTeam: 0, controlled })
-    this.hud.update(this.state, { humanTeam: 0, controlled, message: this.message })
+    const me = this.cfg.net ? this.cfg.net.me : 0
+    const controlled = this.state.teams[me].controlled
+    let message = this.message
+    if (this.cfg.net && this.stallSince >= 0 && now - this.stallSince > 400) {
+      message = `상대 입력 대기 중… (${this.cfg.net.link.rtt} ms)`
+    }
+    this.renderer.draw(this.prev, this.state, alpha, dt, { humanTeam: me, controlled })
+    this.hud.update(this.state, { humanTeam: me, controlled, message })
     this.raf = requestAnimationFrame(this.frame)
   }
 
@@ -173,16 +293,17 @@ export class Session {
   }
 
   private showMenu(): void {
-    this.paused = true
-    this.message = '일시정지'
+    // 온라인 대전은 멈출 수 없다 — 내가 멈추면 상대도 락스텝에 걸려 함께 멈춘다
+    this.paused = !this.cfg.net
+    this.message = this.cfg.net ? '' : '일시정지'
     const box = this.overlay.querySelector('#overlay-box') as HTMLElement
     box.classList.remove('wide')
     box.innerHTML = `
       <h2>일시정지</h2>
-      <p>혼자 하기 — 봇 ${['', '쉬움', '보통', '어려움'][this.cfg.difficulty]} · 전후반 ${Math.round(this.cfg.halfSec / 60)}분</p>
+      <p>${this.cfg.net ? `온라인 대전 · 방 ${this.cfg.net.link.code} · ${this.cfg.net.link.rtt} ms` : `혼자 하기 — 봇 ${['', '쉬움', '보통', '어려움'][this.cfg.difficulty]}`} · 전후반 ${Math.round(this.cfg.halfSec / 60)}분</p>
       <div class="row">
         <button class="btn main" id="ov-resume">계속 (Esc)</button>
-        <button class="btn secondary" id="ov-sub">교체 (${this.state.teams[0].subsLeft}/${MAX_SUBS})</button>
+        <button class="btn secondary" id="ov-sub">교체 (${this.state.teams[this.cfg.net ? this.cfg.net.me : 0].subsLeft}/${MAX_SUBS})</button>
         <button class="btn secondary" id="ov-keys">${this.keysShown ? '조작 안내 끄기' : '조작 안내 켜기'}</button>
         <button class="btn secondary" id="ov-quit">로비로</button>
       </div>`
@@ -200,7 +321,7 @@ export class Session {
   /** 교체 화면 — 나갈 선수와 들어올 선수를 고른다. 명령은 다음 데드볼에 적용된다 (DESIGN 2장) */
   private showSubs(): void {
     const st = this.state
-    const team = st.teams[0]
+    const team = st.teams[this.cfg.net ? this.cfg.net.me : 0]
     let out = -1
     const box = this.overlay.querySelector('#overlay-box') as HTMLElement
     const draw = (): void => {
@@ -253,7 +374,7 @@ export class Session {
     this.acc = 0
   }
 
-  private showResult(): void {
+  private showResult(reason = ''): void {
     const st = this.state
     const [h, a] = st.teams
     const S = st.stats
@@ -264,11 +385,18 @@ export class Session {
       .filter((e) => e.type === 'goal')
       .map((e) => `${st.teams[e.team].short} ${e.player >= 0 ? st.players[e.player].spec.name : '(자책)'} ${Math.max(1, Math.round((e.tick / 60 / st.halfSec) * 45))}'`)
       .join(' · ')
-    const verdict = h.goals > a.goals ? '승리!' : h.goals < a.goals ? '패배' : '무승부'
+    const meTeam = this.cfg.net ? this.cfg.net.me : 0
+    const my = st.teams[meTeam].goals
+    const opp = st.teams[1 - meTeam].goals
+    const verdict = my > opp ? '승리!' : my < opp ? '패배' : '무승부'
+    const netLine = this.cfg.net
+      ? `<p class="hintline">지연 ${this.cfg.net.lockstep.delay}틱 · 끊김 ${this.stalls}회 · 리싱크 ${this.resyncs}회${this.resyncs > 2 ? ' ⚠ 동기화 문제' : ''}</p>`
+      : ''
     const box = this.overlay.querySelector('#overlay-box') as HTMLElement
     box.innerHTML = `
       <h2>${h.short} ${h.goals} : ${a.goals} ${a.short}</h2>
-      <p><b>${verdict}</b>${scorers ? ` · ${scorers}` : ''}</p>
+      <p><b>${verdict}</b>${reason ? ` · ${reason}` : ''}${scorers ? ` · ${scorers}` : ''}</p>
+      ${netLine}
       <table class="stats">
         ${row('슛', String(S[0].shots), String(S[1].shots))}
         ${row('유효 슛', String(S[0].onTarget), String(S[1].onTarget))}
@@ -282,11 +410,12 @@ export class Session {
         ${row('오프사이드', String(S[0].offsides), String(S[1].offsides))}
       </table>
       <div class="row">
-        <button class="btn main" id="ov-again">다시 하기</button>
+        ${this.cfg.net ? '' : '<button class="btn main" id="ov-again">다시 하기</button>'}
         <button class="btn secondary" id="ov-quit">로비로</button>
       </div>`
     this.overlay.hidden = false
-    ;(box.querySelector('#ov-again') as HTMLButtonElement).onclick = () => this.restart()
+    const again = box.querySelector('#ov-again') as HTMLButtonElement | null
+    if (again) again.onclick = () => this.restart()
     ;(box.querySelector('#ov-quit') as HTMLButtonElement).onclick = () => this.exit()
   }
 
@@ -300,6 +429,7 @@ export class Session {
   }
 
   private exit(): void {
+    if (this.cfg.net && !this.peerLeft) this.cfg.net.link.sendCtl({ t: 'leave' }, this.cfg.net.peerId)
     this.dispose()
     this.onExit()
   }
@@ -314,5 +444,9 @@ export class Session {
     this.input.dispose()
     this.hud.dispose()
     this.renderer.dispose()
+    if (this.cfg.net) {
+      if (!this.peerLeft) this.cfg.net.link.sendCtl({ t: 'leave' }, this.cfg.net.peerId)
+      setTimeout(() => this.cfg.net?.link.leave(), 120)
+    }
   }
 }

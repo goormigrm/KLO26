@@ -6,16 +6,21 @@ import type { SoloConfig } from '../game/session'
 import { START_SIZE, cardSalary, checkSquad, clubById, computeCap, teamColorBonus } from '../cards/squad'
 import { cardById } from '../data/pool'
 import { loadSquad } from './squad'
+import type { LobbyLink, RoomInfo } from '../net/room'
+import { makeRoomCode } from '../net/room'
 import { loadSettings, saveSettings, type Settings } from './settings'
 
 export class Lobby {
   private s: Settings
   private root: HTMLElement
+  private roomTimer = 0
 
   constructor(
     host: HTMLElement,
     private onStart: (cfg: SoloConfig) => void,
     private onSquad: () => void,
+    private onRoom?: (code: string, role: 'host' | 'guest') => void,
+    private lobbyLink?: LobbyLink,
   ) {
     this.s = loadSettings()
     const sq = loadSquad()
@@ -51,11 +56,13 @@ export class Lobby {
             <div class="row"><label>내 스쿼드</label><span class="sqline">${squadLine}${best ? ` · 최고 ${best.name}` : ''}</span></div>
             <div class="row"><button class="btn main" id="btn-solo"${chk.ok ? '' : ' disabled'}>경기 시작</button><button class="btn secondary" id="btn-squad">스쿼드 짜기</button></div>
           </section>
-          <section class="mode dim">
+          <section class="mode">
             <h2>온라인 대전 <span class="k">P2P</span></h2>
-            <p>방을 만들고 P2P 로 붙는 1:1. <b>단계 6</b> 에서 붙습니다 — 지금은 없습니다.</p>
-            <div class="row"><button class="btn" disabled>방 만들기</button><button class="btn secondary" disabled>방 목록</button></div>
-            <p class="hintline dim">스쿼드는 이미 짤 수 있습니다 — 왼쪽 <b>스쿼드 짜기</b>.</p>
+            <p>방을 만들면 목록에 뜹니다. 서버 없이 두 브라우저가 직접 붙습니다.</p>
+            <div class="row"><label>닉네임</label><input class="nick" id="nick" maxlength="12" placeholder="닉네임" value="${this.s.nick}" /></div>
+            <div class="row"><button class="btn" id="btn-host"${chk.ok ? '' : ' disabled'}>방 만들기</button><span class="hintline" id="online"></span></div>
+            <div class="sub-h">방 목록</div>
+            <div class="rooms" id="rooms"><div class="empty">방을 찾는 중…</div></div>
           </section>
           <section class="mode">
             <h2>설정 <span class="k">PC</span></h2>
@@ -121,6 +128,31 @@ export class Lobby {
         }
       }
     }
+    const nick = this.root.querySelector('#nick') as HTMLInputElement | null
+    if (nick) {
+      nick.oninput = () => {
+        this.s.nick = nick.value.slice(0, 12)
+        saveSettings(this.s)
+      }
+    }
+    const hostBtn = this.root.querySelector('#btn-host') as HTMLButtonElement | null
+    if (hostBtn) {
+      hostBtn.onclick = () => {
+        if (!this.s.nick.trim()) {
+          nick?.classList.add('need')
+          nick?.focus()
+          return
+        }
+        this.onRoom?.(makeRoomCode(), 'host')
+      }
+    }
+    if (this.lobbyLink) {
+      this.lobbyLink.onRooms((rooms) => this.drawRooms(rooms))
+      this.roomTimer = window.setInterval(() => {
+        const el = this.root.querySelector('#online')
+        if (el) el.textContent = `접속 ${this.lobbyLink!.onlineCount()}명`
+      }, 1500)
+    }
     ;(this.root.querySelector('#btn-squad') as HTMLButtonElement).onclick = () => this.onSquad()
     ;(this.root.querySelector('#btn-solo') as HTMLButtonElement).onclick = () => {
       const s = this.s
@@ -136,7 +168,35 @@ export class Lobby {
     }
   }
 
+  private drawRooms(rooms: RoomInfo[]): void {
+    const el = this.root.querySelector('#rooms')
+    if (!el) return
+    const open = rooms.filter((r) => r.state !== 'closed')
+    if (open.length === 0) {
+      el.innerHTML = '<div class="empty">열린 방이 없습니다. 방을 만들어 기다려 보세요.</div>'
+      return
+    }
+    el.innerHTML = open
+      .map(
+        (r) => `<div class="room"><span><b>${r.hostName || '이름 없음'}</b> <small>· ${Math.round(r.halfSec / 60)}분 · ${r.count}/${r.max}</small></span>
+          <button class="btn" data-join="${r.code}"${r.state === 'open' ? '' : ' disabled'}>${r.state === 'open' ? '참가' : r.state === 'playing' ? '경기 중' : '가득 참'}</button></div>`,
+      )
+      .join('')
+    el.querySelectorAll<HTMLButtonElement>('[data-join]').forEach((b) => {
+      b.onclick = () => {
+        if (!this.s.nick.trim()) {
+          const n = this.root.querySelector('#nick') as HTMLInputElement | null
+          n?.classList.add('need')
+          n?.focus()
+          return
+        }
+        this.onRoom?.(b.dataset.join!, 'guest')
+      }
+    })
+  }
+
   dispose(): void {
+    if (this.roomTimer) clearInterval(this.roomTimer)
     this.root.remove()
   }
 }

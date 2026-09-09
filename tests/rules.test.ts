@@ -284,6 +284,16 @@ describe('교체', () => {
     expect(team.bench.length).toBe(6)
   })
 
+  it('아무 데드볼에서나 들어간다 — 스로인에서도 (골·하프타임만이 아니다)', () => {
+    const st = match()
+    const team = st.teams[0]
+    const before = st.players[team.start + 7].spec.id
+    team.pendingSub = { out: 7, in: 1 }
+    setupRestart(st, 'throwin', 1, 0, HALF_W + 0.4)
+    expect(st.players[team.start + 7].spec.id).not.toBe(before)
+    expect(team.subsLeft).toBe(2)
+  })
+
   it('교체 횟수를 다 쓰면 더 못 바꾼다', () => {
     const st = match()
     const team = st.teams[0]

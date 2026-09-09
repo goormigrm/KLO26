@@ -145,6 +145,8 @@ function pushOutOfCircle(p: Player, cx: number, cy: number, r: number): void {
 
 /** 스로인·코너·골킥 — 킥커를 그 자리에 세우고 공을 준다 */
 export function setupRestart(st: GameState, type: 'throwin' | 'corner' | 'goalkick', team: number, x: number, y: number): void {
+  // 넣어 둔 교체는 **아무 데드볼에서나** 들어간다 (DESIGN 2장). 골·하프타임만 보다가 놓쳤다 (2026-09-09)
+  applyPendingSubs(st)
   st.phase = type
   st.phaseT = RESTART_TICKS
   resetBall(st, x, y)
@@ -165,6 +167,7 @@ export function setupRestart(st: GameState, type: 'throwin' | 'corner' | 'goalki
 
 /** 프리킥 — 반칙 자리에서. 자기 진영 깊은 곳이면 GK 가 찬다 */
 export function setupFreeKick(st: GameState, team: number, x: number, y: number): void {
+  applyPendingSubs(st)
   st.phase = 'freekick'
   st.phaseT = FOUL_TICKS
   const px = clamp(x, -HALF_L + 2, HALF_L - 2)

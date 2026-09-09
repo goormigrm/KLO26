@@ -8,7 +8,10 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "balance": "vite-node tools/balance.ts",
-    "probe": "vite-node tools/probe.ts"
+    "probe": "vite-node tools/probe.ts",
+    "verify": "vite-node tools/verify.ts",
+    "oneone": "vite-node tools/oneone.ts",
+    "cards": "vite-node tools/cards.ts"
   },
   "dependencies": {
     "three": "^0.185.1",

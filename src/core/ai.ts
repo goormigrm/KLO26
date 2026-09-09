@@ -181,9 +181,11 @@ function carrierDecide(st: GameState, p: Player, noise: number): void {
     // 오프사이드 위치의 동료에게는 보내지 않는다 — 보내면 심판이 끊는다
     if (inOffsidePosition(st, q)) continue
     const gain = clamp(((q.x - p.x) * dir) / 30, -1, 1)
+    // 멘탈리티가 높으면 전진 패스를 더 좋게 본다 (0 → ×0.6 · 4 → ×1.4)
+    const fwdK = 0.6 + team.sliders.mentality * 0.2
     const open = Math.min(8, nearestOppDist(st, q)) / 8
     const lane = laneClear(st, p, q) / 3
-    let s = 0.2 + 0.3 * gain + 0.25 * open + 0.25 * lane + 0.15 * p.sk.pas - (dq > 35 ? 0.3 : dq > 25 ? 0.1 : 0) + randN(r) * noise
+    let s = 0.2 + 0.3 * gain * fwdK + 0.25 * open + 0.25 * lane + 0.15 * p.sk.pas - (dq > 35 ? 0.3 : dq > 25 ? 0.1 : 0) + randN(r) * noise
     if (justGot) s -= 0.35
     let kind: PassKind = 'ground'
     if (gain > 0.2 && spaceAhead(st, q, dir) > 5) {
@@ -375,16 +377,39 @@ export function aiDecide(st: GameState, p: Player): void {
     return
   }
   // 상대가 공을 가졌다
+  //
+  // ⚠ 압박 슬라이더는 **여기서만** 뜻이 생긴다. 예전에는 `d < dPress + 10` 이라 0 이든 4 든 늘 참이어서
+  // 슬라이더가 사실상 연결돼 있지 않았다 (2026-09-09 지문 검사에서 5시드 중 1시드만 달라졌다).
+  // 이제 세 가지를 함께 움직인다: 붙는 거리 · 압박에 나서는 인원 · 태클을 시도할지(p.press).
   const c = st.players[b.owner]
   const inOwnHalf = c.x * dir < 0
-  const dPress = (8 + team.sliders.press * 3 + (inOwnHalf ? 6 : 0)) * params.press
+  const sl = team.sliders.press
+  // 0 → 9 m 안에서만 붙는다 · 4 → 30 m 밖에서도 쫓아간다
+  const dPress = (9 + sl * 5 + (inOwnHalf ? 5 : 0)) * params.press
+  // 압박에 나서는 인원 — 0~1 은 한 명, 2~3 은 두 명, 4 는 세 명
+  const pressN = sl >= 4 ? 3 : sl >= 2 ? 2 : 1
   const rank = rankByDist(st, ti, c.x, c.y, p, true)
   const d = dist(p.x, p.y, c.x, c.y)
-  if (rank === 0 && d < dPress + 10) {
-    p.tx = c.x + c.vx * 0.3
-    p.ty = c.y + c.vy * 0.3
+  if (rank === 0) {
+    if (d < dPress) {
+      p.tx = c.x + c.vx * 0.3
+      p.ty = c.y + c.vy * 0.3
+      // 낮은 압박은 붙어도 덤비지 않는다 — 지연 수비 (태클 시도는 p.press 가 연다)
+      p.press = sl >= 1 || d < 2.5
+      p.sprint = d > 4 && p.stamina > 0.2 && sl >= 2
+      return
+    }
+    // 너무 멀면 물러나 자리를 지킨다 (낮은 압박)
+    p.tx = clamp((c.x + p.ax) / 2, -HALF_L + 1, HALF_L - 1)
+    p.ty = (c.y + p.ay) / 2
+    return
+  }
+  if (rank < pressN && d < dPress) {
+    // 두·세 번째도 함께 간다 (Q 팀 지원 요청은 슬라이더와 무관하게 한 명 더 붙인다)
+    p.tx = c.x - dir * 2 + c.vx * 0.2
+    p.ty = c.y + (p.y >= c.y ? 2.5 : -2.5)
     p.press = true
-    p.sprint = d > 4 && p.stamina > 0.2
+    p.sprint = d > 6 && p.stamina > 0.25
     return
   }
   if (rank === 1) {

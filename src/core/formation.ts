@@ -74,7 +74,8 @@ export function anchorOf(
   const s = SLOT_XY[slot] ?? SLOT_XY.CM
   let bx = (s.x - MIDX) * PITCH_L * COMPACT
   bx += (sliders.line - 2) * 3.0 * LINE_W[band]
-  bx += (sliders.mentality - 2) * 2.0
+  // 멘탈리티는 팀 블록을 통째로 앞뒤로 민다. ±4 m 로는 지표가 안 움직여 ±6 m 로 키웠다 (2026-09-09 짝 비교)
+  bx += (sliders.mentality - 2) * 3.0
   bx += inPossession ? 5 : -3
   const widthK = 0.85 + sliders.width * 0.075
   const by = (s.y - 0.5) * PITCH_W * 0.9 * widthK

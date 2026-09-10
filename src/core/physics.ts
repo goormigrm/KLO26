@@ -54,7 +54,7 @@ export function movePlayer(p: Player, dvx: number, dvy: number, speedK: number):
 /** 체력 — 스프린트 소모, 걷기 회복 */
 export function drainStamina(p: Player, sprinting: boolean): void {
   const sp = len(p.vx, p.vy)
-  if (sprinting && sp > 2) p.stamina -= 0.03 * (1.3 - 0.6 * p.sk.sta) * DT
+  if (sprinting && sp > 2) p.stamina -= 0.04 * (1.3 - 0.6 * p.sk.sta) * DT
   else if (sp > 2) p.stamina -= 0.006 * (1.3 - 0.6 * p.sk.sta) * DT
   else p.stamina += 0.01 * DT
   p.stamina = clamp(p.stamina, 0, 1)

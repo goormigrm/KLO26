@@ -108,7 +108,9 @@ console.log(`능력치 A/B — 묶음마다 ${games}경기 (HI ${HI} vs LO ${LO}
 `)
 console.log('묶음                            승률   골   실점  내슛 상대슛 유효슛% 점유%  태클 파울 선방 패스성공%')
 console.log('-'.repeat(104))
+const only = (process.argv[3] ?? '').split(',').filter(Boolean)
 for (const g of GROUPS) {
+  if (only.length && !only.includes(g.key) && g.key !== 'none') continue
   const o = measure(g)
   const win = ((o.wins + o.draws * 0.5) / games) * 100
   const onT = (o.onTarget / Math.max(1, o.shots)) * 100

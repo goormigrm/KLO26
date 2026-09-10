@@ -13,7 +13,7 @@ import { clearOffside, dist, doPass, doShoot, doThrow, gkPunt, nearestOppDist, p
 import { crossedGoalLine } from './physics'
 import { skillsOf } from './skills'
 import {
-  ACT_RUN, ADDED_MAX_MIN, BALL_R, BOX_HALF_W, BOX_L, CIRCLE_R, CLOCK_SCALE, DT, END_GRACE_SEC, FOUL_TICKS, GOAL_TICKS,
+  ACT_RUN, ADDED_MAX_MIN, BALL_R, BOX_HALF_W, BOX_L, CIRCLE_R, CLOCK_SCALE, DT, END_GRACE_SEC, FOUL_TICKS, GOAL_SKIP_TICKS, GOAL_TICKS,
   HALFTIME_TICKS, HALF_L, HALF_W, KICKOFF_TICKS, PENALTY_TICKS, PEN_SPOT, RESTART_TICKS, THROWIN_CLEAR,
   goalX, ownGoalX, type GameState, type PendingCall, type Phase, type Player, type Team,
 } from './state'
@@ -549,6 +549,12 @@ export function tickPhase(st: GameState): void {
   if (ph === 'play' || ph === 'end') return
   st.phaseT--
   if (ph === 'goal') {
+    // 사람 팀이 전부 건너뛰기를 눌렀으면(봇은 늘 동의) 꼬리만 남기고 킥오프로.
+    // 온라인은 양쪽이 다 눌러야 한다 — 한쪽만 누르면 그대로 본다 (사용자 결정 2026-09-11)
+    if (st.phaseT > GOAL_SKIP_TICKS && st.teams[0].skipCele !== undefined) {
+      const all = (!st.teams[0].human || st.teams[0].skipCele) && (!st.teams[1].human || st.teams[1].skipCele)
+      if (all) st.phaseT = GOAL_SKIP_TICKS
+    }
     if (st.phaseT <= 0) {
       applyPendingSubs(st)
       setupKickoff(st, st.kickoffTeam)
@@ -593,6 +599,10 @@ export function checkOut(st: GameState): void {
     st.events.push({ tick: st.tick, type: 'goal', team: scoring, player: scorer, x: b.x, y: b.y })
     st.phase = 'goal'
     st.phaseT = GOAL_TICKS
+    st.goalScorer = scorer
+    st.goalTeam = scoring
+    st.teams[0].skipCele = false
+    st.teams[1].skipCele = false
     st.kickoffTeam = conceding
     st.restart = null
     st.callText = ''

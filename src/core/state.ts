@@ -33,7 +33,10 @@ export const CONTROL_R = 0.55
 export const DECIDE_TICKS = 15
 export const RESTART_TICKS = 90
 export const KICKOFF_TICKS = 60
-export const GOAL_TICKS = 150
+/** 골 뒤 세레모니 (2026-09-11: 2.5 초 → 9 초 — 리플레이 5 초 + 세레모니. 허전하다는 사용자 제보) */
+export const GOAL_TICKS = 540
+/** 모두 건너뛰면 이만큼만 남기고 킥오프로 (화면이 툭 끊기지 않게) */
+export const GOAL_SKIP_TICKS = 30
 export const HALFTIME_TICKS = 300
 export const FOUL_TICKS = 110
 export const PENALTY_TICKS = 150
@@ -232,6 +235,8 @@ export interface Team {
   jockey: boolean
   /** Q 홀드 — 두 번째 수비수도 압박 */
   assist: boolean
+  /** Enter — 이번 골 세레모니를 건너뛰겠다 (온라인은 양쪽 다 true 여야 넘어간다) */
+  skipCele: boolean
   /** 선수 idx 범위 [start, start+11) */
   start: number
   gk: number
@@ -293,6 +298,9 @@ export interface GameState {
   kickoffTeam: number
   /** 전반을 시작한 팀 — 후반은 반대 */
   firstKickoff: number
+  /** 마지막 골 — 넣은 선수 idx(−1 = 자책골 등) · 팀. 세레모니가 여기로 모인다 */
+  goalScorer: number
+  goalTeam: number
   /** 이번 틱 시작 때 공의 x (골라인 통과 판정) */
   prevBallX: number
   players: Player[]

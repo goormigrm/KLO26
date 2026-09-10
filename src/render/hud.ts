@@ -9,6 +9,8 @@ import { Radar } from './radar'
 const CALL_TICKS = 150
 
 export interface HudView {
+  /** 리플레이 재생 중 — 골 문구가 바뀐다 */
+  replay?: boolean
   humanTeam: number
   controlled: number
   /** 세션이 띄우는 한 줄 (일시정지 등). 비어 있으면 단계 문구 */
@@ -87,7 +89,11 @@ export class Hud {
     this.el[k].textContent = v
   }
 
+  /** 리플레이 재생 중 (phaseText 가 본다) */
+  private replaying = false
+
   update(st: GameState, v: HudView): void {
+    this.replaying = v.replay === true
     const [h, a] = st.teams
     this.set('home', h.short)
     this.set('away', a.short)
@@ -146,9 +152,17 @@ export class Hud {
         return mine ? `${when}킥오프 — 방향키로 받을 선수를 고르고 S (아군에게 짧게)` : `${when}${who(st.kickoffTeam)} 킥오프`
       }
       case 'goal': {
-        const last = st.events.length ? st.events[st.events.length - 1] : null
-        const t = last && last.type === 'goal' ? last.team : -1
-        return t >= 0 ? `⚽ 골! ${who(t)}` : '⚽ 골!'
+        const t = st.goalTeam
+        const head = t >= 0 ? `⚽ 골! ${who(t)}` : '⚽ 골!'
+        if (this.replaying) return `🔁 리플레이 — Enter 로 건너뛰기`
+        const me = st.teams[humanTeam]
+        const opp = st.teams[1 - humanTeam]
+        // 온라인: 양쪽이 다 눌러야 넘어간다 — 누가 눌렀는지 보여 준다
+        if (opp.human) {
+          if (me.skipCele && !opp.skipCele) return `${head} · 상대가 세레모니를 보는 중…`
+          if (!me.skipCele && opp.skipCele) return `${head} · 상대가 건너뛰기를 눌렀습니다 — Enter 로 넘어가기`
+        }
+        return `${head} · 세레모니 — Enter 로 건너뛰기`
       }
       case 'throwin':
         return mine ? '스로인 — 방향키 + S / A' : `${who(r!.team)} 스로인`

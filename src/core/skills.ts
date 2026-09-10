@@ -97,8 +97,12 @@ export function skillsOf(spec: PlayerSpec, slot: string, band: Band): Skills {
   const paceK = 1 - Math.max(0, mass) * 0.05
 
   const sk: Skills = {
-    vmax: (6.0 + 3.2 * PAC) * paceK,
-    accel: 4.0 + 6.0 * S(a.acc),
+    // 2026-09-11 — 속도가 승률 90% 로 다른 어떤 능력치보다 지배적이었다(`npm run attrcheck`).
+    // 폭을 실제 축구 수준으로: 최고 속도 7.2→8.9(+24%) 를 7.6→8.6(+14%), 가속 6.3→9.5(+51%) 를 6.6→8.3(+25%).
+    // 실제 100 m 는 느린 선수 12 s · 빠른 선수 10.5 s (14%) 이고 첫 10 m 가속이 20~30% 차이다.
+    // (1차 7.5→8.8 / 6.5→8.7 에서 속도 승률 81% — 아직 수비·드리블보다 높아 한 번 더 좁혔다)
+    vmax: (6.8 + 2.0 * PAC) * paceK,
+    accel: 5.5 + 3.0 * S(a.acc),
     turn: (12 + 10 * S(a.agi)) * agiK,
     ctl: (S(a.fir) * 0.65 + S(a.tec) * 0.2 + S(a.cmp) * 0.15) * light,
     drib: (S(a.dri) * 0.4 + S(a.tec) * 0.2 + S(a.agi) * 0.2 + S(a.bal) * 0.1 + S(a.fir) * 0.1) * agiK * light,

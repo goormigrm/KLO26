@@ -12,7 +12,7 @@ import {
   type PassKind,
 } from './ball'
 import {
-  BTN_A, BTN_C, BTN_D, BTN_E, BTN_PACE, BTN_PRESET_NEXT, BTN_PRESET_PREV, BTN_Q, BTN_S, BTN_SPACE, BTN_SUB, BTN_W,
+  BTN_A, BTN_C, BTN_D, BTN_E, BTN_PACE, BTN_PRESET_NEXT, BTN_PRESET_PREV, BTN_Q, BTN_S, BTN_SKIP, BTN_SPACE, BTN_SUB, BTN_W,
   type Input,
 } from './input'
 import { drainStamina, moveBall, movePlayer, resolveCollisions } from './physics'
@@ -49,7 +49,7 @@ function mkTeam(t: number, sq: SquadConfig, human: boolean, bot: number): Team {
     dir: t === 0 ? 1 : -1, formation: sq.formation,
     sliders: copySliders(presets[1]), presets, preset: 1,
     controlled: -1, goals: 0, prevButtons: 0, holdShoot: 0, holdPass: 0, lastA: -1000,
-    inX: 0, inY: 0, sprint: false, slow: false, jockey: false, assist: false,
+    inX: 0, inY: 0, sprint: false, slow: false, jockey: false, assist: false, skipCele: false,
     start: t * 11, gk: t * 11,
     bench: sq.players.slice(11, 11 + BENCH_SIZE).map((s) => s),
     subsLeft: MAX_SUBS,
@@ -76,7 +76,7 @@ export function createState(cfg: MatchConfig): GameState {
   }
   const st: GameState = {
     tick: 0, half: 1, clock: 0, halfSec: cfg.halfSec ?? DEFAULT_HALF_SEC,
-    phase: 'kickoff', phaseT: 0, restart: null, kickoffTeam: 0, firstKickoff: 0, prevBallX: 0,
+    phase: 'kickoff', phaseT: 0, restart: null, kickoffTeam: 0, firstKickoff: 0, prevBallX: 0, goalScorer: -1, goalTeam: -1,
     players,
     ball: {
       x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, owner: -1, lastTouch: -1, lastTeam: -1, kickTick: -100,
@@ -145,6 +145,8 @@ function handleInput(st: GameState, t: number, inp: Input): void {
   }
   if (edge & BTN_PRESET_NEXT) setPreset(team, (team.preset + 1) % 3)
   if (edge & BTN_PRESET_PREV) setPreset(team, (team.preset + 2) % 3)
+  // Enter — 세레모니 건너뛰기. 봇은 늘 동의한 것으로 친다 (rules.tickPhase 가 본다)
+  if ((edge & BTN_SKIP) && st.phase === 'goal') team.skipCele = true
 
   const c = team.controlled >= 0 ? st.players[team.controlled] : null
   if (!c) {
@@ -221,7 +223,8 @@ export function step(st: GameState, inputs: [Input, Input]): void {
   for (const p of st.players) {
     if (p.sentOff) continue
     const team = st.teams[p.team]
-    const ctl = team.human && team.controlled === p.idx
+    // 세레모니 중엔 사람 선수도 AI 처럼 모인다 (방향키로 끌고 다니면 그림이 깨진다)
+    const ctl = team.human && team.controlled === p.idx && st.phase !== 'goal'
     if (p.action === ACT_SLIDE) {
       p.vx = cosA(p.facing) * p.sk.vmax * 1.3
       p.vy = sinA(p.facing) * p.sk.vmax * 1.3
@@ -304,8 +307,15 @@ export function step(st: GameState, inputs: [Input, Input]): void {
       sprint = p.sprint
     }
     if (sprint && p.stamina > 0.05) speedK *= 1.12
-    if (b.owner === p.idx) speedK *= 0.8 + 0.15 * p.sk.drib
-    if (p.stamina < 0.3) speedK *= 0.85
+    if (b.owner === p.idx) {
+      speedK *= 0.8 + 0.15 * p.sk.drib
+      // 공을 몰고 뛰는 속도는 **상한**이 있다 (드리블 6.6~7.5 m/s) — 실제 축구에서도 공을 갖고는
+      // 아무리 빨라도 전력 질주 속도가 안 나온다. 속도는 공 없는 침투·복귀에서 값을 한다 (2026-09-11)
+      const cap = 6.6 + 0.9 * p.sk.drib
+      if (p.sk.vmax * speedK > cap) speedK = cap / p.sk.vmax
+    }
+    // 체력 — 절반 아래로 떨어지면 그만큼 느려진다 (0 이면 78%). 빠른 선수도 뛰기만 하면 지친다 (2026-09-11)
+    if (p.stamina < 0.5) speedK *= 0.78 + 0.44 * p.stamina
     if (p.action === ACT_KICK) speedK *= 0.5
     if (p.holdT > 0) speedK *= 0.3
     movePlayer(p, dvx, dvy, speedK)

@@ -7,7 +7,8 @@
 // - 같은 키가 공수에서 뜻이 바뀌는 것은 여기서 가르지 않는다 — sim 이 "우리 팀이 공을 갖고 있나"로 가른다.
 
 import {
-  BTN_A, BTN_C, BTN_D, BTN_E, BTN_PACE, BTN_PRESET_NEXT, BTN_PRESET_PREV, BTN_Q, BTN_S, BTN_SPACE, BTN_W, BTN_Z, type Input,
+  BTN_A, BTN_C, BTN_D, BTN_E, BTN_PACE, BTN_PRESET_NEXT, BTN_PRESET_PREV,
+  BTN_SKIP, BTN_Q, BTN_S, BTN_SPACE, BTN_W, BTN_Z, type Input,
 } from '../core/input'
 
 /** 홀드 키 (e.code → 비트) */
@@ -29,6 +30,8 @@ export const HOLD_KEYS: Readonly<Record<string, number>> = {
 export const EDGE_KEYS: Readonly<Record<string, number>> = {
   BracketRight: BTN_PRESET_NEXT,
   BracketLeft: BTN_PRESET_PREV,
+  Enter: BTN_SKIP,
+  NumpadEnter: BTN_SKIP,
 }
 
 const ARROWS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])

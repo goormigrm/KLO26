@@ -2,7 +2,7 @@
 // **홈/원정은 경기마다 동전 던지기로 정한다** (`toss.ts`, 2026-09-11) — 방장·사람이라고 홈이 아니다.
 // 틱은 Worker 타이머(60Hz), 그리기는 requestAnimationFrame. 렌더는 prev/curr 보간만 하고 sim 을 바꾸지 않는다.
 
-import { BTN_SUB, soloInputs, type Input } from '../core/input'
+import { BTN_SKIP, BTN_SUB, soloInputs, type Input } from '../core/input'
 import { createState, hashState, snapshot, step } from '../core/sim'
 import { synthSquad } from '../core/synth'
 import { clubSquad, squadClub, toSquadConfig, type Squad } from '../cards/squad'
@@ -118,6 +118,15 @@ export class Session {
   private sndSeen = 0
   private hashes = new Map<number, number>()
   private peerLeft = false
+  /**
+   * 골 리플레이 (2026-09-11) — **렌더 전용**이다. 시뮬은 세레모니(`phase === 'goal'`)를 그대로 돌고,
+   * 이쪽은 방금 지나간 틱들의 포즈를 링 버퍼에서 꺼내 느리게 다시 그릴 뿐이다. 그래서 온라인 락스텝과 무관하다.
+   */
+  private poseBuf: ReplayFrame[] = []
+  private poseHead = 0
+  private replay: { frames: ReplayFrame[]; pos: number; state: GameState; prevPose: PrevPose } | null = null
+  private replayPending = -1
+  private lastPhase = ''
   /** 공지글 첨부용 캡처 (DEV) — 프레임 끝에서 처리한다 */
   private snapName: string | null = null
   private gifRec: {
@@ -327,6 +336,8 @@ export class Session {
         this.subOrder = null
       }
       this.lastInput = inp
+      // Enter — 내 화면의 리플레이는 바로 끝낸다 (세레모니 자체는 sim 이 양쪽 동의를 본다)
+      if (inp.buttons & BTN_SKIP) this.replay = null
       let inputs: [Input, Input]
       if (net) {
         net.lockstep.pushLocal(t, inp)
@@ -347,6 +358,7 @@ export class Session {
       }
       capturePose(this.state, this.prev)
       step(this.state, inputs)
+      this.recordFrame()
       if (net) {
         // 60틱마다 해시 — 게스트가 방장에게 보내고, 다르면 방장이 스냅샷을 보낸다 (DESIGN 4.13)
         if (this.state.tick % 60 === 0) {
@@ -390,8 +402,10 @@ export class Session {
     if (this.cfg.net && this.stallSince >= 0 && now - this.stallSince > 400) {
       message = `상대 입력 대기 중… (${this.cfg.net.link.rtt} ms)`
     }
-    this.renderer.draw(this.prev, this.state, alpha, dt, { humanTeam: me, controlled })
-    this.hud.update(this.state, { humanTeam: me, controlled, message })
+    if (!this.drawReplay(dt)) {
+      this.renderer.draw(this.prev, this.state, alpha, dt, { humanTeam: me, controlled })
+      this.hud.update(this.state, { humanTeam: me, controlled, message })
+    }
     if (import.meta.env.DEV) this.captureAfterDraw()
     this.snd.update(this.state, dt)
     if (this.keyView) {
@@ -453,6 +467,67 @@ export class Session {
     for (const t of this.tossTimers) clearTimeout(t)
     this.tossTimers = []
     this.tossing = false
+  }
+
+  // ---------------------------------------------------------------- 골 리플레이
+
+  /** 매 틱 포즈를 링 버퍼에 남긴다 (8 초). 골이 나면 여기서 직전 4.5 초를 꺼내 다시 그린다 */
+  private recordFrame(): void {
+    const st = this.state
+    if (this.poseBuf.length < REPLAY_BUF) {
+      this.poseBuf.push(makeFrame(st))
+      this.poseHead = this.poseBuf.length % REPLAY_BUF
+    } else {
+      fillFrame(this.poseBuf[this.poseHead], st)
+      this.poseHead = (this.poseHead + 1) % REPLAY_BUF
+    }
+    // 골 → 공이 골망에 들어가는 것까지 0.4 초 더 담은 뒤 리플레이를 시작한다
+    if (st.phase === 'goal' && this.lastPhase !== 'goal') this.replayPending = REPLAY_TAIL
+    if (st.phase !== 'goal') this.replay = null
+    this.lastPhase = st.phase
+    if (this.replayPending >= 0 && --this.replayPending < 0) this.startReplay()
+  }
+
+  private startReplay(): void {
+    const n = Math.min(this.poseBuf.length, REPLAY_SPAN + REPLAY_TAIL)
+    if (n < 30) return
+    const frames: ReplayFrame[] = []
+    for (let k = n; k >= 1; k--) {
+      const i = (this.poseHead - k + REPLAY_BUF * 2) % REPLAY_BUF
+      frames.push(cloneFrame(this.poseBuf[i]))
+    }
+    const st = this.state
+    // 그리기용 상태 — 얕게 베끼고 선수·공만 프레임에서 덮어쓴다. 방향키 표시는 끈다
+    const state: GameState = {
+      ...st,
+      players: st.players.map((p) => ({ ...p })),
+      ball: { ...st.ball },
+      teams: [
+        { ...st.teams[0], inX: 0, inY: 0, controlled: -1 },
+        { ...st.teams[1], inX: 0, inY: 0, controlled: -1 },
+      ],
+    }
+    applyFrame(state, frames[0])
+    this.replay = { frames, pos: 0, state, prevPose: capturePose(state) }
+  }
+
+  /** 리플레이 한 프레임 그리기. 끝나면 false */
+  private drawReplay(dt: number): boolean {
+    const r = this.replay
+    if (!r) return false
+    r.pos += dt * 60 * REPLAY_SPEED
+    const i = Math.floor(r.pos)
+    if (i >= r.frames.length - 1) {
+      this.replay = null
+      return false
+    }
+    applyFrame(r.state, r.frames[i])
+    capturePose(r.state, r.prevPose)
+    applyFrame(r.state, r.frames[i + 1])
+    const me = this.meTeam
+    this.renderer.draw(r.prevPose, r.state, r.pos - i, dt, { humanTeam: me, controlled: -1, replay: true })
+    this.hud.update(this.state, { humanTeam: me, controlled: -1, message: this.message, replay: true })
+    return true
   }
 
   /** GIF 녹화 시작 — `dom` 이면 HUD·오버레이까지(느림), 아니면 캔버스만 */
@@ -803,4 +878,91 @@ function captureFrame(src: HTMLCanvasElement, w: number, h: number): Uint8Clampe
   if (!g) return null
   g.drawImage(src, 0, 0, w, h)
   return g.getImageData(0, 0, w, h).data
+}
+
+// ---------------------------------------------------------------- 리플레이 프레임 (렌더가 읽는 것만)
+
+/** 링 버퍼 길이 (8 초) · 골 직전 4.5 초 + 골망까지 0.4 초 · 0.9 배속 */
+const REPLAY_BUF = 480
+const REPLAY_SPAN = 270
+const REPLAY_TAIL = 24
+const REPLAY_SPEED = 0.9
+
+interface FramePlayer {
+  x: number
+  y: number
+  facing: number
+  vx: number
+  vy: number
+  action: number
+  actT: number
+  holdT: number
+  throwing: boolean
+  sentOff: boolean
+}
+interface ReplayFrame {
+  players: FramePlayer[]
+  ball: { x: number; y: number; z: number; vx: number; vy: number; owner: number }
+}
+
+function makeFrame(st: GameState): ReplayFrame {
+  const f: ReplayFrame = {
+    players: st.players.map(() => ({ x: 0, y: 0, facing: 0, vx: 0, vy: 0, action: 0, actT: 0, holdT: 0, throwing: false, sentOff: false })),
+    ball: { x: 0, y: 0, z: 0, vx: 0, vy: 0, owner: -1 },
+  }
+  fillFrame(f, st)
+  return f
+}
+
+function fillFrame(f: ReplayFrame, st: GameState): void {
+  for (let i = 0; i < st.players.length && i < f.players.length; i++) {
+    const p = st.players[i]
+    const q = f.players[i]
+    q.x = p.x
+    q.y = p.y
+    q.facing = p.facing
+    q.vx = p.vx
+    q.vy = p.vy
+    q.action = p.action
+    q.actT = p.actT
+    q.holdT = p.holdT
+    q.throwing = p.throwing
+    q.sentOff = p.sentOff
+  }
+  const b = st.ball
+  f.ball.x = b.x
+  f.ball.y = b.y
+  f.ball.z = b.z
+  f.ball.vx = b.vx
+  f.ball.vy = b.vy
+  f.ball.owner = b.owner
+}
+
+function cloneFrame(f: ReplayFrame): ReplayFrame {
+  return { players: f.players.map((p) => ({ ...p })), ball: { ...f.ball } }
+}
+
+/** 프레임을 그리기용 상태에 덮어쓴다 */
+function applyFrame(st: GameState, f: ReplayFrame): void {
+  for (let i = 0; i < st.players.length && i < f.players.length; i++) {
+    const p = st.players[i]
+    const q = f.players[i]
+    p.x = q.x
+    p.y = q.y
+    p.facing = q.facing
+    p.vx = q.vx
+    p.vy = q.vy
+    p.action = q.action
+    p.actT = q.actT
+    p.holdT = q.holdT
+    p.throwing = q.throwing
+    p.sentOff = q.sentOff
+  }
+  const b = st.ball
+  b.x = f.ball.x
+  b.y = f.ball.y
+  b.z = f.ball.z
+  b.vx = f.ball.vx
+  b.vy = f.ball.vy
+  b.owner = f.ball.owner
 }

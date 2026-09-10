@@ -31,6 +31,8 @@ export const BTN_PRESET_NEXT = 1 << 10
 export const BTN_PRESET_PREV = 1 << 11
 /** 교체 명령 — a = 나가는 선발(팀 안 0~10), b = 들어오는 벤치(0~6). 다음 데드볼에 적용 */
 export const BTN_SUB = 1 << 12
+/** Enter — 골 세레모니·리플레이 건너뛰기 (온라인은 양쪽이 다 눌러야 넘어간다 · 2026-09-11) */
+export const BTN_SKIP = 1 << 13
 
 export interface Input {
   /** 방향키 −127..127 (대각선은 둘 다) */

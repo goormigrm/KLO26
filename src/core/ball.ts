@@ -297,7 +297,11 @@ export function contestBall(st: GameState, o: Player): void {
   const team = st.teams[o.team]
   const slow = team.human && team.controlled === o.idx && team.slow
   const gkHolding = o.holdT > 0
-  const baseReach = gkHolding ? 1.0 : 0.6 + (1 - o.sk.drib) * 0.5 - (slow ? 0.15 : 0)
+  // 공을 몰고 전력으로 달리면 터치가 길어져 공이 발에서 멀어진다 — 최고 속도의 60% 를 넘는 만큼 최대 +0.3 m
+  // (실제 축구에서 빠른 드리블러도 전력 질주하면 태클에 취약하다 · 2026-09-11 속도 지배 완화)
+  const oSpd = len(o.vx, o.vy) / Math.max(1, o.sk.vmax)
+  const loose = clamp((oSpd - 0.6) / 0.4, 0, 1) * 0.3
+  const baseReach = gkHolding ? 1.0 : 0.6 + (1 - o.sk.drib) * 0.5 - (slow ? 0.15 : 0) + loose
   for (const q of st.players) {
     if (q.team === o.team || q.action !== ACT_RUN || q.sentOff) continue
     if (!q.press && q.tackleT <= 0) continue

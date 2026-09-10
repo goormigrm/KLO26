@@ -196,5 +196,8 @@ KM26 → KMD26v1.0 → KLD26 의 결. 배포 주소 `https://goormigrm.github.io
 | G-25 (9/11) | 공을 가진 선수도 (조작 선수가 아니어도) 링과 이름 | `ownerRing` + `ownerName` — 아군 흰색 · 상대 붉은색. 조작 선수 표시(노랑)와 겹치면 조작 쪽만 | `render3d/renderer3d.ts` |
 | G-26 (9/11) | 방향키 빼고 내가 누르는 키를 왼쪽 아래에 · 설정에서 켜고 끄기 | 테스트 전용이던 `KeyView` 를 일반 기능으로 — 설정 `keyView`(기본 켜짐), 방향키 칸 제거, 조합(`Q + D`)을 글자로. 상대에겐 안 간다 | `render/keyview.ts` · `ui/settings.ts` · `game/session.ts` |
 | G-27 (9/11) | 공지글에 사진·GIF 넣기 (bedorage-duck 방식) | 개발 서버 플러그인 `/__snap` 이 `docs/img/` 에 쓴다(배포 무관, `apply: 'serve'`). 페이지 쪽은 `src/debug/shot.ts` — DOM+캔버스 PNG(SVG foreignObject), GIF89a 인코더(LZW·252색). **패널이 숨겨지면 rAF 가 0회라 캡처가 안 불렸다** → 틱 루프에서 `captureTick` 이 직접 그린다. 그림은 저장소에 안 넣는다(`.gitignore`) | `vite.config.ts` · `src/debug/shot.ts` · `game/session.ts` · `main.ts` |
+| G-28 (9/11) | 속도 능력치 영향을 실제 축구 수준으로 | 폭 축소(최고 속도 +24%→+14% · 가속 +51%→+25%) + **드리블 속도 상한** + 체력 연속 감속 + 전력 드리블 터치 느슨. 속도 A/B 89.8% → **77.0%**(수비 74.8 · 드리블 71.5). 1차(폭만)로는 81% 라 상한·체력까지 넣었다 | `core/skills.ts` · `core/sim.ts` · `core/physics.ts` · `core/ball.ts` · `DESIGN 4.3a` |
+| G-29 (9/11) | 골 넣어도 허전하다 — 세레모니 · 온라인은 양쪽 다 생략해야 넘어가게 | `GOAL_TICKS` 2.5 → 9 초, `ai.celebrate`(득점자에게 모임·득점자 코너 질주·먹은 팀 복귀), Enter = `BTN_SKIP`(비트 13). `tickPhase` 가 사람 팀 전원 `skipCele` 면 꼬리만 남긴다(봇 동의). 세레모니 중 사람 선수도 AI 이동 | `core/rules.ts` · `core/ai.ts` · `core/sim.ts` · `core/input.ts` · `tests/celebration.test.ts` |
+| G-30 (9/11) | 골 리플레이 가능한지 검토 → 넣기 | **가능, 렌더 전용으로.** 세션 링 버퍼(8 초 포즈) → 골 뒤 직전 4.5 초를 0.9 배속·FOV 20 으로 다시 그림. 시뮬·락스텝 무관, 결정론 영향 없음. Enter 로 내 화면 리플레이 즉시 취소 | `game/session.ts recordFrame/startReplay/drawReplay` · `render3d/renderer3d.ts ViewInfo.replay` · `render/hud.ts` |
 
 앞으로 생기는 갈림길은 이 문서에 번호를 이어 적는다.

@@ -7,7 +7,7 @@ import { rand } from './rng'
 import {
   dist, doClear, doPass, doShoot, inOwnBox, interceptPoint, nearestOppDist, offsideLineX, randN, type PassKind,
 } from './ball'
-import { CIRCLE_R, HALF_L, HALF_W, THROWIN_CLEAR, goalX, type GameState, type Player } from './state'
+import { CIRCLE_R, HALF_L, HALF_W, THROWIN_CLEAR, goalX, type GameState, type Player, GOAL_TICKS } from './state'
 
 const tmp = { x: 0, y: 0 }
 
@@ -285,6 +285,43 @@ function carrierDecide(st: GameState, p: Player, noise: number): void {
 }
 
 /** 선수 하나의 다음 목표·행동을 정한다. DECIDE_TICKS 마다 한 번 */
+/**
+ * 골 세레모니 (2026-09-11) — 넣은 팀은 득점자에게 모이고, 득점자는 코너 쪽으로 달려간다.
+ * 먹은 팀은 고개 숙이고 자기 진영으로 걸어간다. 골키퍼는 제자리. 전부 idx 기반이라 결정론이다.
+ */
+function celebrate(st: GameState, p: Player): void {
+  const ti = p.team
+  const dir = st.teams[ti].dir
+  const t = GOAL_TICKS - st.phaseT // 세레모니 경과 틱
+  if (p.sk.isGK || ti !== st.goalTeam || st.goalScorer < 0) {
+    // 골키퍼 · 먹은 팀 · 자책골: 자기 진영 앵커로 천천히
+    goAnchor(p, -3, dir)
+    p.sprint = false
+    return
+  }
+  const s = st.players[st.goalScorer]
+  if (p.idx === st.goalScorer) {
+    // 득점자: 처음 2.5 초는 가까운 코너 깃발 쪽으로 달리고, 그 뒤엔 멈춰 선다
+    if (t < 150) {
+      const cy = s.y >= 0 ? HALF_W - 3 : -HALF_W + 3
+      p.tx = clamp(s.x - dir * 6, -HALF_L + 2, HALF_L - 2)
+      p.ty = cy
+      p.sprint = true
+    } else {
+      p.tx = p.x
+      p.ty = p.y
+      p.sprint = false
+    }
+    return
+  }
+  // 동료: 득점자 둘레에 idx 로 정한 자리 (반지름 1.3 m) — 서로 겹치지 않게
+  const ang = ((p.idx * 137) % 360) * (Math.PI / 180)
+  const r = 1.3 + ((p.idx * 7) % 3) * 0.35
+  p.tx = clamp(s.x + Math.cos(ang) * r, -HALF_L + 1, HALF_L - 1)
+  p.ty = clamp(s.y + Math.sin(ang) * r, -HALF_W + 1, HALF_W - 1)
+  p.sprint = t < 240 && dist(p.x, p.y, s.x, s.y) > 6
+}
+
 export function aiDecide(st: GameState, p: Player): void {
   const ti = p.team
   const team = st.teams[ti]
@@ -297,6 +334,10 @@ export function aiDecide(st: GameState, p: Player): void {
     // 퇴장 — 터치라인 밖에 서 있는다
     p.tx = p.x
     p.ty = p.y
+    return
+  }
+  if (st.phase === 'goal') {
+    celebrate(st, p)
     return
   }
   if (p.sk.isGK) {

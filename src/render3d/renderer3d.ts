@@ -45,6 +45,8 @@ export interface ViewInfo {
   humanTeam: number
   /** 조작 중인 선수 idx (−1 = 없음) */
   controlled: number
+  /** 리플레이 재생 중 — 카메라를 바짝 당긴다 */
+  replay?: boolean
 }
 
 /** 공은 실제 0.11 m 보다 크게 그린다 — 70 m 밖에서 보인다 */
@@ -404,6 +406,7 @@ export class Renderer3D {
 
     // ---- 카메라 ----
     const tgt = broadcastTarget(bx, by, b.vx)
+    if (view.replay) tgt.fov = Math.min(tgt.fov, 20) // 리플레이는 바짝
     if (!this.camInit) {
       this.camX = tgt.x
       this.camLookY = tgt.lookY

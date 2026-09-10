@@ -4,7 +4,7 @@
 // 설정에서 켜고 끄는 일반 기능이 됐다 (2026-09-11). 내 화면에만 보이고 상대에겐 안 간다.
 
 import {
-  BTN_A, BTN_C, BTN_D, BTN_E, BTN_PACE, BTN_PRESET_NEXT, BTN_PRESET_PREV, BTN_Q, BTN_S, BTN_SPACE, BTN_SUB, BTN_W, BTN_Z,
+  BTN_A, BTN_C, BTN_D, BTN_E, BTN_PACE, BTN_PRESET_NEXT, BTN_PRESET_PREV, BTN_Q, BTN_S, BTN_SKIP, BTN_SPACE, BTN_SUB, BTN_W, BTN_Z,
   type Input,
 } from '../core/input'
 
@@ -27,13 +27,14 @@ const ROWS: [string, string, number][][] = [
   [
     ['Shift', 'ShiftLeft', BTN_PACE],
     ['Space', 'Space', BTN_SPACE],
+    ['Enter', 'Enter', BTN_SKIP],
   ],
 ]
 
 const BIT_NAMES: [number, string][] = [
   [BTN_S, 'S'], [BTN_W, 'W'], [BTN_A, 'A'], [BTN_D, 'D'], [BTN_E, 'E'],
   [BTN_PACE, 'PACE'], [BTN_SPACE, 'SPACE'], [BTN_C, 'C'], [BTN_Q, 'Q'], [BTN_Z, 'Z'],
-  [BTN_PRESET_NEXT, ']'], [BTN_PRESET_PREV, '['], [BTN_SUB, 'SUB'],
+  [BTN_PRESET_NEXT, ']'], [BTN_PRESET_PREV, '['], [BTN_SUB, 'SUB'], [BTN_SKIP, 'SKIP'],
 ]
 
 export interface KeyViewInfo {

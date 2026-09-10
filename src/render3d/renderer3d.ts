@@ -405,8 +405,19 @@ export class Renderer3D {
     this.refs.update(curr, dt)
 
     // ---- 카메라 ----
-    const tgt = broadcastTarget(bx, by, b.vx)
+    // 세레모니 중엔 골망 속 공이 아니라 **득점자(모이는 곳)** 를 따라간다 (2026-09-11 — 공을 따르면 모임이 화면 밖)
+    let fx = bx
+    let fy = by
+    let fvx = b.vx
+    if (curr.phase === 'goal' && curr.goalScorer >= 0 && !view.replay) {
+      const sc = curr.players[curr.goalScorer]
+      fx = sc.x
+      fy = sc.y
+      fvx = 0
+    }
+    const tgt = broadcastTarget(fx, fy, fvx)
     if (view.replay) tgt.fov = Math.min(tgt.fov, 20) // 리플레이는 바짝
+    else if (curr.phase === 'goal') tgt.fov = Math.min(tgt.fov, 24) // 세레모니도 조금 당긴다
     if (!this.camInit) {
       this.camX = tgt.x
       this.camLookY = tgt.lookY

@@ -124,10 +124,10 @@ export class Session {
     name: string
     w: number
     h: number
-    /** 몇 틱마다 한 장 (60틱 = 1초) */
-    every: number
+    /** 몇 ms 마다 한 장 (실시간 — 일시정지 중에도 뜬다) */
+    everyMs: number
     left: number
-    lastTick: number
+    lastMs: number
     /** 이번 그리기 뒤에 한 장 뜬다 (틱 루프가 켠다) */
     armed: boolean
     /** 캔버스만(false) / 화면 전체 DOM 포함(true — 느리다) */
@@ -310,6 +310,8 @@ export class Session {
     const now = performance.now()
     const dt = Math.min(0.25, (now - this.lastTick) / 1000)
     this.lastTick = now
+    // 캡처는 일시정지(코인토스 연출) 중에도 돌아야 한다 — 그래서 이른 반환 **앞**에 둔다 (2026-09-11)
+    if (import.meta.env.DEV) this.captureTick(now)
     if (this.paused || this.state.done) return
     this.acc += dt * 1000
     let steps = 0
@@ -345,7 +347,6 @@ export class Session {
       }
       capturePose(this.state, this.prev)
       step(this.state, inputs)
-      if (import.meta.env.DEV) this.captureTick(now)
       if (net) {
         // 60틱마다 해시 — 게스트가 방장에게 보내고, 다르면 방장이 스냅샷을 보낸다 (DESIGN 4.13)
         if (this.state.tick % 60 === 0) {
@@ -462,9 +463,9 @@ export class Session {
     const h = Math.round(w * ratio)
     this.gifRec = {
       name, w, h, dom,
-      every: Math.max(1, Math.round(60 / fps)),
+      everyMs: 1000 / fps,
       left: Math.round(seconds * fps),
-      lastTick: -1e9,
+      lastMs: -1e9,
       armed: false,
       frames: [],
       pending: Promise.resolve(),
@@ -479,8 +480,8 @@ export class Session {
    */
   private captureTick(now: number): void {
     const g = this.gifRec
-    if (g && this.state.tick - g.lastTick >= g.every) {
-      g.lastTick = this.state.tick
+    if (g && now - g.lastMs >= g.everyMs) {
+      g.lastMs = now
       g.armed = true
     }
     if (this.snapName || (g && g.armed)) this.frame(now)

@@ -540,3 +540,5 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
 .rsec .warn { font-style: normal; font-weight: 600; font-size: 11px; color: #ffb4ae; margin-left: auto; }
 .sq-detail { position: sticky; top: 10px; max-height: calc(100vh - 24px); overflow-y: auto; }
 /* ⚠ .bench / .bchip 은 2026-09-11 부터 쓰지 않는다 (전술판 아래 후보 칩 제거 — 명단 표 .rrow 로 옮겼다) */
+.roster .filters select.sel.narrow { min-width: 96px; padding: 5px 6px; font-size: 12px; }
+.roster .filters .nick { width: 104px; }

@@ -103,6 +103,8 @@ export class SquadScreen {
   private filterPos = ''
   /** 목록을 내 구단으로 좁힐지 */
   private ownOnly = true
+  /** "전 구단" 을 볼 때 구단 하나로 좁히기 (−1 = 전부) — 사용자 요청 2026-09-11 */
+  private filterClub = -1
   private search = ''
   private sort: 'ovr' | 'sal' | 'name' = 'ovr'
   private msg = ''
@@ -321,15 +323,24 @@ export class SquadScreen {
               : '<em class="warn">⚠ 예비 골키퍼 없음 — 주전이 퇴장하면 필드 선수가 골문에 섭니다</em>'
           }</div>
           ${Array.from({ length: SQUAD_SIZE - START_SIZE }, (_, k) => this.slotRow(k + START_SIZE)).join('')}
-          <div class="rsec rest">📋 그 외 명단 <small>선발·후보에 없는 선수 ${list.length}명</small></div>
+          <div class="rsec rest">📋 그 외 명단 <small>선발·후보에 없는 선수 ${list.length}명${
+            this.ownOnly ? '' : this.filterClub >= 0 ? ` · ${clubById(this.filterClub)?.name ?? ''}` : ' · 전 구단'
+          }</small></div>
           <div class="seg wide" id="scope">
             <button data-v="own"${this.ownOnly ? ' class="on"' : ''}>${club?.short ?? '내 구단'} 선수</button>
             <button data-v="all"${this.ownOnly ? '' : ' class="on"'}>전 구단 ${POOL_SIZE.toLocaleString('ko-KR')}장</button>
           </div>
           <div class="row filters">
             <input class="nick" id="f-search" placeholder="이름 찾기" value="${this.search}" />
-            <select class="sel" id="f-pos"><option value="">전 포지션</option>${POS_ORDER.map((p) => `<option${p === this.filterPos ? ' selected' : ''}>${p}</option>`).join('')}</select>
-            <select class="sel" id="f-sort"><option value="ovr"${this.sort === 'ovr' ? ' selected' : ''}>종합 순</option><option value="sal"${this.sort === 'sal' ? ' selected' : ''}>급여 순</option><option value="name"${this.sort === 'name' ? ' selected' : ''}>이름 순</option></select>
+            ${
+              this.ownOnly
+                ? ''
+                : `<select class="sel narrow" id="f-club"><option value="-1">전 구단</option>${CLUBS.map(
+                    (c) => `<option value="${c.id}"${c.id === this.filterClub ? ' selected' : ''}>${c.name}${c.div === 2 ? ' (2부)' : ''}</option>`,
+                  ).join('')}</select>`
+            }
+            <select class="sel narrow" id="f-pos"><option value="">전 포지션</option>${POS_ORDER.map((p) => `<option${p === this.filterPos ? ' selected' : ''}>${p}</option>`).join('')}</select>
+            <select class="sel narrow" id="f-sort"><option value="ovr"${this.sort === 'ovr' ? ' selected' : ''}>종합 순</option><option value="sal"${this.sort === 'sal' ? ' selected' : ''}>급여 순</option><option value="name"${this.sort === 'name' ? ' selected' : ''}>이름 순</option></select>
           </div>
           <div class="crow-list">${list.slice(0, 200).map((c) => this.cardRow(c)).join('')}</div>
           <p class="hintline">${list.length}명${list.length > 200 ? ' (앞 200명)' : ''}${this.ownOnly ? '' : ' · 다른 구단을 섞으면 팀컬러가 깨집니다'}</p>
@@ -678,6 +689,7 @@ export class SquadScreen {
     const out = POOL.filter((c) => {
       if (inSquad.has(c.id)) return false
       if (this.ownOnly && club >= 0 && c.club !== club) return false
+      if (!this.ownOnly && this.filterClub >= 0 && c.club !== this.filterClub) return false
       if (this.filterPos && c.pos !== this.filterPos) return false
       if (q && !c.name.toLowerCase().includes(q)) return false
       return true
@@ -850,6 +862,14 @@ export class SquadScreen {
     $<HTMLSelectElement>('#f-pos').onchange = (e) => {
       this.filterPos = (e.target as HTMLSelectElement).value
       this.draw()
+    }
+    // 구단 필터 — "전 구단" 을 보고 있을 때만 있다
+    const fclub = this.root.querySelector<HTMLSelectElement>('#f-club')
+    if (fclub) {
+      fclub.onchange = () => {
+        this.filterClub = Number(fclub.value)
+        this.draw()
+      }
     }
     $<HTMLSelectElement>('#f-sort').onchange = (e) => {
       this.sort = (e.target as HTMLSelectElement).value as 'ovr'

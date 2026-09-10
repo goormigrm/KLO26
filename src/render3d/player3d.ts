@@ -151,7 +151,7 @@ export function buildPlayer(spec: PlayerSpec, kit: Kit): PlayerRig {
   num.rotation.y = Math.PI
   body.add(num)
 
-  // ---- 팔: 소매(col2) + 팔뚝(피부) ----
+  // ---- 팔: 소매(kit.sleeve — 2026-09-10 부터 상의와 같은 단색) + 팔뚝(피부) ----
   const armR0 = 0.042 * thick
   const mkArm = (side: -1 | 1): THREE.Group => {
     const g = new THREE.Group()

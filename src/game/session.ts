@@ -16,7 +16,7 @@ import { Hud } from '../render/hud'
 import { KeyView } from '../render/keyview'
 import { Renderer3D, capturePose, type PrevPose } from '../render3d/renderer3d'
 import type { Kit } from '../render3d/player3d'
-import type { Settings } from '../ui/settings'
+import { bindSettingsPanel, settingsPanelHtml, type Settings } from '../ui/settings'
 import { LocalInput } from './localInput'
 import { Ticker } from './ticker'
 import { tossHostHome } from './toss'
@@ -97,7 +97,8 @@ export class Session {
   private frames = 0
   private fpsT = 0
   private keysShown: boolean
-  private syncMute: () => void = () => {}
+  /** ⚙ 설정을 Esc 메뉴에서 열었나 (닫을 때 메뉴로 돌아간다) */
+  private settingsFromMenu = false
   /** 다음 틱에 실어 보낼 교체 명령 (Esc 메뉴에서 고른다) */
   private subOrder: { out: number; in: number } | null = null
   /** 키 표시용 — 마지막으로 sim 에 보낸 입력 */
@@ -131,7 +132,7 @@ export class Session {
       <div class="game-root">
         <div class="game-stage" id="stage"></div>
         <div class="game-ui">
-          <div class="top-right"><span class="fps" id="fps"></span><button class="btn secondary" id="btn-mute">소리</button><button class="btn secondary" id="btn-menu">메뉴 (Esc)</button></div>
+          <div class="top-right"><span class="fps" id="fps"></span><button class="btn secondary" id="btn-lobby">로비로</button><button class="btn secondary" id="btn-settings">⚙ 설정</button><button class="btn secondary" id="btn-menu">메뉴 (Esc)</button></div>
           <div class="overlay" id="overlay" hidden><div class="box" id="overlay-box"></div></div>
         </div>
       </div>`
@@ -142,17 +143,10 @@ export class Session {
     this.renderer.setMatch(this.state, this.kits, this.gkKits)
     this.hud = new Hud(stage, this.radarColors, this.keysShown)
     if (cfg.test?.keyView) this.keyView = new KeyView(stage)
+    // 상단에 **로비로 · 설정 · 메뉴**를 나눠 둔다 (bedorage-duck 방식 — 사용자 요청 2026-09-11)
     ;(host.querySelector('#btn-menu') as HTMLButtonElement).onclick = () => this.toggleMenu()
-    const muteBtn = host.querySelector('#btn-mute') as HTMLButtonElement
-    const syncMute = (): void => {
-      muteBtn.textContent = this.snd.muted ? '🔇 소리 꺼짐' : '🔊 소리 켜짐'
-    }
-    muteBtn.onclick = () => {
-      this.snd.toggle()
-      syncMute()
-    }
-    this.syncMute = syncMute
-    syncMute()
+    ;(host.querySelector('#btn-settings') as HTMLButtonElement).onclick = () => this.showSettings()
+    ;(host.querySelector('#btn-lobby') as HTMLButtonElement).onclick = () => this.confirmQuit()
     // 로비 배경음을 끄고 관중석을 켠다
     this.snd.stopMusic()
     this.snd.startCrowd()
@@ -428,12 +422,17 @@ export class Session {
     this.tossing = false
   }
 
+  /** Esc — 창이 떠 있으면 닫고, 없으면 메뉴를 연다. 온라인은 멈추지 않으므로 `paused` 로 판단하면 안 된다 */
   private toggleMenu(): void {
     if (this.state.done || this.tossing) return
-    if (this.paused) this.hideOverlay()
+    if (!this.overlay.hidden) this.hideOverlay()
     else this.showMenu()
   }
 
+  /**
+   * Esc 메뉴 — **행동만** 둔다 (계속 · 교체 · 나가기). 소리·그림자 같은 설정은 ⚙ 설정 창으로 모았다
+   * (bedorage-duck 방식 — 사용자 요청 2026-09-11).
+   */
   private showMenu(): void {
     // 온라인 대전은 멈출 수 없다 — 내가 멈추면 상대도 락스텝에 걸려 함께 멈춘다
     this.paused = !this.cfg.net
@@ -441,29 +440,88 @@ export class Session {
     const box = this.overlay.querySelector('#overlay-box') as HTMLElement
     box.classList.remove('wide')
     box.innerHTML = `
-      <h2>일시정지</h2>
-      <p>${this.cfg.net ? `온라인 대전 · 방 ${this.cfg.net.link.code} · ${this.cfg.net.link.rtt} ms` : `혼자 하기 — 봇 ${['', '쉬움', '보통', '어려움'][this.cfg.difficulty]}`} · 전후반 ${Math.round(this.cfg.halfSec / 60)}분</p>
+      <h2>${this.cfg.net ? '메뉴' : '일시정지'}</h2>
+      <p>${this.cfg.net ? `온라인 대전 · 방 ${this.cfg.net.link.code} · ${this.cfg.net.link.rtt} ms` : `혼자 하기 — 봇 ${['', '쉬움', '보통', '어려움'][this.cfg.difficulty]}`} · 전후반 ${Math.round(this.cfg.halfSec / 60)}분${this.cfg.net ? ' · 멈추지 않습니다' : ''}</p>
       <div class="row">
         <button class="btn main" id="ov-resume">계속 (Esc)</button>
-        <button class="btn secondary" id="ov-sub">교체 (${this.state.teams[this.meTeam].subsLeft}/${MAX_SUBS})</button>
-        <button class="btn secondary" id="ov-keys">${this.keysShown ? '조작 안내 끄기' : '조작 안내 켜기'}</button>
-        <button class="btn secondary" id="ov-sound">${this.snd.muted ? '소리 켜기' : '소리 끄기'}</button>
+        <button class="btn secondary" id="ov-sub">🔁 교체 (${this.state.teams[this.meTeam].subsLeft}/${MAX_SUBS})</button>
+        <button class="btn secondary" id="ov-settings">⚙ 설정</button>
         <button class="btn secondary" id="ov-quit">로비로</button>
       </div>`
     this.overlay.hidden = false
     ;(box.querySelector('#ov-resume') as HTMLButtonElement).onclick = () => this.hideOverlay()
     ;(box.querySelector('#ov-sub') as HTMLButtonElement).onclick = () => this.showSubs()
-    ;(box.querySelector('#ov-keys') as HTMLButtonElement).onclick = () => {
-      this.keysShown = !this.keysShown
-      this.hud.setKeysShown(this.keysShown)
-      this.showMenu()
+    ;(box.querySelector('#ov-settings') as HTMLButtonElement).onclick = () => this.showSettings(true)
+    ;(box.querySelector('#ov-quit') as HTMLButtonElement).onclick = () => this.confirmQuit()
+  }
+
+  /**
+   * ⚙ 설정 창 — **로비와 같은 패널**을 쓴다 (`ui/settings.ts`). 바꾸면 바로 화면에 적용되고 브라우저에 저장된다.
+   * 전부 내 화면 설정이라 상대에게 보내지 않는다.
+   */
+  private showSettings(fromMenu = false): void {
+    if (this.tossing) return
+    this.settingsFromMenu = fromMenu
+    const s = this.cfg.settings
+    const box = this.overlay.querySelector('#overlay-box') as HTMLElement
+    box.classList.remove('wide')
+    const draw = (): void => {
+      box.innerHTML = `
+        <h2>⚙ 설정</h2>
+        <p class="hintline">내 화면에만 적용됩니다${this.cfg.net ? ' — 상대에게 보내지 않습니다' : ''}. 브라우저에 저장됩니다.</p>
+        <div id="set-host">${settingsPanelHtml(s, this.snd.muted)}</div>
+        <div class="row"><button class="btn main" id="ov-close">닫기</button></div>`
+      const hostEl = box.querySelector('#set-host')
+      if (hostEl) {
+        bindSettingsPanel(hostEl, s, {
+          setMuted: (m) => this.snd.setMuted(m),
+          setShadows: (on) => this.renderer.setShadows(on),
+          setResScale: (v) => this.renderer.setResScale(v),
+          setKeysHint: (on) => {
+            this.keysShown = on
+            this.hud.setKeysShown(on)
+          },
+          rerender: draw,
+        })
+      }
+      ;(box.querySelector('#ov-close') as HTMLButtonElement).onclick = () => {
+        if (this.settingsFromMenu) this.showMenu()
+        else this.hideOverlay()
+      }
     }
-    ;(box.querySelector('#ov-sound') as HTMLButtonElement).onclick = () => {
-      this.snd.toggle()
-      this.syncMute()
-      this.showMenu()
+    // 혼자 하기만 멈춘다 (온라인은 락스텝 때문에 멈출 수 없다)
+    if (!this.cfg.net) {
+      this.paused = true
+      this.message = '설정'
     }
-    ;(box.querySelector('#ov-quit') as HTMLButtonElement).onclick = () => this.exit()
+    this.overlay.hidden = false
+    draw()
+  }
+
+  /** 로비로 — 경기가 끝나기 전이면 한 번 묻는다 */
+  private confirmQuit(): void {
+    if (this.tossing) return
+    if (this.state.done) {
+      this.exit()
+      return
+    }
+    const box = this.overlay.querySelector('#overlay-box') as HTMLElement
+    box.classList.remove('wide')
+    box.innerHTML = `
+      <h2>로비로 나갈까요?</h2>
+      <p>${
+        this.cfg.net
+          ? '이 경기는 여기서 끝납니다. 상대 화면에서도 그 시점 스코어로 종료됩니다.'
+          : '지금 하던 경기는 사라집니다.'
+      }</p>
+      <div class="row">
+        <button class="btn main" id="ov-stay">계속하기</button>
+        <button class="btn secondary" id="ov-go">나가기</button>
+      </div>`
+    if (!this.cfg.net) this.paused = true
+    this.overlay.hidden = false
+    ;(box.querySelector('#ov-stay') as HTMLButtonElement).onclick = () => this.hideOverlay()
+    ;(box.querySelector('#ov-go') as HTMLButtonElement).onclick = () => this.exit()
   }
 
   /** 교체 화면 — 나갈 선수와 들어올 선수를 고른다. 명령은 다음 데드볼에 적용된다 (DESIGN 2장) */
@@ -515,6 +573,7 @@ export class Session {
 
   private hideOverlay(): void {
     ;(this.overlay.querySelector('#overlay-box') as HTMLElement).classList.remove('wide')
+    this.settingsFromMenu = false
     this.paused = false
     this.message = ''
     this.overlay.hidden = true

@@ -10,7 +10,7 @@ import { sfx } from '../audio/sfx'
 import type { LobbyLink, RoomInfo } from '../net/room'
 import { makeRoomCode } from '../net/room'
 import { loadSquadOrDefault } from './squad'
-import { loadSettings, saveSettings, type Settings } from './settings'
+import { bindSettingsPanel, loadSettings, saveSettings, settingsPanelHtml, type Settings } from './settings'
 
 /** 테스트 모드는 주소에 `?test=1` 이 있을 때만 보인다 — 배포에서는 링크를 안 걸면 끝이다 */
 export function testEnabled(): boolean {
@@ -148,11 +148,8 @@ export class Lobby {
 
       <div class="dlg" id="dlg-settings" hidden><div class="dbox">
         <h3>설정</h3>
-        <p class="hintline">브라우저에만 저장됩니다. 저사양 PC 는 그림자를 끄고 해상도를 낮추세요.</p>
-        <div class="row"><label>소리</label>${seg('sound', [['1', '켬'], ['0', '끔']], this.snd.muted ? '0' : '1')}</div>
-        <div class="row"><label>그림자</label>${seg('shadows', [['1', '켬'], ['0', '끔']], this.s.shadows ? '1' : '0')}</div>
-        <div class="row"><label>렌더 해상도</label>${seg('resScale', [['1', '100%'], ['0.75', '75%']], String(this.s.resScale))}</div>
-        <div class="row"><label>조작 안내 띠</label>${seg('keysHint', [['1', '보임'], ['0', '숨김']], this.s.keysHint ? '1' : '0')}</div>
+        <p class="hintline">내 화면에만 적용되고 브라우저에 저장됩니다. 경기 중에도 <b>⚙ 설정</b>으로 바꿀 수 있습니다.</p>
+        <div id="set-host">${settingsPanelHtml(this.s, this.snd.muted)}</div>
         <div class="dacts"><button class="btn main" data-close>닫기</button></div>
       </div></div>
 
@@ -213,6 +210,7 @@ export class Lobby {
     ;(h.querySelector('#btn-solo') as HTMLButtonElement).onclick = () => open('#dlg-solo')
     ;(h.querySelector('#btn-host') as HTMLButtonElement).onclick = () => open('#dlg-host')
     ;(h.querySelector('#btn-settings') as HTMLButtonElement).onclick = () => open('#dlg-settings')
+    this.bindSettingsHost()
     const testBtn = h.querySelector('#btn-test') as HTMLButtonElement | null
     if (testBtn) testBtn.onclick = () => open('#dlg-test')
     ;(h.querySelector('#btn-squad') as HTMLButtonElement).onclick = () => {
@@ -262,6 +260,26 @@ export class Lobby {
         if (el) el.textContent = `접속 ${this.lobbyLink!.onlineCount()}명`
       }, 1500)
     }
+  }
+
+  /** 설정 패널 — 경기 중 창과 같은 것을 쓴다 (settings.ts) */
+  private bindSettingsHost(): void {
+    const host = this.host.querySelector('#set-host')
+    if (!host) return
+    bindSettingsPanel(host, this.s, {
+      setMuted: (m) => {
+        this.snd.setMuted(m)
+        if (m) this.snd.stopMusic()
+        else this.snd.startMusic()
+      },
+      setShadows: () => {},
+      setResScale: () => {},
+      setKeysHint: () => {},
+      rerender: () => {
+        host.innerHTML = settingsPanelHtml(this.s, this.snd.muted)
+        this.bindSettingsHost()
+      },
+    })
   }
 
   private onKey = (e: KeyboardEvent): void => {

@@ -1,4 +1,4 @@
-# HANDOVER — 2026-09-11 (6차)
+# HANDOVER — 2026-09-11 (7차)
 
 > **이 문서가 최신입니다.** 단계 1~7 이 전부 들어가 있고, 2026-09-10~11 에 **사용자가 직접 해 보고 낸 제보·요청 24건**을 반영했습니다.
 > 엔진(골키퍼·슛 보조·킥오프·추가시간·수비)과 스쿼드 화면(세로 전술판·명단 한 통·별점·JSON)이 이번에 크게 바뀌었습니다.
@@ -8,9 +8,9 @@
 
 | 항목 | 값 |
 |---|---|
-| 날짜 | 2026-09-10 ~ 09-11 (직전 5차: 09-10, 4차: 09-09) |
+| 날짜 | 2026-09-10 ~ 09-11 (직전 6차: 09-11 코인토스, 5차: 09-10) |
 | 저장소 · 브랜치 | `https://github.com/goormigrm/KLO26` · `main` |
-| 마지막 커밋 | 🪙 홈·원정 동전 던지기 · 경기장 홈 컬러 (해시는 `git log -1`) |
+| 마지막 커밋 | ⚙ 경기 중 설정 분리 · 공지글 재작성 (해시는 `git log -1`) |
 | git 상태 | **클린** (`main...origin/main` — 미커밋 변경 0) |
 | 배포 | <https://goormigrm.github.io/KLO26/> — 이번 세션 커밋 9건, 확인한 것 전부 Actions success |
 | 작업 디렉터리 | 노트북: `C:\Users\tkdrm\Workspace\personal\KLO26` · 메인 PC: `C:\Users\tkdrm\OneDrive\Desktop\klo26` |
@@ -67,6 +67,20 @@
 | **경기장 홈 컬러** | `pitch3d.setHomeColor(hex)` — 관중 절반을 홈 색으로 다시 그리고 스탠드 옆면도 어둡게. `renderer.setMatch` 가 `kits[0].shirt` 로 부른다. **clone 텍스처는 각자 `needsUpdate`** 를 켜야 반영된다 |
 | 검증 | `tests/toss.test.ts` 4개 — 같은 시드 = 같은 결과 · 방장/게스트가 서로 다른 팀 · 2,000판 40~60% · 구단(`seed % CLUBS.length`)과 상관없음 |
 
+### ⚙ 설정 분리 (9/11 — 가장 최근)
+
+사용자 요청: "철FPS 처럼 경기 중에 로비로 버튼과 설정을 나누고, 설정을 대기실에서 한 것처럼 편하게".
+
+| 무엇 | 핵심 |
+|---|---|
+| **설정 패널을 로비와 공유** | `ui/settings.ts` 에 `settingsPanelHtml(s, muted)` + `bindSettingsPanel(root, s, hooks)` + `SettingsHooks`. 로비 팝업과 경기 중 창이 **같은 함수**를 부르므로 한 곳만 고치면 둘 다 바뀐다. 항목은 소리 · 그림자 · 렌더 해상도 · 조작 안내 띠 |
+| **오른쪽 위 세 버튼** | `session.ts` 상단이 `btn-lobby`(로비로) · `btn-settings`(⚙ 설정) · `btn-menu`(메뉴 Esc). 예전엔 Esc 메뉴 안에 다 섞여 있었다 |
+| **Esc 메뉴는 행동만** | 계속 · 🔁 교체 · ⚙ 설정 · 로비로. 소리/조작 안내 토글은 설정 창으로 옮겼다. `showSettings(fromMenu)` 가 `settingsFromMenu` 를 기억해 닫을 때 메뉴로 돌아간다 |
+| **로비로는 한 번 묻는다** | `confirmQuit()` — 경기가 끝났으면(`state.done`) 바로 나간다. 온라인이면 "상대 화면에서도 그 시점 스코어로 종료" 라고 알린다 |
+| **경기 중 그림자·해상도 변경** | `renderer3d.setShadows(on)` — `gl.shadowMap.enabled` 와 `sun.castShadow` 를 바꾼 뒤 **`scene.traverse` 로 모든 재질에 `needsUpdate`**. 안 하면 셰이더가 다시 컴파일되지 않아 화면이 그대로다. `setResScale(v)` 는 `resize()` |
+| 버그 정정 | Esc 가 **온라인에서 메뉴를 닫지 못했다** — `toggleMenu` 가 `paused` 로 판단했는데 온라인은 락스텝이라 언제나 `false`. `!this.overlay.hidden` 으로 바꿨다 |
+| 확인 | 브라우저에서 로비 팝업 · 경기 중 창 · 그림자/조작 안내 즉시 반영 · 메뉴 → 설정 → 닫기 → 메뉴 복귀 · 로비로 확인창 → 나가기까지 **눈으로 확인**. `npm test` 94개 통과 |
+
 ### 화면 (9/10~11)
 
 | 무엇 | 핵심 |
@@ -115,6 +129,9 @@
 | 유니폼 단색 · 원정 전신 흰색 | `kits.ts` · `DESIGN 7.1` · **`DECISIONS N-4`(이번에 정정)** · `player3d.ts` 주석 |
 | 명단은 KM26 배치(선발→후보→그 외 한 통), 전술판 아래 벤치 제거 | `squad.ts` · `style.css .rrow` · **`DESIGN 7.2`(이번에 정정)** · `DECISIONS G-11` |
 | 저장 슬롯 5 (10 에서) | `squad.ts SLOT_COUNT` · **`DESIGN 5.10`(이번에 정정)** |
+| 경기 중 로비로/설정 분리 · 설정 패널을 로비와 공유 | `ui/settings.ts` · `session.ts showSettings/confirmQuit` · `renderer3d.ts setShadows/setResScale` · `lobby.ts` · `DESIGN 7.2` · `DECISIONS G-14` · 플레이 가이드 |
+| Esc 는 `overlay.hidden` 으로 판단 (`paused` 아님) | `session.ts toggleMenu` · `DECISIONS G-15` |
+| 공지글은 코드 블록 안에 둔다 (줄바꿈 보존) | `docs/공지글-모음.md` — 문안 · 짧은 문안 · 댓글 상투구 · 2차 틀 · "고치기 전 확인" 표 |
 | 게임패드 개발 안 함 (백로그에도 없음) | `DESIGN 1.3 · 3.2 · 13장` · README · 첫 화면 · 공지글 — **전 문서 일관 확인** |
 
 > **결정 전파 검증 (2026-09-11)** — 위 항목을 grep 으로 전 범위 검색했다.
@@ -128,7 +145,16 @@
 
 ### [미반영] — 없음
 
-2026-09-11 검증에서 나온 잔재는 전부 정정해 커밋했다(`17ea693`). 그 뒤 코인토스(G-13)도 DESIGN 2·6.1·6.3·7.1·7.2 · DECISIONS · CHANGELOG · 플레이 가이드에 함께 넣었다. 남은 구버전 표기 없음.
+2026-09-11 검증에서 나온 잔재는 전부 정정해 커밋했다(`17ea693`). 그 뒤 코인토스(G-13)도 DESIGN 2·6.1·6.3·7.1·7.2 · DECISIONS · CHANGELOG · 플레이 가이드에 함께 넣었다.
+
+**7차 검증에서 새로 찾아 고친 잔재 2건** (공지글을 다시 쓰며 공개 문구를 전부 훑다가 나왔다):
+
+| 잔재 | 정본 | 고침 |
+|---|---|---|
+| `index.html` `<meta name="description">` 이 **선수 1,024명** (2026-09-09 명단 갱신 전 숫자) | `src/data/cards.json` = **1,056명 · 29구단** (`dataHash b53cd9ed65ffe691`) | 1,056 으로 |
+| `README.md` 의 "선발↔**벤치**" | 사용자 문서 용어는 **후보** (6차에서 통일) | 후보로 |
+
+`CHANGELOG` 의 옛 차수에 남은 1,024 는 **과거 기록이라 그대로 둔다**. 그 밖에 남은 구버전 표기 없음.
 
 ### 사용자가 먼저
 
@@ -157,6 +183,7 @@
 | 게임패드 | **하지 않는다** — 백로그가 아니라 계획 제외 (사용자 결정) |
 | 폰 지원 | **하지 않는다** — PC 전용 (사용자 결정) |
 | 감독 모드 · 2v2 · 재접속/난입 · 연장·승부차기 · 로컬 전적 | DESIGN 13장 그대로 |
+| Nostr 릴레이 2곳이 늘 실패 | `relay.agorist.space` · `relay.oldenburg.cool` 이 로컬 개발 내내 WebSocket 실패(콘솔 오류 대부분이 이것). 다른 릴레이로 방은 잡히므로 급하지 않다. **B-1 다른 회선 대전에서 방이 안 잡히면** 목록에서 빼고 살아 있는 릴레이로 교체 |
 | `.bench` / `.bchip` CSS | 2026-09-11 부터 아무도 안 쓴다(전술판 아래 벤치 제거). 지워도 되지만 위험 없어 남겨 뒀다 — CSS 정리할 때 함께 |
 
 ---
@@ -174,6 +201,10 @@
 48. **Read 도구가 "unchanged since last Read" 라고 잘못 볼 때가 있다** (다른 PC 커밋을 pull 한 직후). `cat -n` 으로 읽으면 된다 — Edit 는 디스크 기준이라 그대로 동작한다.
 49. **PowerShell 에서 python heredoc 은 한글·이모지에서 깨진다** (`cp949`). 스크립트를 **파일로 써서** 실행할 것 (메모리의 "heredoc 금지"와 같은 이유).
 50. 입력을 화면에 보여 주는 것(방향 표시)은 **렌더가 `team.inX/inY` 를 읽으면 된다** — sim 에 아무것도 더하지 않는다(결정론 무관).
+51. **온라인에서는 `paused` 로 "창이 떠 있나"를 판단하면 안 된다.** 락스텝이라 온라인은 언제나 `paused === false` 다. 창 상태는 `overlay.hidden` 처럼 **화면 자체**에서 읽는다.
+52. **Three.js 에서 `shadowMap.enabled` 를 껐다 켜면 재질을 전부 `needsUpdate` 해야 한다.** 셰이더가 컴파일된 채로 남아 화면이 안 바뀐다 — 텍스처 `clone` 때와 같은 함정(교훈 6차).
+53. **로비와 경기 중처럼 같은 설정을 두 곳에서 보여 줄 때는 HTML 생성 함수를 공유한다.** 따로 쓰면 한쪽만 고쳐진다. 반영은 `hooks` 로 주입해 로비(렌더러 없음)와 경기(렌더러 있음)가 같은 코드를 쓰게 했다.
+54. **마크다운 문서에 붙여 넣을 문안을 쓸 때는 코드 블록에 넣는다.** 줄바꿈 하나는 렌더링에서 공백이 되어 문단이 한 덩어리로 뭉친다 — 사용자가 "줄바꿈 제대로" 라고 지적한 원인.
 
 ---
 
@@ -182,16 +213,18 @@
 | 경로 | 역할 |
 |---|---|
 | `docs/DESIGN.md` | **설계서 정본** (2·3.1·3.3·4.7·4.8·5.10·7.1·7.2 가 이번에 바뀜) |
-| `docs/DECISIONS.md` | **9장 F-1~F-11**(엔진 제보) · **10장 G-1~G-12**(스쿼드 화면·유니폼) |
+| `docs/DECISIONS.md` | **9장 F-1~F-11**(엔진 제보) · **10장 G-1~G-15**(스쿼드 화면·유니폼·코인토스·설정 분리) |
 | `docs/PREP.md` | 사용자가 직접 할 것 — **B-1 다른 회선 대전**만 남음 |
 | `docs/플레이-가이드.md` | 처음 하는 사람용 (조작·명단·JSON·구단 필터) |
-| `docs/공지글-모음.md` | 공개 1차 문안 |
+| `docs/공지글-모음.md` | 공개 문안 — 1차 긴 문안 · 짧은 문안 · 댓글 상투구 · 2차 틀 · **고치기 전 확인 표**(문안의 숫자마다 정본 경로) |
 | `src/core/ball.ts` | 소유·태클·파울·패스·스로인·슛(**블록**)·**GK 세이브/펀트**·오프사이드 |
 | `src/core/rules.ts` | 킥오프(**kickoffTarget**)·아웃·프리킥·PK·카드·교체·**advanceClock(추가시간)** |
 | `src/core/sim.ts` | createState / step / hashState · **사람 입력 해석**(수비 자동 추격·다이브 비행) |
 | `src/core/ai.ts` | 팀 AI · 압박 슬라이더 · 라인 지키기 · **gkRush** |
 | `src/core/state.ts` | 상수·타입 (`ADDED_MAX_MIN 5` · `END_GRACE_SEC 20` · `gkRush` · `stoppage`/`added`) |
 | `src/ui/squad.ts` | **스쿼드 화면 전부** — 세로 전술판 · 명단 표(`rosterHead`/`slotRow`/`cardRow`) · `autoFill` · `pinToBench` · JSON · `cancel` |
+| `src/ui/settings.ts` | 설정 값(localStorage) + **로비·경기 공용 패널** `settingsPanelHtml`/`bindSettingsPanel` |
+| `src/game/session.ts` | 경기 진행 · 오버레이 전부 (`showMenu`/`showSettings`/`confirmQuit`/`showSubs`/`showToss`) |
 | `src/ui/stars.ts` | 별점 `starHtml` · 능력치 눈금 `pipsHtml` (숫자를 안 보여 준다) |
 | `src/cards/cards.ts` | 6스탯 · OVR · 급여 · **ovrStars/statStars** · `SIX_FIELD`/`SIX_GK` |
 | `src/render3d/kits.ts` | 유니폼 — **홈 단색 · 원정 전신 흰색**(GK 제외) |

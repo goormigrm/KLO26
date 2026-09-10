@@ -70,3 +70,64 @@ export function saveSettings(s: Settings): void {
     // 사생활 모드 등 — 저장 못 해도 게임은 된다
   }
 }
+
+// ---------------------------------------------------------------- 설정 패널 (로비·경기 중 공용)
+//
+// 로비와 경기 중이 **같은 패널**을 쓴다 (bedorage-duck 방식) — 한 곳만 고치면 둘 다 바뀐다.
+// 전부 **내 화면 설정**이라 P2P 로 보내지 않고 브라우저에만 남는다.
+
+export interface SettingsHooks {
+  /** 소리 켜기/끄기 */
+  setMuted(muted: boolean): void
+  /** 그림자 (렌더러에 즉시) */
+  setShadows(on: boolean): void
+  /** 렌더 해상도 배율 (렌더러에 즉시) */
+  setResScale(v: number): void
+  /** 화면 아래 조작 안내 띠 */
+  setKeysHint(on: boolean): void
+  /** 값이 바뀌어 패널을 다시 그려야 한다 */
+  rerender(): void
+}
+
+function segRow(label: string, id: string, items: [string, string][], cur: string, note = ''): string {
+  const btns = items.map(([v, t]) => `<button data-v="${v}"${v === cur ? ' class="on"' : ''}>${t}</button>`).join('')
+  return `<div class="srow"><label>${label}</label><div class="sctl"><div class="seg" id="${id}">${btns}</div>${
+    note ? `<small>${note}</small>` : ''
+  }</div></div>`
+}
+
+/** 설정 패널 HTML — 로비 팝업과 경기 중 창이 함께 쓴다 */
+export function settingsPanelHtml(s: Settings, muted: boolean): string {
+  return `<div class="setpanel">
+    ${segRow('소리', 'st-sound', [['1', '🔊 켜기'], ['0', '🔇 끄기']], muted ? '0' : '1', '관중석·휘슬·킥 — 전부 코드로 만든 소리')}
+    ${segRow('그림자', 'st-shadows', [['1', '켜기'], ['0', '끄기']], s.shadows ? '1' : '0', '저사양 PC 는 끄면 가벼워집니다')}
+    ${segRow('렌더 해상도', 'st-res', [['1', '100%'], ['0.75', '75%']], String(s.resScale), '75% 는 조금 흐려지지만 빨라집니다')}
+    ${segRow('조작 안내 띠', 'st-keys', [['1', '보이기'], ['0', '숨기기']], s.keysHint ? '1' : '0', '화면 아래 키 안내')}
+  </div>`
+}
+
+/** 설정 패널 배선. `root` 는 패널이 들어 있는 요소 */
+export function bindSettingsPanel(root: ParentNode, s: Settings, hooks: SettingsHooks): void {
+  const on = (sel: string, cb: (v: string) => void): void => {
+    root.querySelectorAll<HTMLButtonElement>(`${sel} button`).forEach((b) => {
+      b.onclick = () => {
+        cb(b.dataset.v!)
+        saveSettings(s)
+        hooks.rerender()
+      }
+    })
+  }
+  on('#st-sound', (v) => hooks.setMuted(v === '0'))
+  on('#st-shadows', (v) => {
+    s.shadows = v === '1'
+    hooks.setShadows(s.shadows)
+  })
+  on('#st-res', (v) => {
+    s.resScale = Number(v) === 0.75 ? 0.75 : 1
+    hooks.setResScale(s.resScale)
+  })
+  on('#st-keys', (v) => {
+    s.keysHint = v === '1'
+    hooks.setKeysHint(s.keysHint)
+  })
+}

@@ -238,6 +238,27 @@ export class Renderer3D {
     }
   }
 
+  /** 그림자 켜기/끄기 — 경기 중에도 바꿀 수 있다 (2026-09-11 설정 창) */
+  setShadows(on: boolean): void {
+    if (this.opts.shadows === on) return
+    this.opts.shadows = on
+    this.gl.shadowMap.enabled = on
+    this.pitch.sun.castShadow = on
+    // 그림자 유무는 셰이더에 박히므로 재질을 다시 컴파일해야 한다
+    this.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material
+      if (!m) return
+      if (Array.isArray(m)) for (const x of m) x.needsUpdate = true
+      else m.needsUpdate = true
+    })
+  }
+
+  /** 렌더 해상도 배율 (1 또는 0.75) */
+  setResScale(v: number): void {
+    this.opts.resScale = v
+    this.resize()
+  }
+
   resize(): void {
     const w = Math.max(1, this.container.clientWidth)
     const h = Math.max(1, this.container.clientHeight)

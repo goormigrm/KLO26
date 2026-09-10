@@ -80,7 +80,7 @@ export function createState(cfg: MatchConfig): GameState {
     players,
     ball: {
       x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, owner: -1, lastTouch: -1, lastTeam: -1, kickTick: -100,
-      shotBy: -1, passTo: -1, onTarget: false, fromThrow: false, restartBy: -1, passLive: false,
+      shotBy: -1, shotQ: 0, passTo: -1, onTarget: false, fromThrow: false, restartBy: -1, passLive: false,
     },
     teams,
     rng: makeRng(cfg.seed),
@@ -311,7 +311,7 @@ export function step(st: GameState, inputs: [Input, Input]): void {
       speedK *= 0.8 + 0.15 * p.sk.drib
       // 공을 몰고 뛰는 속도는 **상한**이 있다 (드리블 6.6~7.5 m/s) — 실제 축구에서도 공을 갖고는
       // 아무리 빨라도 전력 질주 속도가 안 나온다. 속도는 공 없는 침투·복귀에서 값을 한다 (2026-09-11)
-      const cap = 6.6 + 0.9 * p.sk.drib
+      const cap = 6.4 + 0.9 * p.sk.drib
       if (p.sk.vmax * speedK > cap) speedK = cap / p.sk.vmax
     }
     // 체력 — 절반 아래로 떨어지면 그만큼 느려진다 (0 이면 78%). 빠른 선수도 뛰기만 하면 지친다 (2026-09-11)

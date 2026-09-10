@@ -57,7 +57,9 @@ export function interceptPoint(st: GameState, p: Player, out: { x: number; y: nu
     x += vx * 0.1
     y += vy * 0.1
     const t = i * 0.1
-    if (dist(p.x, p.y, x, y) <= p.sk.vmax * t * 0.9 + 0.5) {
+    // 반응 시간 — 예측(posn)이 좋을수록 먼저 움직인다 (0.35 → 0.10 s). 짧은 경합은 속도보다 이게 가른다 (2026-09-11)
+    const react = 0.35 - 0.25 * p.sk.posn
+    if (dist(p.x, p.y, x, y) <= p.sk.vmax * Math.max(0, t - react) * 0.9 + 0.5) {
       out.x = x
       out.y = y
       return
@@ -238,7 +240,11 @@ export function tryControl(st: GameState): void {
   const intended = b.passTo === p.idx
   let chance: number
   if (b.z > 1.2) chance = (intended ? 0.52 : 0.3) + 0.5 * p.sk.head
-  else if (intended) chance = 0.74 + 0.24 * p.sk.ctl - clamp((speed - 16) / 34, 0, 0.28)
+  else if (intended) {
+    // 전력으로 달리며 받는 공은 발에 안 붙는다 — 최고 속도의 60% 넘게 달리는 만큼 최대 −0.18 (2026-09-11)
+    const rushK = clamp((len(p.vx, p.vy) / Math.max(1, p.sk.vmax) - 0.6) / 0.4, 0, 1)
+    chance = 0.74 + 0.24 * p.sk.ctl - clamp((speed - 16) / 34, 0, 0.28) - 0.18 * rushK
+  }
   else {
     chance = 0.6 + 0.4 * p.sk.ctl - clamp((speed - 6) / 30, 0, 0.5)
     // 남의 패스를 가로채는 것은 마크(mark)가 좋을수록 깔끔하다 (0.15 → 0.4 — 2026-09-11 검증에서 mar 가 안 닿았다)
@@ -316,7 +322,8 @@ export function contestBall(st: GameState, o: Player): void {
       return
     }
     const angleF = 0.55 + 0.45 * (1 - fromBehind(o, q))
-    let p = 0.05 * (0.3 + 1.3 * q.sk.tck) * (1.4 - 0.8 * o.sk.drib) * angleF * (0.6 + 0.8 * (q.sk.str / (q.sk.str + o.sk.str + 0.0001)))
+    // 전력으로 몰고 달리는 공은 닿는 거리도 늘지만(loose) **뺏길 확률도** 오른다 — 사용자 지적 2026-09-11
+    let p = 0.05 * (0.3 + 1.3 * q.sk.tck) * (1.4 - 0.8 * o.sk.drib) * angleF * (0.6 + 0.8 * (q.sk.str / (q.sk.str + o.sk.str + 0.0001))) * (1 + 2.0 * loose)
     if (q.tackleT > 0) p *= 3
     if (slow) p *= 0.6
     // 견제(C 홀드) 중인 수비수는 자세를 잡고 있다 — 드리블러가 들이받으면 더 잘 뺏는다 (2026-09-10)
@@ -644,8 +651,13 @@ export function doShoot(st: GameState, p: Player, dx: number, dy: number, power:
     ty = clamp(open * 1.6 * (1 - Math.abs(lat)) + lat * 3.1, -3.1, 3.1)
   }
   const dG = dist(bx, by, gx, 0)
-  let speed = 16 + 14 * power
-  let sigma = 3.0 * (1.35 - p.sk.sho)
+  // 전력으로 달리던 중의 슛은 자세가 불안하다 (사용자 지적 2026-09-11 — 빠른 드리블 뒤 슛은 슈팅 능력이 떨어져야 한다).
+  // 최고 속도의 55% 를 넘는 만큼 오차 최대 +90% · 힘 −12% · 공이 뜬다. 결정력이 높으면 절반만 흔들린다
+  const spdK = len(p.vx, p.vy) / Math.max(1, p.sk.vmax)
+  const rush = clamp((spdK - 0.55) / 0.45, 0, 1) * (1 - 0.4 * p.sk.fin)
+  // 결정력이 높을수록 세게 찬다 (0.38 → ×0.98 · 0.92 → ×1.08) — 골키퍼는 빠른 공을 더 못 잡는다
+  let speed = (16 + 14 * power) * (0.9 + 0.2 * p.sk.sho) * (1 - 0.15 * rush)
+  let sigma = 3.0 * (1.35 - p.sk.sho) * (1 + 1.2 * rush)
   if (awkward) sigma *= 1.6
   if (dG > 25) sigma *= 1.3 - 0.5 * p.sk.lon
   const latK = Math.abs(by) / Math.max(1, Math.abs(gx - bx))
@@ -664,7 +676,7 @@ export function doShoot(st: GameState, p: Player, dx: number, dy: number, power:
     const T = clamp(dG / speed, 0.6, 1.6)
     vz = 0.5 * G * T * 0.95
   } else {
-    vz = speed * (0.04 + 0.1 * power) * (1.3 - 0.6 * p.sk.fin) + randN(st.rng) * 0.5
+    vz = speed * (0.04 + 0.1 * power) * (1.3 - 0.6 * p.sk.fin) + randN(st.rng) * 0.5 + rush * 0.9
     if (vz < 0) vz = 0
   }
   releaseBall(st, p)
@@ -672,6 +684,8 @@ export function doShoot(st: GameState, p: Player, dx: number, dy: number, power:
   b.vy = sinA(a) * speed
   b.vz = vz
   b.shotBy = p.idx
+  // 이 슛의 질 — 골키퍼가 잡을지 쳐낼지 정할 때 본다
+  b.shotQ = p.sk.fin
   const S = st.stats[p.team]
   S.shots++
   // 블록 — 슛 선상 3 m 안에 있는 수비수가 몸으로 막는다. 위치 선정(posn)이 닿는 폭을, 태클(tck)이 성공률을 정한다 (수비 강화 2026-09-10)
@@ -790,6 +804,8 @@ export function gkCatch(st: GameState, gk: Player): void {
     const stretch = clamp(d / hand, 0, 1)
     // 2026-09-11 검증 — 곱(0.88~1.11)으로는 폭이 좁았다. 바탕값에 넣어 LO 0.72 / HI 0.92
     chance = 0.6 + 0.34 * gk.sk.gkHand - 0.46 * stretch - clamp((speed - 14) / 26, 0, 0.32)
+    // 결정력 높은 선수의 슛은 잡기 어렵다 (사용자 지적 2026-09-11) — fin 0.38 → +0.04 · 0.92 → −0.13
+    if (isShot) chance -= 0.45 * (b.shotQ - 0.5)
   }
   const S = st.stats[gk.team]
   if (rand(st.rng) < chance) {
@@ -804,7 +820,8 @@ export function gkCatch(st: GameState, gk: Player): void {
     return
   }
   // 쳐내기 — 잡을 확률에서 남은 만큼만. 완전히 놓칠 수도 있다
-  if (rand(st.rng) > 0.4 + 0.3 * gk.sk.gkHand + 0.25 * gk.sk.gkPunch) return
+  // 쳐내기 — 잘 찬 공은 손에 맞고도 흘러 들어가거나 멀리 못 걷어낸다
+  if (rand(st.rng) > 0.4 + 0.3 * gk.sk.gkHand + 0.25 * gk.sk.gkPunch - (isShot ? 0.4 * (b.shotQ - 0.5) : 0)) return
   if (isShot && b.onTarget) {
     S.saves++
     st.events.push({ tick: st.tick, type: 'save', team: gk.team, player: gk.idx, x: b.x, y: b.y })

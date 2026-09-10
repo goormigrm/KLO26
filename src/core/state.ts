@@ -141,6 +141,8 @@ export interface Ball {
   kickTick: number
   /** 슛이었다면 찬 선수 idx (선방 통계용). 다른 사람이 만지면 −1 */
   shotBy: number
+  /** 이 슛을 찬 선수의 결정력(0~1) — 골키퍼가 잡을지·쳐낼지 정할 때 본다 (2026-09-11). 슛이 아니면 0 */
+  shotQ: number
   /** 패스라면 받으라고 보낸 선수 idx */
   passTo: number
   /** 슛이 골문 안으로 향하고 있었나 (선방 통계) */

@@ -76,7 +76,10 @@ export class Lobby {
             <div class="sub-h">내 스쿼드</div>
             <b class="club">${myClub ? myClub.name : '혼합 스쿼드'}</b>
             <span class="sqline">${squadLine}${best ? ` · 최고 ${best.name}` : ''}</span>
-            <div class="mini" title="급여 ${chk.salary} / ${cap}"><i class="${chk.salary > cap ? 'over' : ''}" style="width:${Math.min(100, (chk.salary / cap) * 100)}%"></i></div>
+            <div class="salrow">
+              <div class="mini" title="급여 ${chk.salary} / ${cap}"><i class="${chk.salary > cap ? 'over' : ''}" style="width:${Math.min(100, (chk.salary / cap) * 100)}%"></i></div>
+              <small>급여 ${Math.round((chk.salary / cap) * 100)}% 사용 · 남은 ${Math.max(0, cap - chk.salary)}</small>
+            </div>
           </div>
           <div class="row acts">
             <button class="btn main" id="btn-squad">🃏 스쿼드 수정</button>

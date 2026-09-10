@@ -448,9 +448,12 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
 .dhead .ov { margin-left: auto; }
 .st { grid-template-columns: 92px 1fr; }
 .st span em { font-style: normal; font-weight: 500; color: var(--ink-3); margin-left: 3px; }
-.mini { display: inline-grid; grid-template-columns: repeat(6, 24px); gap: 4px; align-items: center; }
-.mini i { display: block; height: 7px; background: #2a3340; border-radius: 3px; overflow: hidden; position: relative; }
-.mini i::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--w); background: linear-gradient(90deg, #2ea043, #e3b341); }
+.sixbars { display: inline-grid; grid-template-columns: repeat(6, 24px); gap: 4px; align-items: center; }
+.sixbars i { display: block; height: 7px; background: #2a3340; border-radius: 3px; overflow: hidden; position: relative; }
+.sixbars i::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--w); background: linear-gradient(90deg, #2ea043, #e3b341); }
+.squad-bar.v2 .salrow { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.squad-bar.v2 .salrow .mini { flex: 1; margin-top: 0; }
+.squad-bar.v2 .salrow small { font: 700 11px 'IBM Plex Mono', monospace; color: var(--ink-2); white-space: nowrap; }
 .crow-head { display: grid; grid-template-columns: 70px 120px minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 2px 9px 4px; font: 700 10px 'IBM Plex Mono', monospace; color: var(--ink-3); letter-spacing: .06em; }
 .crow-head .lab { display: inline-grid; grid-template-columns: repeat(6, 24px); gap: 4px; text-align: center; }
 .crow-head .lab i { font-style: normal; cursor: help; }

@@ -469,16 +469,16 @@ export class Renderer3D {
       const ux = ux0 / ul
       const uy = uy0 / ul
       const side = a.ky >= 0 ? -1 : 1 // 가운데 쪽으로 살짝 비켜서 골문이 비스듬히 보인다
-      const back = a.pk ? 6 : 7.5
-      const off = a.pk ? 1.6 : 2.2
+      const back = a.pk ? 8.5 : 7.5
+      const off = a.pk ? 1.8 : 2.2
       const camSx = a.kx - ux * back + -uy * side * off
       const camSy = a.ky - uy * back + ux * side * off
-      const camH = a.pk ? 2.8 : 3.4
+      const camH = a.pk ? 3.6 : 3.4
       // 시선 — 차기 전엔 골문 쪽 앞을, 찬 뒤엔 공을
       const kicked = curr.phase === 'play'
       const lookSx = kicked ? bx : a.kx + ux * Math.max(8, ul * 0.55)
       const lookSy = kicked ? by : a.ky + uy * Math.max(8, ul * 0.55)
-      const spFov = a.pk ? 30 : 36
+      const spFov = a.pk ? 28 : 36
       const k = this.spBlend
       px += (camSx - px) * k
       py += (camH - py) * k
@@ -487,6 +487,12 @@ export class Renderer3D {
       ly += (1.0 - ly) * k
       lz += (-lookSy - lz) * k
       fovNow += (spFov - fovNow) * k
+    }
+    if (this.spBlend > 0.5) {
+      // 키커 뒤 카메라에서는 머리 위 이름표·화살표가 화면을 가린다 — 발밑 링만 남긴다
+      this.marker.visible = false
+      if (this.name) this.name.visible = false
+      if (this.ownerName) this.ownerName.visible = false
     }
     this.camera.position.set(px, py, pz)
     this.camera.lookAt(lx, ly, lz)

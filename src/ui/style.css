@@ -542,3 +542,20 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
 /* ⚠ .bench / .bchip 은 2026-09-11 부터 쓰지 않는다 (전술판 아래 후보 칩 제거 — 명단 표 .rrow 로 옮겼다) */
 .roster .filters select.sel.narrow { min-width: 96px; padding: 5px 6px; font-size: 12px; }
 .roster .filters .nick { width: 104px; }
+
+/* ---- 2026-09-11: 코인토스 연출 (홈/원정 결정) ---- */
+.toss { text-align: center; padding: 6px 4px 2px; }
+.toss h2 { margin: 14px 0 4px; font-family: 'Black Han Sans', sans-serif; font-weight: 400; font-size: 26px; }
+.toss h2 b { color: var(--gold); }
+.toss .hintline { margin: 0; font-size: 13px; }
+.toss .hintline b { color: var(--ink); }
+.coin { position: relative; width: 92px; height: 92px; margin: 6px auto 0; transform-style: preserve-3d; }
+.coin .face { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%;
+  font: 800 15px 'IBM Plex Mono', monospace; letter-spacing: .06em; backface-visibility: hidden;
+  box-shadow: 0 6px 18px rgba(0,0,0,.5), 0 0 0 3px rgba(0,0,0,.25) inset; }
+.coin .face.h { background: linear-gradient(160deg, #ffe27a, #d99c20); color: #2a2010; }
+.coin .face.a { background: linear-gradient(160deg, #f4f4f4, #9aa3ad); color: #1e2229; transform: rotateY(180deg); }
+.coin.spin { animation: coinspin .5s linear infinite; }
+@keyframes coinspin { from { transform: rotateY(0); } to { transform: rotateY(360deg); } }
+.coin.res-h { transform: rotateY(0); transition: transform .45s cubic-bezier(.2,.9,.3,1); }
+.coin.res-a { transform: rotateY(180deg); transition: transform .45s cubic-bezier(.2,.9,.3,1); }

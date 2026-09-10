@@ -62,13 +62,19 @@ export class Hud {
     parent.appendChild(this.root)
     this.root.querySelectorAll<HTMLElement>('[data-k]').forEach((e) => (this.el[e.dataset.k!] = e))
     this.radar = new Radar(this.root)
-    // 배경이 밝으면 글씨를 어둡게 — 원정이 흰 유니폼으로 갈아입으면 흰 글씨가 묻힌다 (2026-09-09)
+    this.setColors(colors)
+    this.setKeysShown(keysShown)
+  }
+
+  /** 전광판 팀 칸 색 — 다시 하기로 홈/원정이 바뀌면 다시 부른다 (2026-09-11 코인토스) */
+  setColors(colors: [string, string]): void {
+    this.colors = colors
+    // 배경이 밝으면 글씨를 어둡게 — 원정이 흰 유니폼이면 흰 글씨가 묻힌다 (2026-09-09)
     for (const [el, c] of [[this.el.home, colors[0]], [this.el.away, colors[1]]] as [HTMLElement, string][]) {
       el.style.background = c
       el.style.color = isLight(c) ? '#15181d' : '#ffffff'
       el.style.textShadow = isLight(c) ? 'none' : '0 1px 2px rgba(0,0,0,.5)'
     }
-    this.setKeysShown(keysShown)
   }
 
   setKeysShown(b: boolean): void {

@@ -14,6 +14,8 @@ const POST_VIS_R = 0.09
 export interface Pitch3D {
   group: THREE.Group
   sun: THREE.DirectionalLight
+  /** 홈 팀 색으로 관중석·스탠드를 다시 칠한다 (2026-09-11 — 경기마다 홈이 바뀐다) */
+  setHomeColor(hex: number): void
   dispose(): void
 }
 
@@ -108,30 +110,48 @@ function grassTexture(): THREE.CanvasTexture {
   return tex
 }
 
-/** 관중 — 색 점을 찍은 캔버스 */
-function crowdTexture(): THREE.CanvasTexture {
-  const c = document.createElement('canvas')
-  c.width = 512
-  c.height = 128
+/** 색을 어둡게/밝게 (k < 1 이면 어둡게) */
+function shade(hex: number, k: number): string {
+  const r = Math.min(255, Math.round(((hex >> 16) & 255) * k))
+  const g = Math.min(255, Math.round(((hex >> 8) & 255) * k))
+  const b = Math.min(255, Math.round((hex & 255) * k))
+  return `rgb(${r},${g},${b})`
+}
+
+/**
+ * 관중 캔버스를 그린다. `home` 을 주면 그 색 옷을 입은 사람이 **절반쯤** 되고 바탕도 그 색으로 어두워진다
+ * — 홈 팀 컬러가 관중석에 보이게 (사용자 요청 2026-09-11).
+ */
+function drawCrowd(c: HTMLCanvasElement, home?: number): void {
   const g = c.getContext('2d')!
-  g.fillStyle = '#1b2230'
+  g.fillStyle = home === undefined ? '#1b2230' : shade(home, 0.24)
   g.fillRect(0, 0, c.width, c.height)
   const cols = ['#c94a4a', '#3d6fd6', '#e6d35a', '#e8e8e8', '#4fae5d', '#8a5fd1', '#f08a3c', '#2c3e50']
+  const homeCols = home === undefined ? [] : [shade(home, 1), shade(home, 1.25), shade(home, 0.78)]
   let h = 0x9e3779b9
   for (let y = 4; y < c.height; y += 6) {
     for (let x = 2; x < c.width; x += 5) {
       h = (Math.imul(h, 1664525) + 1013904223) >>> 0
       if ((h >>> 8) % 7 === 0) continue
-      g.fillStyle = cols[(h >>> 16) % cols.length]
+      // 홈 색 절반 · 나머지는 알록달록 (원정 팬·중립)
+      g.fillStyle = homeCols.length && (h >>> 12) % 2 === 0 ? homeCols[(h >>> 20) % homeCols.length] : cols[(h >>> 16) % cols.length]
       g.beginPath()
       g.arc(x + ((h >>> 4) % 3) - 1, y, 2, 0, Math.PI * 2)
       g.fill()
     }
   }
+}
+
+/** 관중 텍스처 + 홈 색으로 다시 칠하는 함수 */
+function crowdTexture(): { tex: THREE.CanvasTexture; canvas: HTMLCanvasElement } {
+  const c = document.createElement('canvas')
+  c.width = 512
+  c.height = 128
+  drawCrowd(c)
   const tex = new THREE.CanvasTexture(c)
   tex.colorSpace = THREE.SRGBColorSpace
   tex.wrapS = THREE.RepeatWrapping
-  return tex
+  return { tex, canvas: c }
 }
 
 function cylinder(r: number, len: number, m: THREE.Material): THREE.Mesh {
@@ -215,13 +235,16 @@ export function buildPitch(opts: PitchOptions): Pitch3D {
 
   // ---- 관중석 — 낮은 띠 4개 ----
   const crowd = crowdTexture()
-  disposables.push(crowd)
+  disposables.push(crowd.tex)
+  /** 스탠드마다 clone 을 쓴다 (repeat 이 달라서) — 홈 색을 바꾸면 전부 needsUpdate 해야 한다 */
+  const crowdClones: THREE.Texture[] = []
   const standH = 5.5
   const standD = 10
   const gap = 7
   const side = new THREE.MeshLambertMaterial({ color: 0x1b2230 })
   const mkStand = (len: number, depth: number, x: number, z: number, rotY: number): void => {
-    const tex = crowd.clone()
+    const tex = crowd.tex.clone()
+    crowdClones.push(tex)
     tex.repeat.set(len / 12, 1)
     tex.needsUpdate = true
     disposables.push(tex)
@@ -270,6 +293,13 @@ export function buildPitch(opts: PitchOptions): Pitch3D {
   return {
     group,
     sun,
+    setHomeColor(hex: number) {
+      drawCrowd(crowd.canvas, hex)
+      crowd.tex.needsUpdate = true
+      // clone 은 캔버스를 공유하지만 needsUpdate 는 각자 켜야 GPU 에 다시 올라간다
+      for (const t of crowdClones) t.needsUpdate = true
+      side.color.set(shade(hex, 0.3))
+    },
     dispose() {
       for (const d of disposables) d.dispose()
       grass.geometry.dispose()

@@ -1,4 +1,5 @@
-// 혼자 하기 세션 (DESIGN 6.7) — 사람(홈) vs 봇(원정). 락스텝 없이 같은 sim 을 돈다.
+// 경기 세션 — 혼자 하기(사람 vs 봇)와 온라인 대전을 함께 굴린다 (DESIGN 6.7).
+// **홈/원정은 경기마다 동전 던지기로 정한다** (`toss.ts`, 2026-09-11) — 방장·사람이라고 홈이 아니다.
 // 틱은 Worker 타이머(60Hz), 그리기는 requestAnimationFrame. 렌더는 prev/curr 보간만 하고 sim 을 바꾸지 않는다.
 
 import { BTN_SUB, EMPTY_INPUT, type Input } from '../core/input'
@@ -18,6 +19,7 @@ import type { Kit } from '../render3d/player3d'
 import type { Settings } from '../ui/settings'
 import { LocalInput } from './localInput'
 import { Ticker } from './ticker'
+import { tossHostHome } from './toss'
 
 export interface SoloConfig {
   difficulty: Difficulty
@@ -50,7 +52,7 @@ export interface TestConfig {
 export interface NetConfig {
   link: RoomLink
   lockstep: Lockstep
-  /** 내 팀 (0 = 방장·홈, 1 = 게스트·원정) */
+  /** 내 팀 (0 = 홈 · 1 = 원정) — 대기실이 **동전 던지기**로 정한다 (방장이 늘 홈이 아니다) */
   me: 0 | 1
   peerId: string
   /** 두 팀의 스쿼드 (이미 검사를 통과한 것) */
@@ -106,6 +108,11 @@ export class Session {
   private stalls = 0
   private resyncs = 0
   private snd = sfx()
+  /** 내 팀 (0 = 홈 · 1 = 원정). **동전 던지기로 정해진다** — 방장이라고 홈이 아니다 (2026-09-11) */
+  private meTeam: 0 | 1 = 0
+  /** 코인토스 연출 중 — Esc 메뉴를 막는다 */
+  private tossing = false
+  private tossTimers: number[] = []
   private keyView: KeyView | null = null
   private sndSeen = 0
   private hashes = new Map<number, number>()
@@ -159,6 +166,7 @@ export class Session {
     this.ticker = new Ticker(() => this.tick())
     this.ticker.start()
     this.raf = requestAnimationFrame(this.frame)
+    this.showToss()
     // 디버그·스크린샷 훅 (bedorage-duck __bd 와 같은 용도). 평소 코드는 이걸 쓰지 않는다
     ;(window as unknown as { __klo?: unknown }).__klo = {
       state: () => this.state,
@@ -177,10 +185,12 @@ export class Session {
   private newState(seed: number): GameState {
     const c = this.cfg
     if (c.net) {
+      // 대기실이 이미 동전 던지기로 홈/원정 순서를 정해 넘겼다 (waitroom.begin)
       const [a, b] = c.net.squads
       const home = toSquadConfig(a, c.net.names[0], short(c.net.names[0]))
       const away = toSquadConfig(b, c.net.names[1], short(c.net.names[1]))
       this.applyKits(squadClub(a), squadClub(b))
+      this.meTeam = c.net.me
       return createState({ seed, halfSec: c.halfSec, squads: [home, away], human: [true, true] })
     }
     const mySquad = c.squad
@@ -190,20 +200,27 @@ export class Session {
     let oppIdx = c.oppClub ?? (seed % CLUBS.length)
     if (myClub && CLUBS[oppIdx] && CLUBS[oppIdx].id === myClub.id) oppIdx = (oppIdx + 1) % CLUBS.length
     const oppClub = CLUBS[oppIdx] ?? CLUBS[0]
-    const home = mySquad
-      ? toSquadConfig(mySquad, myClub?.name ?? '홈', myClub?.short ?? '홈')
-      : synthSquad(11, { name: '홈', short: '홈', formation: c.formation, quality: 66 })
-    const awaySquad = clubSquad(oppClub.id, c.oppFormation)
-    const away = toSquadConfig(awaySquad, oppClub.name, oppClub.short)
-    this.applyKits(myClub, oppClub)
+    const mine = mySquad
+      ? toSquadConfig(mySquad, myClub?.name ?? '내 팀', myClub?.short ?? '내팀')
+      : synthSquad(11, { name: '내 팀', short: '내팀', formation: c.formation, quality: 66 })
+    const opp = toSquadConfig(clubSquad(oppClub.id, c.oppFormation), oppClub.name, oppClub.short)
+    // 🪙 동전 던지기 — 혼자 하기도 홈이 고정이 아니다 (2026-09-11)
+    const iAmHome = tossHostHome(seed)
+    this.meTeam = iAmHome ? 0 : 1
+    this.applyKits(iAmHome ? myClub : oppClub, iAmHome ? oppClub : myClub)
     // 테스트 관전 — 두 팀 다 봇 (사용자는 보기만 한다)
     const spectate = c.test?.spectate === true
+    const oppDiff = c.difficulty
     return createState({
       seed,
       halfSec: c.halfSec,
-      squads: [home, away],
-      human: [!spectate, false],
-      bots: [spectate ? c.difficulty : 2, c.test?.awayDifficulty ?? c.difficulty],
+      squads: iAmHome ? [mine, opp] : [opp, mine],
+      human: spectate ? [false, false] : iAmHome ? [true, false] : [false, true],
+      bots: spectate
+        ? [c.difficulty, c.test?.awayDifficulty ?? c.difficulty]
+        : iAmHome
+          ? [2, oppDiff]
+          : [oppDiff, 2],
     })
   }
 
@@ -341,7 +358,7 @@ export class Session {
       this.fpsT = 0
     }
     const alpha = this.paused ? 1 : Math.min(1, this.acc / TICK_MS)
-    const me = this.cfg.net ? this.cfg.net.me : 0
+    const me = this.meTeam
     const controlled = this.state.teams[me].controlled
     let message = this.message
     if (this.cfg.net && this.stallSince >= 0 && now - this.stallSince > 400) {
@@ -365,8 +382,54 @@ export class Session {
 
   // ---- 메뉴 · 결과 ----
 
+  /**
+   * 🪙 코인토스 연출 — 이번 경기 홈이 어디인지 보여 준다. **렌더 전용**이라 sim·결정론과 무관하다.
+   * 온라인에서는 멈추지 않는다(멈추면 락스텝 때문에 상대도 멈춘다) — 양쪽이 같은 시각에 같은 결과를 본다.
+   */
+  private showToss(): void {
+    const st = this.state
+    const iAmHome = this.meTeam === 0
+    const box = this.overlay.querySelector('#overlay-box') as HTMLElement
+    box.classList.remove('wide')
+    box.innerHTML = `
+      <div class="toss">
+        <div class="coin spin"><span class="face h">HOME</span><span class="face a">AWAY</span></div>
+        <h2 id="toss-t">동전 던지기</h2>
+        <p class="hintline" id="toss-p">홈과 원정을 정합니다</p>
+      </div>`
+    this.overlay.hidden = false
+    this.tossing = true
+    // 혼자 하기만 멈춘다 (봇이 1초 뒤 킥오프를 차 버리므로)
+    if (!this.cfg.net) this.paused = true
+    const coin = box.querySelector('.coin') as HTMLElement
+    const t1 = window.setTimeout(() => {
+      coin.classList.remove('spin')
+      coin.classList.add(iAmHome ? 'res-h' : 'res-a')
+      const t = box.querySelector('#toss-t')
+      const p = box.querySelector('#toss-p')
+      if (t) t.innerHTML = `🏠 홈 <b>${st.teams[0].name}</b>`
+      if (p) {
+        p.innerHTML = iAmHome
+          ? '당신이 <b>홈</b>입니다 — 관중석이 우리 색으로 물듭니다'
+          : `당신은 <b>원정</b>입니다 — 흰 유니폼으로 뜁니다 (상대 ${st.teams[0].short})`
+      }
+      this.snd.ui('ok')
+    }, 1500)
+    const t2 = window.setTimeout(() => {
+      this.tossing = false
+      this.hideOverlay()
+    }, 3100)
+    this.tossTimers = [t1, t2]
+  }
+
+  private clearTossTimers(): void {
+    for (const t of this.tossTimers) clearTimeout(t)
+    this.tossTimers = []
+    this.tossing = false
+  }
+
   private toggleMenu(): void {
-    if (this.state.done) return
+    if (this.state.done || this.tossing) return
     if (this.paused) this.hideOverlay()
     else this.showMenu()
   }
@@ -382,7 +445,7 @@ export class Session {
       <p>${this.cfg.net ? `온라인 대전 · 방 ${this.cfg.net.link.code} · ${this.cfg.net.link.rtt} ms` : `혼자 하기 — 봇 ${['', '쉬움', '보통', '어려움'][this.cfg.difficulty]}`} · 전후반 ${Math.round(this.cfg.halfSec / 60)}분</p>
       <div class="row">
         <button class="btn main" id="ov-resume">계속 (Esc)</button>
-        <button class="btn secondary" id="ov-sub">교체 (${this.state.teams[this.cfg.net ? this.cfg.net.me : 0].subsLeft}/${MAX_SUBS})</button>
+        <button class="btn secondary" id="ov-sub">교체 (${this.state.teams[this.meTeam].subsLeft}/${MAX_SUBS})</button>
         <button class="btn secondary" id="ov-keys">${this.keysShown ? '조작 안내 끄기' : '조작 안내 켜기'}</button>
         <button class="btn secondary" id="ov-sound">${this.snd.muted ? '소리 켜기' : '소리 끄기'}</button>
         <button class="btn secondary" id="ov-quit">로비로</button>
@@ -406,7 +469,7 @@ export class Session {
   /** 교체 화면 — 나갈 선수와 들어올 선수를 고른다. 명령은 다음 데드볼에 적용된다 (DESIGN 2장) */
   private showSubs(): void {
     const st = this.state
-    const team = st.teams[this.cfg.net ? this.cfg.net.me : 0]
+    const team = st.teams[this.meTeam]
     let out = -1
     const box = this.overlay.querySelector('#overlay-box') as HTMLElement
     const draw = (): void => {
@@ -470,7 +533,7 @@ export class Session {
       .filter((e) => e.type === 'goal')
       .map((e) => `${st.teams[e.team].short} ${e.player >= 0 ? st.players[e.player].spec.name : '(자책)'} ${Math.max(1, Math.round((e.tick / 60 / st.halfSec) * 45))}'`)
       .join(' · ')
-    const meTeam = this.cfg.net ? this.cfg.net.me : 0
+    const meTeam = this.meTeam
     const my = st.teams[meTeam].goals
     const opp = st.teams[1 - meTeam].goals
     const verdict = my > opp ? '승리!' : my < opp ? '패배' : '무승부'
@@ -506,11 +569,16 @@ export class Session {
 
   private restart(): void {
     const seed = (Math.random() * 0x7fffffff) >>> 0
+    this.clearTossTimers()
     this.state = this.newState(seed)
     this.prev = capturePose(this.state)
     this.evSeen = 0
+    this.sndSeen = this.state.events.length
     this.renderer.setMatch(this.state, this.kits, this.gkKits)
+    this.hud.setColors(this.radarColors)
     this.hideOverlay()
+    // 다시 하기도 동전을 새로 던진다 — 홈이 바뀔 수 있다
+    this.showToss()
   }
 
   private exit(): void {
@@ -522,6 +590,7 @@ export class Session {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    this.clearTossTimers()
     this.ticker.stop()
     cancelAnimationFrame(this.raf)
     window.removeEventListener('resize', this.onResize)

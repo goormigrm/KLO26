@@ -209,6 +209,8 @@ export class Renderer3D {
     for (const r of this.rigs) this.scene.add(r.root)
     this.kits = kits
     this.gkKits = gkKits
+    // 경기장을 **홈 팀 색**으로 (2026-09-11) — 홈은 경기마다 동전 던지기로 바뀐다
+    this.pitch.setHomeColor(kits[0].shirt)
     this.camInit = false
     this.nameFor = -1
     this.refs.place(st)

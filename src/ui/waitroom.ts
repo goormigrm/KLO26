@@ -13,6 +13,7 @@ import { starHtml } from './stars'
 import { decodeSquad, encodeSquad } from '../cards/squadcode'
 import type { NetConfig } from '../game/session'
 import { Lockstep } from '../net/lockstep'
+import { tossHostHome } from '../game/toss'
 import { delayForRtt, matchSeed, openRoom, type CtlMessage, type Member, type RoomLink } from '../net/room'
 
 const CAP = computeCap().cap
@@ -139,7 +140,9 @@ export class WaitRoom {
     this.started = true
     clearInterval(this.timer)
     this.opts.announce?.(2, 'playing')
-    const me: 0 | 1 = this.opts.role === 'host' ? 0 : 1
+    // 홈/원정은 **동전 던지기** — 시드에서 유도하므로 두 브라우저가 같은 결과를 얻는다 (2026-09-11)
+    const hostHome = tossHostHome(seed)
+    const me: 0 | 1 = (this.opts.role === 'host') === hostHome ? 0 : 1
     const squads: [Squad, Squad] = me === 0 ? [mySquad, chk.squad] : [chk.squad, mySquad]
     const names: [string, string] = me === 0 ? [this.me.name, this.other!.name] : [this.other!.name, this.me.name]
     void members
@@ -188,6 +191,7 @@ export class WaitRoom {
         <h1>대기실</h1>
         <div class="wait-cols">${mine}${theirs}</div>
         <p class="hintline">왕복 ${this.link.rtt} ms · 지연 ${delayForRtt(this.link.rtt)}틱 · 전후반 ${Math.round(this.opts.halfSec / 60)}분</p>
+        <p class="hintline">🪙 홈·원정은 시작할 때 <b>동전 던지기</b>로 정합니다 — 방장이라고 홈이 아닙니다.</p>
         ${this.msg ? `<div class="errs"><span>${this.msg}</span></div>` : ''}
         <div class="row">
           <button class="btn main" id="w-ready">${this.me.ready ? '준비 취소' : '준비'}</button>

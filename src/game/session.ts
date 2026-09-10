@@ -2,7 +2,7 @@
 // **홈/원정은 경기마다 동전 던지기로 정한다** (`toss.ts`, 2026-09-11) — 방장·사람이라고 홈이 아니다.
 // 틱은 Worker 타이머(60Hz), 그리기는 requestAnimationFrame. 렌더는 prev/curr 보간만 하고 sim 을 바꾸지 않는다.
 
-import { BTN_SUB, EMPTY_INPUT, type Input } from '../core/input'
+import { BTN_SUB, soloInputs, type Input } from '../core/input'
 import { createState, hashState, snapshot, step } from '../core/sim'
 import { synthSquad } from '../core/synth'
 import { clubSquad, squadClub, toSquadConfig, type Squad } from '../cards/squad'
@@ -311,7 +311,9 @@ export class Session {
         }
         inputs = net.lockstep.get(t)
       } else {
-        inputs = [inp, EMPTY_INPUT]
+        // 내 입력은 **내 팀 칸**에 넣는다 (`soloInputs`). 동전 던지기로 원정이 되면
+        // 0번 칸에 고정하던 예전 코드는 봇에게 키를 주고 내 선수는 가만히 서 있었다 (2026-09-11 제보).
+        inputs = soloInputs(this.meTeam, inp)
       }
       capturePose(this.state, this.prev)
       step(this.state, inputs)

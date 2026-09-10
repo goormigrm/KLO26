@@ -44,6 +44,15 @@ export interface Input {
 
 export const EMPTY_INPUT: Input = { mx: 0, my: 0, buttons: 0, a: 0, b: 0 }
 
+/**
+ * 혼자 하기에서 **내 입력을 내 팀 칸에 넣는다.**
+ * 동전 던지기로 원정(`meTeam === 1`)이 될 수 있으므로 0번 칸에 고정하면
+ * 봇이 내 키를 받고 내 선수는 가만히 서 있는다 (2026-09-11 제보).
+ */
+export function soloInputs(meTeam: 0 | 1, inp: Input): [Input, Input] {
+  return meTeam === 0 ? [inp, EMPTY_INPUT] : [EMPTY_INPUT, inp]
+}
+
 export function cloneInput(i: Input): Input {
   return { mx: i.mx, my: i.my, buttons: i.buttons, a: i.a, b: i.b }
 }

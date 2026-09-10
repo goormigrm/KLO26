@@ -70,7 +70,7 @@ export class Lobby {
           <span>PC 키보드 전용 · 게임패드 없음</span><span>카드 ${POOL_SIZE.toLocaleString('ko-KR')}장 전원 개방 · 급여 상한</span><span>방송 카메라 · 찰흙 선수</span><span>오프사이드·파울·카드·PK·교체</span><span>전후반 3분</span><span>광고·결제 없음</span>
         </div>
 
-        <div class="squad-bar v2" style="--c:${myClub ? hex(myClub.col) : '#2c3644'};--c2:${myClub ? hex(myClub.col2) : '#2c3644'}">
+        <div class="squad-bar v2" style="--c:${myClub ? hex(myClub.col) : '#2c3644'}">
           <span class="cbar"></span>
           <div class="sqinfo">
             <div class="sub-h">내 스쿼드</div>

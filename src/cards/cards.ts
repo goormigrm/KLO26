@@ -144,6 +144,25 @@ export function boostSpec(c: Card, plus: number): Card {
   return { ...c, attr, gkA }
 }
 
+/**
+ * 별점 — 화면은 정확한 OVR·세부 능력치를 숫자로 보여 주지 않는다 (사용자 결정 2026-09-10).
+ * OVR 40 → ½ · 60 → 2 · 75 → 3½ · 90 → 5. 반 개 단위.
+ */
+export function ovrStars(ovr: number): number {
+  const v = Math.round(((ovr - 40) / 10) * 2) / 2
+  return v < 0.5 ? 0.5 : v > 5 ? 5 : v
+}
+
+/** 세부 능력치(0~99) → 별 (20점에 한 개) */
+export function statStars(stat: number): number {
+  const v = Math.round((stat / 20) * 2) / 2
+  return v < 0.5 ? 0.5 : v > 5 ? 5 : v
+}
+
+/** 6스탯 항목명 — 목록 머리·상세에 쓴다 */
+export const SIX_FIELD: readonly [string, string][] = [['PAC', '속력'], ['SHO', '슈팅'], ['PAS', '패스'], ['DRI', '드리블'], ['DEF', '수비'], ['PHY', '피지컬']]
+export const SIX_GK: readonly [string, string][] = [['DIV', '다이빙'], ['HAN', '핸들링'], ['KIC', '킥'], ['REF', '반사'], ['POS', '위치'], ['SPD', '스피드']]
+
 /** 능숙도 색 (DESIGN 5.7) */
 export function famColor(fam: number): string {
   if (fam >= 100) return '#3fb950'

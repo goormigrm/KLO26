@@ -8,18 +8,21 @@
 // 규칙 검사는 화면이 아니라 `cards/squad.ts` 가 한다 — 받는 쪽도 같은 함수로 다시 센다.
 
 import { FORMATIONS, FORMATION_LIST, SLOT_FAM, SLOT_XY } from '../core/formation'
-import { famColor, sixGKOf, sixOf } from '../cards/cards'
+import { SIX_FIELD, SIX_GK, famColor, ovrStars, sixGKOf, sixOf, statStars } from '../cards/cards'
 import {
   ENH_BUDGET, ENH_MAX, SQUAD_SIZE, START_SIZE, cardOvr, cardSalary, checkSquad, clubById, clubSquad, computeCap,
   teamColorBonus, type Squad,
 } from '../cards/squad'
-import { decodeSquad, encodeSquad } from '../cards/squadcode'
 import { CLUBS, POOL, POOL_HASH, POOL_SIZE, cardById } from '../data/pool'
 import type { Card } from '../cards/cards'
 import { sfx } from '../audio/sfx'
+import { miniBars, starHtml } from './stars'
 
 const SLOTS_KEY = 'klo26.squads'
 const CUR_KEY = 'klo26.squad'
+/** 자동 채우기 기준 (능숙도 우선 / 능력치 우선) — 브라우저에 기억 */
+const AUTO_KEY = 'klo26.autoBy'
+type AutoBy = 'fam' | 'ovr'
 /** 저장 슬롯 — 10 → 5 (사용자 요청 2026-09-10). 위에 띠로 늘 보인다 */
 const SLOT_COUNT = 5
 const CAP = computeCap().cap
@@ -107,6 +110,9 @@ export class SquadScreen {
   private mode: 'club' | 'board'
   /** 저장돼 있던 스쿼드가 있는가 — 구단 고르기에서 "그만두고 돌아가기" 를 띄울지 정한다 */
   private hasSquad: boolean
+  /** 화면을 열 때의 스쿼드 — "저장 안 하고 돌아가기" 가 이걸로 되돌린다 (사용자 요청 2026-09-10) */
+  private original: Squad | null
+  private autoBy: AutoBy
   private snd = sfx()
 
   constructor(
@@ -118,6 +124,14 @@ export class SquadScreen {
     const saved = loadSquad()
     this.sq = saved ?? defaultSquad()
     this.hasSquad = !!saved
+    this.original = saved ? (JSON.parse(JSON.stringify(saved)) as Squad) : null
+    let by: AutoBy = 'fam'
+    try {
+      if (localStorage.getItem(AUTO_KEY) === 'ovr') by = 'ovr'
+    } catch {
+      // 무시
+    }
+    this.autoBy = by
     // 저장된 스쿼드가 없거나 버려졌으면 구단 고르기부터. 있으면 바로 **수정**으로 (사용자 요청 2026-09-09)
     this.mode = saved && startAt === 'edit' ? 'board' : 'club'
     if (!saved) this.msg = '구단을 고르면 그 구단 선수로 선발 11명과 벤치 7명을 채웁니다.'
@@ -152,13 +166,13 @@ export class SquadScreen {
   private drawClubs(): void {
     const rows = CLUBS.map((c) => {
       const own = POOL.filter((p) => p.club === c.id)
-      const avg = Math.round(own.reduce((a, p) => a + cardOvr(p, 0), 0) / own.length)
+      const avg = own.reduce((a, p) => a + cardOvr(p, 0), 0) / own.length
       const best = own.slice().sort((a, b) => cardOvr(b, 0) - cardOvr(a, 0))[0]
-      return `<button class="clubcard" data-club="${c.id}" style="--c:${hex(c.col)};--c2:${hex(c.col2)}">
+      return `<button class="clubcard" data-club="${c.id}" style="--c:${hex(c.col)}">
         <span class="cbar"></span>
         <b>${c.name}</b>
-        <small>${c.div === 1 ? 'K리그1' : 'K리그2'} · 선수 ${own.length}명 · 평균 OVR ${avg}</small>
-        <em>최고 ${best.name} ${cardOvr(best, 0)}</em>
+        <small>${c.div === 1 ? 'K리그1' : 'K리그2'} · 선수 ${own.length}명 · 평균 ${starHtml(ovrStars(avg), true)}</small>
+        <em>최고 ${best.name} ${starHtml(ovrStars(cardOvr(best, 0)), true)}</em>
       </button>`
     }).join('')
     this.root.innerHTML = `
@@ -166,7 +180,7 @@ export class SquadScreen {
         <h1>구단 고르기</h1>
         <div class="row">
           ${this.hasSquad ? '<button class="btn secondary" id="sq-keep">그만두고 스쿼드 수정으로</button>' : ''}
-          <button class="btn secondary" id="sq-back">로비로</button>
+          <button class="btn secondary" id="sq-back">저장 안 하고 로비로</button>
         </div>
       </div>
       <p class="hintline">구단을 고르면 <b>그 구단 선수로 선발 11명과 벤치 7명을 자동으로 채웁니다.</b>
@@ -196,7 +210,7 @@ export class SquadScreen {
         this.draw()
       }
     }
-    ;(this.root.querySelector('#sq-back') as HTMLButtonElement).onclick = () => this.finish()
+    ;(this.root.querySelector('#sq-back') as HTMLButtonElement).onclick = () => this.cancel()
   }
 
   // ---------------------------------------------------------------- 전술판
@@ -227,7 +241,7 @@ export class SquadScreen {
       return `<button class="chip${on}" data-slot="${i}" draggable="true" style="${style};--fam:${famColor(fam)}">
         <span class="no">${c.no}</span>
         <b>${c.name}</b>
-        <span class="ov">${cardOvr(c, enh + color.bonus)}</span>
+        <span class="ov">${starHtml(ovrStars(cardOvr(c, enh + color.bonus)), true)}</span>
         <small>${slot}${enh ? ` +${enh}` : ''}</small>
       </button>`
     }
@@ -239,7 +253,7 @@ export class SquadScreen {
       const on = this.sel === i ? ' on' : this.mark(i)
       if (!c) return `<button class="bchip empty${on}" data-slot="${i}">비어 있음</button>`
       return `<button class="bchip${on}" data-slot="${i}" draggable="true">
-        <span class="no">${c.no}</span><b>${c.name}</b><span class="ov">${cardOvr(c, sq.enh[i] ?? 0)}</span><small>${c.pos}</small>
+        <span class="no">${c.no}</span><b>${c.name}</b><span class="ov">${starHtml(ovrStars(cardOvr(c, sq.enh[i] ?? 0)), true)}</span><small>${c.pos}</small>
       </button>`
     }).join('')
 
@@ -254,11 +268,23 @@ export class SquadScreen {
         <div class="row">
           <select class="sel" id="sq-form">${FORMATION_LIST.map((f) => `<option${f === sq.formation ? ' selected' : ''}>${f}</option>`).join('')}</select>
           <button class="btn secondary" id="sq-club">🏟 구단 바꾸기</button>
-          <button class="btn secondary" id="sq-auto">자동 채우기</button>
-          <button class="btn secondary" id="sq-code">코드 복사</button>
-          <button class="btn secondary" id="sq-paste">붙여넣기</button>
-          <button class="btn main" id="sq-done"${check.ok ? '' : ' disabled'}>이 스쿼드로</button>
+          <button class="btn secondary" id="sq-json-save">JSON 저장</button>
+          <button class="btn secondary" id="sq-json-load">JSON 불러오기</button>
+          <input type="file" id="sq-file" accept=".json,application/json" hidden />
+          <button class="btn secondary" id="sq-cancel">저장 안 하고 돌아가기</button>
+          <button class="btn main" id="sq-done"${check.ok ? '' : ' disabled'}>이 스쿼드로 (저장)</button>
         </div>
+      </div>
+      <div class="autobar">
+        <span class="lab">자동 채우기</span>
+        <button class="btn secondary" id="auto-xi">선발 11명</button>
+        <button class="btn secondary" id="auto-bench">후보 7명</button>
+        <span class="lab">기준</span>
+        <div class="seg" id="auto-by">
+          <button data-v="fam"${this.autoBy === 'fam' ? ' class="on"' : ''} title="포메이션 자리마다 그 자리 능숙도가 높은 선수부터">포메이션 능숙도 우선</button>
+          <button data-v="ovr"${this.autoBy === 'ovr' ? ' class="on"' : ''} title="자리에 서도 되는 선수 중 능력치가 높은 선수부터">선수 능력치 우선</button>
+        </div>
+        <small>내 구단 선수로만 채웁니다 · 선발을 채우면 비는 후보 자리는 자동으로 메웁니다</small>
       </div>
       ${this.slotsStrip()}
       <div class="gauges v2">
@@ -308,8 +334,9 @@ export class SquadScreen {
           <div class="row filters">
             <input class="nick" id="f-search" placeholder="이름 찾기" value="${this.search}" />
             <select class="sel" id="f-pos"><option value="">전 포지션</option>${POS_ORDER.map((p) => `<option${p === this.filterPos ? ' selected' : ''}>${p}</option>`).join('')}</select>
-            <select class="sel" id="f-sort"><option value="ovr"${this.sort === 'ovr' ? ' selected' : ''}>OVR 순</option><option value="sal"${this.sort === 'sal' ? ' selected' : ''}>급여 순</option><option value="name"${this.sort === 'name' ? ' selected' : ''}>이름 순</option></select>
+            <select class="sel" id="f-sort"><option value="ovr"${this.sort === 'ovr' ? ' selected' : ''}>종합 순</option><option value="sal"${this.sort === 'sal' ? ' selected' : ''}>급여 순</option><option value="name"${this.sort === 'name' ? ' selected' : ''}>이름 순</option></select>
           </div>
+          <div class="crow-head"><span>종합</span><span>이름</span><span>구단 · 포지션 · 급여</span><span class="lab">${(this.filterPos === 'GK' ? SIX_GK : SIX_FIELD).map(([k, n]) => `<i title="${n}">${k}</i>`).join('')}</span></div>
           <div class="crow-list">${list.slice(0, 200).map((c) => this.cardRow(c)).join('')}</div>
           <p class="hintline">${list.length}장${list.length > 200 ? ' (앞 200장)' : ''}${this.ownOnly ? '' : ' · 다른 구단을 섞으면 팀컬러가 깨집니다'}</p>
         </div>
@@ -337,11 +364,12 @@ export class SquadScreen {
       salHtml = `<span class="sal${delta > 0 ? ' up' : delta < 0 ? ' down' : ''}">급여 ${sal} (${sign})</span>${over ? '<span class="sal over">상한 초과</span>' : ''}`
     }
     const dis = used || over
+    const labels = c.pos === 'GK' ? SIX_GK : SIX_FIELD
     return `<button class="crow${used ? ' used' : ''}${over ? ' over' : ''}" data-card="${c.id}"${dis ? ' disabled' : ''}>
-      <span class="ov">${cardOvr(c, 0)}</span>
+      <span class="ov">${starHtml(ovrStars(cardOvr(c, 0)), true)}</span>
       <b>${c.name}</b>
       <small${showFam ? ` style="color:${famColor(fam)}"` : ''}>${cl?.short ?? ''} · ${c.pos}${showFam ? ` · 능숙도 ${fam}` : ''} ${salHtml}</small>
-      <em>${Object.values(s).join(' ')}</em>
+      ${miniBars(Object.values(s), labels)}
     </button>`
   }
 
@@ -369,20 +397,21 @@ export class SquadScreen {
     const fam = this.famAt(c, this.sel)
     const enh = this.sq.enh[this.sel] ?? 0
     const s = c.pos === 'GK' ? sixGKOf(c) : sixOf(c)
-    const names = c.pos === 'GK' ? ['DIV', 'HAN', 'KIC', 'REF', 'POS', 'SPD'] : ['PAC', 'SHO', 'PAS', 'DRI', 'DEF', 'PHY']
+    const names = c.pos === 'GK' ? SIX_GK : SIX_FIELD
+    // 세부 능력치는 숫자 대신 별 (사용자 결정 2026-09-10)
     const bars = Object.values(s)
-      .map((v, i) => `<div class="st"><span>${names[i]}</span><i style="width:${v}%"></i><b>${v}</b></div>`)
+      .map((v, i) => `<div class="st"><span title="${names[i][1]}">${names[i][0]} <em>${names[i][1]}</em></span>${starHtml(statStars(v))}</div>`)
       .join('')
     const starter = this.sel < START_SIZE
     const partner = this.bestPartner(this.sel)
     const partnerName = partner >= 0 ? cardById(this.sq.ids[partner])?.name ?? '' : ''
-    const base = cardOvr(c, 0)
-    const now = cardOvr(c, enh)
-    const next = enh < ENH_MAX ? cardOvr(c, enh + 1) : now
+    const base = ovrStars(cardOvr(c, 0))
+    const now = ovrStars(cardOvr(c, enh))
+    const next = enh < ENH_MAX ? ovrStars(cardOvr(c, enh + 1)) : now
     const budgetLeft = ENH_BUDGET - enhTotal
     return `
       <div class="dtl">
-        <div class="dhead"><b>${c.name}</b> <span class="ov">${now}</span></div>
+        <div class="dhead"><b>${c.name}</b> <span class="ov">${starHtml(now)}</span></div>
         <small>${clubById(c.club)?.name ?? ''} · ${c.pos} · ${c.h}cm ${c.w}kg · ${c.foot === 'R' ? '오른발' : c.foot === 'L' ? '왼발' : '양발'} · 급여 ${cardSalary(c)}</small>
         <div class="fam" style="color:${famColor(fam)}">${this.slotName(this.sel)} 능숙도 ${fam}</div>
         ${bars}
@@ -393,13 +422,13 @@ export class SquadScreen {
         </div>
         <div class="enh-box">
           <div class="t">강화 — 남은 예산 ${budgetLeft} / ${ENH_BUDGET}</div>
-          <div class="exp">+1 마다 이 선수의 <b>능력치 40종 전부 +1</b> — OVR 은 ${base} → 지금 <b>${now}</b>${enh < ENH_MAX ? ` → 한 번 더 주면 ${next}` : ' · 최대'}.
+          <div class="exp">+1 마다 이 선수의 <b>능력치 40종 전부 +1</b>. 종합 ${starHtml(base, true)}${enh > 0 ? ` → 지금 ${starHtml(now, true)}` : ''}${enh < ENH_MAX ? ` → 한 번 더 주면 ${starHtml(next, true)}${next === now ? ' (별은 그대로, 능력치는 오릅니다)' : ''}` : ' · 최대'}.
             카드당 +${ENH_MAX} 까지, 18명이 예산 ${ENH_BUDGET} 을 나눠 씁니다. <b>급여는 오르지 않습니다.</b></div>
           <div class="ctl">
             <button class="btn secondary" id="enh-minus"${enh <= 0 ? ' disabled' : ''}>−</button>
             <span class="enhv">+${enh}</span>
             <button class="btn secondary" id="enh-plus"${enh >= ENH_MAX || budgetLeft <= 0 ? ' disabled' : ''}>+</button>
-            <span class="delta">OVR <b>${now}</b>${enh > 0 ? ` (+${now - base})` : ''}</span>
+            <span class="delta">${starHtml(now, true)}</span>
           </div>
           <div class="auto">
             <button class="btn secondary" id="enh-even" title="선발 11명에게 +2 씩, 남는 2 는 OVR 이 높은 두 명에게">선발 고르게</button>
@@ -408,6 +437,135 @@ export class SquadScreen {
           </div>
         </div>
       </div>`
+  }
+
+  /**
+   * 자동 채우기 — 선발 11 / 후보 7 을 따로 (사용자 요청 2026-09-10). 내 구단 선수만 쓴다.
+   * 기준 'fam' = 그 자리 능숙도가 먼저(동률이면 능력치), 'ovr' = 자리에 설 수 있는 선수 중 능력치가 먼저(능숙도는 뒷순위).
+   * 선발을 채워서 후보 자리가 비면 그 자리만 자동으로 메운다. 강화는 그대로 남아 있는 선수만 따라간다.
+   */
+  private autoFill(part: 'xi' | 'bench'): void {
+    const club = this.myClub()
+    if (club < 0) {
+      this.mode = 'club'
+      this.msg = '구단을 먼저 고르세요.'
+      return
+    }
+    const own = POOL.filter((c) => c.club === club)
+    const by = this.autoBy
+    const oldEnh = new Map<number, number>()
+    this.sq.ids.forEach((id, i) => oldEnh.set(id, this.sq.enh[i] ?? 0))
+    const used = new Set<number>()
+    const score = (c: Card, slot: number): number => {
+      const ovr = cardOvr(c, 0)
+      if (slot < START_SIZE) {
+        const fam = this.famAt(c, slot)
+        return by === 'fam' ? fam * 2 + ovr : ovr * 2 + fam * 0.3
+      }
+      return ovr
+    }
+    const pickFor = (slot: number, pos?: string): number => {
+      let best = -1
+      let bestS = -1e9
+      for (const c of own) {
+        if (used.has(c.id) || !this.canPlace(slot, c)) continue
+        if (pos && c.pos !== pos) continue
+        const s = score(c, slot)
+        if (s > bestS) {
+          bestS = s
+          best = c.id
+        }
+      }
+      return best
+    }
+    let xi = this.sq.ids.slice(0, START_SIZE)
+    let bench = this.sq.ids.slice(START_SIZE).filter((id) => cardById(id) !== undefined)
+    if (part === 'xi') {
+      xi = []
+      for (let i = 0; i < START_SIZE; i++) {
+        const id = pickFor(i)
+        if (id < 0) {
+          this.msg = '이 구단 선수로는 자리를 다 채울 수 없습니다.'
+          this.snd.ui('no')
+          return
+        }
+        used.add(id)
+        xi.push(id)
+      }
+      // 선발로 올라간 후보는 빼고, 비는 후보 자리는 모자란 포지션(GK 1 · DF 2 · MF 2 · FW 2)부터 메운다
+      bench = bench.filter((id) => !used.has(id))
+      for (const id of bench) used.add(id)
+      const need: Record<string, number> = { GK: 1, DF: 2, MF: 2, FW: 2 }
+      for (const id of bench) {
+        const pos = cardById(id)?.pos
+        if (pos && need[pos] > 0) need[pos]--
+      }
+      for (const pos of ['GK', 'DF', 'MF', 'FW']) {
+        while (need[pos] > 0 && bench.length < SQUAD_SIZE - START_SIZE) {
+          const id = pickFor(START_SIZE, pos)
+          if (id < 0) break
+          used.add(id)
+          bench.push(id)
+          need[pos]--
+        }
+      }
+      while (bench.length < SQUAD_SIZE - START_SIZE) {
+        const id = pickFor(START_SIZE)
+        if (id < 0) break
+        used.add(id)
+        bench.push(id)
+      }
+    } else {
+      for (const id of xi) used.add(id)
+      bench = []
+      if (by === 'fam') {
+        for (const pos of ['GK', 'DF', 'DF', 'MF', 'MF', 'FW', 'FW']) {
+          const id = pickFor(START_SIZE, pos)
+          if (id >= 0) {
+            used.add(id)
+            bench.push(id)
+          }
+        }
+      } else {
+        const gk = pickFor(START_SIZE, 'GK')
+        if (gk >= 0) {
+          used.add(gk)
+          bench.push(gk)
+        }
+        while (bench.length < SQUAD_SIZE - START_SIZE) {
+          let best = -1
+          let bestS = -1
+          for (const c of own) {
+            if (used.has(c.id) || c.pos === 'GK') continue
+            const s = cardOvr(c, 0)
+            if (s > bestS) {
+              bestS = s
+              best = c.id
+            }
+          }
+          if (best < 0) break
+          used.add(best)
+          bench.push(best)
+        }
+      }
+      while (bench.length < SQUAD_SIZE - START_SIZE) {
+        const id = pickFor(START_SIZE)
+        if (id < 0) break
+        used.add(id)
+        bench.push(id)
+      }
+    }
+    if (bench.length < SQUAD_SIZE - START_SIZE) {
+      this.msg = '이 구단 선수로는 후보 7명을 다 채울 수 없습니다.'
+      this.snd.ui('no')
+      return
+    }
+    this.sq.ids = [...xi, ...bench]
+    this.sq.enh = this.sq.ids.map((id) => oldEnh.get(id) ?? 0)
+    this.sel = -1
+    this.msg = `${part === 'xi' ? '선발 11명' : '후보 7명'}을 ${by === 'fam' ? '포메이션 능숙도' : '선수 능력치'} 우선으로 다시 채웠습니다.`
+    this.snd.ui('ok')
+    saveSquad(this.sq)
   }
 
   /** 강화 자동 배분 — 'even': 선발 +2 씩 (+ 남는 2 는 최고 OVR 둘) · 'attack': FW→AM→MF 순으로 +5 씩 */
@@ -702,47 +860,70 @@ export class SquadScreen {
       this.msg = ''
       this.draw()
     }
-    $<HTMLButtonElement>('#sq-auto').onclick = () => {
-      const club = this.myClub()
-      if (club < 0) {
-        this.mode = 'club'
-        this.msg = '구단을 먼저 고르세요.'
-        this.draw()
-        return
-      }
-      this.sq = withMeta(clubSquad(club, this.sq.formation), club)
-      this.sel = -1
-      this.msg = `${clubById(club)?.name ?? ''} 선수로 다시 채웠습니다.`
-      this.snd.ui('ok')
-      saveSquad(this.sq)
+    // ---- 자동 채우기 (선발 / 후보 · 기준) ----
+    $<HTMLButtonElement>('#auto-xi').onclick = () => {
+      this.autoFill('xi')
       this.draw()
     }
-    $<HTMLButtonElement>('#sq-code').onclick = async () => {
-      const code = encodeSquad(this.sq)
-      try {
-        await navigator.clipboard.writeText(code)
-        this.msg = `코드를 복사했습니다 (${code.length}자)`
-      } catch {
-        this.msg = code
-      }
+    $<HTMLButtonElement>('#auto-bench').onclick = () => {
+      this.autoFill('bench')
       this.draw()
     }
-    $<HTMLButtonElement>('#sq-paste').onclick = () => {
-      const text = prompt('스쿼드 코드를 붙여 넣으세요 (KLO26-…)')
-      if (!text) return
-      const res = decodeSquad(text)
-      if (!res.ok) this.msg = `❌ ${res.message}`
-      else {
-        const c = checkSquad(res.squad, CAP)
-        if (!c.ok) this.msg = `❌ 규칙 위반: ${c.errors[0]}`
-        else {
-          this.sq = { ...res.squad, hash: POOL_HASH, club: teamColorBonus(res.squad.ids.slice(0, START_SIZE)).club }
-          saveSquad(this.sq)
-          this.msg = '스쿼드를 불러왔습니다.'
+    $<HTMLElement>('#auto-by').querySelectorAll<HTMLButtonElement>('button').forEach((b) => {
+      b.onclick = () => {
+        this.autoBy = b.dataset.v === 'ovr' ? 'ovr' : 'fam'
+        try {
+          localStorage.setItem(AUTO_KEY, this.autoBy)
+        } catch {
+          // 무시
         }
+        this.snd.ui('click')
+        this.draw()
       }
+    })
+    // ---- JSON 저장 / 불러오기 (사용자 요청 2026-09-10 — 코드 대신 파일) ----
+    $<HTMLButtonElement>('#sq-json-save').onclick = () => {
+      const club = clubById(this.myClub())
+      const data = JSON.stringify({ app: 'KLO26', ver: 1, hash: POOL_HASH, squad: { ...this.sq, hash: POOL_HASH } }, null, 1)
+      const blob = new Blob([data], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `klo26-${club?.short ?? 'squad'}-${this.sq.formation}.json`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 2000)
+      this.msg = `JSON 으로 저장했습니다 (${a.download}). 다른 PC 에서 "JSON 불러오기"로 엽니다.`
+      this.snd.ui('ok')
       this.draw()
     }
+    const file = $<HTMLInputElement>('#sq-file')
+    $<HTMLButtonElement>('#sq-json-load').onclick = () => file.click()
+    file.onchange = async () => {
+      const f = file.files?.[0]
+      if (!f) return
+      try {
+        const obj = JSON.parse(await f.text()) as { app?: string; hash?: number; squad?: Squad }
+        const s = obj.squad ?? (obj as unknown as Squad)
+        if (!s || !Array.isArray(s.ids) || !Array.isArray(s.enh)) throw new Error('스쿼드 파일이 아닙니다')
+        const h = obj.hash ?? s.hash
+        if (h !== POOL_HASH) throw new Error('선수 명단이 달라(지문 불일치) 불러올 수 없습니다 — 명단이 갱신되면 저장된 스쿼드는 버려집니다')
+        const c = checkSquad(s, CAP)
+        if (!c.ok) throw new Error(`규칙 위반: ${c.errors[0]}`)
+        this.sq = { ...s, hash: POOL_HASH, club: teamColorBonus(s.ids.slice(0, START_SIZE)).club }
+        this.sel = -1
+        saveSquad(this.sq)
+        this.msg = `${f.name} 을 불러왔습니다.`
+        this.snd.ui('ok')
+      } catch (e) {
+        this.msg = `❌ ${(e as Error).message}`
+        this.snd.ui('no')
+      }
+      file.value = ''
+      this.draw()
+    }
+    $<HTMLButtonElement>('#sq-cancel').onclick = () => this.cancel()
     $<HTMLButtonElement>('#sq-done').onclick = () => this.finish()
   }
 
@@ -786,6 +967,21 @@ export class SquadScreen {
   private finish(): void {
     saveSquad(this.sq)
     this.onDone(this.sq)
+  }
+
+  /** 저장 안 하고 돌아가기 — 화면을 열 때의 스쿼드로 되돌린다 (없었으면 저장을 비운다) */
+  private cancel(): void {
+    if (this.original) {
+      saveSquad(this.original)
+      this.onDone(this.original)
+      return
+    }
+    try {
+      localStorage.removeItem(CUR_KEY)
+    } catch {
+      // 무시
+    }
+    this.onDone(defaultSquad())
   }
 
   dispose(): void {

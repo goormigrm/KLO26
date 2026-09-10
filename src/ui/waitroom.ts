@@ -7,7 +7,9 @@
 // 시드는 두 스쿼드 코드와 방 코드로 만든다 — 누구도 고를 수 없다 (DESIGN 4.11).
 
 import { START_SIZE, cardOvr, checkSquad, computeCap, squadClub, type Squad } from '../cards/squad'
+import { ovrStars } from '../cards/cards'
 import { cardById } from '../data/pool'
+import { starHtml } from './stars'
 import { decodeSquad, encodeSquad } from '../cards/squadcode'
 import type { NetConfig } from '../game/session'
 import { Lockstep } from '../net/lockstep'
@@ -156,15 +158,15 @@ export class WaitRoom {
       const c = cardById(id)
       return c ? cardOvr(c, (sq.enh[i] ?? 0) + chk.color.bonus) : 0
     })
-    const avg = Math.round(xi.reduce((a, b) => a + b, 0) / Math.max(1, xi.length))
+    const avg = xi.reduce((a, b) => a + b, 0) / Math.max(1, xi.length)
     const hex = (n: number): string => '#' + n.toString(16).padStart(6, '0')
-    return `<div class="side club" style="--c:${club ? hex(club.col) : '#2c3644'};--c2:${club ? hex(club.col2) : '#2c3644'}">
+    return `<div class="side club" style="--c:${club ? hex(club.col) : '#2c3644'}">
       <span class="cbar"></span>
       <div class="sub-h">${label}</div>
       <b>${name}</b>
       <div class="cl">${club?.name ?? '혼합 스쿼드'}</div>
       <div class="facts">
-        <span>${sq.formation}</span><span>선발 OVR <b>${avg}</b></span><span>급여 <b>${chk.salary}</b>/${CAP}</span>
+        <span>${sq.formation}</span><span>선발 ${starHtml(ovrStars(avg), true)}</span><span>급여 <b>${chk.salary}</b>/${CAP}</span>
         <span>팀컬러 ${chk.color.bonus ? `<b>+${chk.color.bonus}</b>` : '없음'}</span><span>강화 ${chk.enhTotal}/24</span>
       </div>
       ${note ? `<small>${note}</small>` : ''}

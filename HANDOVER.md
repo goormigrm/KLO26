@@ -53,6 +53,8 @@
 | **대기실·로비** | `waitroom.sideHtml` — 구단 색 띠·선발 OVR·급여·팀컬러·강화. 로비 `squad-bar v2` |
 | **테스트** | 83 → **90** (`tests/feedback.test.ts` 7개). `restart.test` 의 "D 는 길게 찬다" 를 새 규칙(짧은 패스)으로 바꿨다 |
 
+**같은 날 두 번째 요청 6건 (DECISIONS 10장 G-1~G-6)** — 자동 채우기 선발/후보 + 기준(`autoFill`) · **별점 표시**(`cards.ts ovrStars/statStars`, `ui/stars.ts starHtml/miniBars` — 숫자는 급여·능숙도만) · 목록 머리줄 · **JSON 저장/불러오기**(코드 UI 제거, `squadcode` 는 대기실 내부용) · **저장 안 하고 돌아가기**(`original` 스냅샷, `cancel`) · **유니폼 단색/원정 흰색**(`kits.ts` — `col2` 는 이제 아무 데도 안 쓴다).
+
 **아직 안 한 것 / 봐야 할 것**
 - **수비 강화는 +2.7%p 까지 왔다** (목표 +4). 다음 손잡이 후보: 블록 반경/성공률 계수, 가로채기 `0.28·posn`. `npm run verify 200` 은 20분 넘게 걸리니 효과 크기만 따로 재는 옵션을 만들면 좋다.
 - **강화 효과가 둘 다 작다** (수비 +2.7 · 공격 +2.0%p, 목표 8~15). 수비를 세게 만들며 공격 강화의 효과까지 눌렸다. "강화가 값을 하게"가 다음 밸런스의 첫 항목 — 강화 +1 이 능력치 40종 +1 인데 경기 스킬 곱셈 안에서 묻힌다. 강화분을 스킬에 직접(예: ×1.02/레벨) 얹는 방법을 재 볼 것.
@@ -215,7 +217,8 @@
 | `src/data/cards.json` | **카드 1,056장** — `tools/build_cards.py` 가 굽는다. 손으로 고치지 않는다 |
 | `src/data/pool.ts` | `cards.json` 을 풀어 `POOL`·`CLUBS` 로 |
 | `tools/build_cards.py` | 원본 명단 → 카드. **보호명·구단명 표(`CLUB_NAME`)가 여기 있다** |
-| `src/render3d/kits.ts` | 구단 색 → 유니폼. 색이 가까우면 원정 흰 상의 |
+| `src/render3d/kits.ts` | 구단 색 → 유니폼. **홈 단색 · 원정 전신 흰색**(GK 제외) |
+| `src/ui/stars.ts` | 별점 HTML · 미니 막대 — 능력치를 숫자로 보이지 않는다 |
 | `src/audio/sfx.ts` | **소리 전부** — 관중석·휘슬·킥·골·로비 배경음. 음원 파일 없음 |
 | `src/render/keyview.ts` | 키 입력 표시 (테스트 모드) |
 | `src/net/room.ts` · `lockstep.ts` | Trystero 로비·방 / 2인 락스텝 |

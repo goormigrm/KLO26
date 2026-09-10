@@ -209,7 +209,7 @@ select.sel { background: var(--bg-2); color: var(--ink); border: 1px solid var(-
 .filters { margin-bottom: 8px; }
 .filters .nick { background: var(--bg-2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: 500 13px 'IBM Plex Sans KR', sans-serif; width: 130px; }
 .crow-list { display: flex; flex-direction: column; gap: 3px; max-height: 62vh; overflow-y: auto; }
-.crow { display: grid; grid-template-columns: 34px 120px minmax(0,1fr) auto; gap: 8px; align-items: center; text-align: left;
+.crow { display: grid; grid-template-columns: 70px 120px minmax(0,1fr) auto; gap: 8px; align-items: center; text-align: left;
   background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 7px; padding: 4px 9px; cursor: pointer; color: var(--ink); }
 .crow:hover:not(:disabled) { border-color: var(--gold); }
 .crow.used { opacity: .35; cursor: default; }
@@ -308,7 +308,7 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
   background: linear-gradient(160deg, #161d27, var(--panel) 60%); border: 1px solid var(--line-2); border-radius: 12px;
   padding: 12px 14px 12px 20px; display: flex; flex-direction: column; gap: 2px; transition: transform .12s, border-color .12s; }
 .clubcard .cbar { position: absolute; left: 0; top: 0; bottom: 0; width: 8px;
-  background: linear-gradient(180deg, var(--c) 0 55%, var(--c2) 55% 100%); }
+  background: var(--c); }
 .clubcard:hover { transform: translateY(-2px); border-color: var(--c); }
 .clubcard b { font-size: 16px; }
 .clubcard small { color: var(--ink-3); font-size: 11.5px; }
@@ -421,7 +421,7 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
 .enh-box .auto .btn { padding: 3px 8px; font-size: 11.5px; flex: 1; white-space: nowrap; }
 
 .squad-bar.v2 { position: relative; padding-left: 24px; overflow: hidden; }
-.squad-bar.v2 .cbar { position: absolute; left: 0; top: 0; bottom: 0; width: 10px; background: linear-gradient(180deg, var(--c) 0 55%, var(--c2) 55% 100%); }
+.squad-bar.v2 .cbar { position: absolute; left: 0; top: 0; bottom: 0; width: 10px; background: var(--c); }
 .squad-bar.v2 .sqinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .squad-bar.v2 .club { font-family: 'Black Han Sans', sans-serif; font-weight: 400; font-size: 24px; line-height: 1.1; }
 .squad-bar.v2 .mini { height: 6px; background: #2a3340; border-radius: 3px; overflow: hidden; max-width: 360px; margin-top: 4px; }
@@ -431,9 +431,30 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
 .squad-bar.v2 .acts .btn { margin-left: 0; min-width: 170px; }
 
 .wait-cols .side.club { position: relative; padding-left: 20px; overflow: hidden; text-align: left; }
-.wait-cols .side .cbar { position: absolute; left: 0; top: 0; bottom: 0; width: 8px; background: linear-gradient(180deg, var(--c) 0 55%, var(--c2) 55% 100%); }
+.wait-cols .side .cbar { position: absolute; left: 0; top: 0; bottom: 0; width: 8px; background: var(--c); }
 .wait-cols .side .cl { font-family: 'Black Han Sans', sans-serif; font-size: 20px; color: var(--gold); margin: 2px 0 6px; }
 .wait-cols .side .facts { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-bottom: 6px; }
 .wait-cols .side .facts span { font: 600 11px 'IBM Plex Mono', monospace; color: var(--ink-2); background: #1b2330; border-radius: 6px; padding: 2px 7px; }
 .wait-cols .side .facts span b { color: var(--gold); }
 .wait-box { min-width: 640px; }
+
+/* ---- 2026-09-10: 별점 · 목록 머리 · 미니 막대 · 자동 채우기 띠 ---- */
+.stars { position: relative; display: inline-block; font: 700 14px/1 'IBM Plex Sans KR', 'Segoe UI Symbol', sans-serif; letter-spacing: -1px; white-space: nowrap; vertical-align: middle; line-height: 1; }
+.stars .bg { color: #3a4452; }
+.stars .fg { position: absolute; left: 0; top: 0; overflow: hidden; color: var(--gold); white-space: nowrap; }
+.stars.sm { font-size: 11px; }
+.chip .ov, .bchip .ov { grid-row: 1 / 3; }
+.crow .ov { display: flex; align-items: center; }
+.dhead .ov { margin-left: auto; }
+.st { grid-template-columns: 92px 1fr; }
+.st span em { font-style: normal; font-weight: 500; color: var(--ink-3); margin-left: 3px; }
+.mini { display: inline-grid; grid-template-columns: repeat(6, 24px); gap: 4px; align-items: center; }
+.mini i { display: block; height: 7px; background: #2a3340; border-radius: 3px; overflow: hidden; position: relative; }
+.mini i::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--w); background: linear-gradient(90deg, #2ea043, #e3b341); }
+.crow-head { display: grid; grid-template-columns: 70px 120px minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 2px 9px 4px; font: 700 10px 'IBM Plex Mono', monospace; color: var(--ink-3); letter-spacing: .06em; }
+.crow-head .lab { display: inline-grid; grid-template-columns: repeat(6, 24px); gap: 4px; text-align: center; }
+.crow-head .lab i { font-style: normal; cursor: help; }
+.autobar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; }
+.autobar .lab { font: 700 10.5px 'IBM Plex Mono', monospace; color: var(--ink-3); letter-spacing: .08em; text-transform: uppercase; }
+.autobar .btn { padding: 5px 12px; font-size: 12.5px; }
+.autobar small { color: var(--ink-3); font-size: 11px; margin-left: auto; }

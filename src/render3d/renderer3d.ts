@@ -3,7 +3,7 @@
 
 import * as THREE from 'three'
 import { angleToRad } from '../core/fixedmath'
-import { ACT_DIVE, HALF_L, HALF_W, type GameState, type Player, type SimEvent } from '../core/state'
+import { ACT_DIVE, HALF_L, HALF_W, type GameState, type Player, type SimEvent, goalX } from '../core/state'
 import { FOV_WIDE, broadcastTarget, cameraLookAt, cameraPosition, fovForAspect } from './camera'
 import { buildPitch, type Pitch3D } from './pitch3d'
 import { Referees } from './referee3d'
@@ -129,6 +129,13 @@ export class Renderer3D {
   private camLookY = 0
   private camFov = FOV_WIDE
   private camInit = false
+  /**
+   * 세트피스 카메라 (2026-09-11) — 직접 프리킥(골문 36 m 안)·페널티킥은 **키커 뒤에서 골문을 본다**.
+   * 방송 카메라와 `spBlend`(0~1) 로 섞고, 찬 뒤에도 `spHold` 초 동안 공을 따라 본다. 렌더 전용.
+   */
+  private spBlend = 0
+  private spAnchor: { kx: number; ky: number; gx: number; pk: boolean } | null = null
+  private spHold = 0
   private t = 0
   private opts: RenderOptions
   private kits: [Kit, Kit] | null = null
@@ -432,9 +439,58 @@ export class Renderer3D {
     const ct = { x: this.camX, lookY: this.camLookY, fov: this.camFov }
     const cp = cameraPosition(ct)
     const cl = cameraLookAt(ct)
-    this.camera.position.set(cp.x, cp.y, cp.z)
-    this.camera.lookAt(cl.x, cl.y, cl.z)
-    const fov = fovForAspect(this.camFov, this.camera.aspect)
+    // ---- 세트피스 카메라: 키커 뒤 ----
+    const r = curr.restart
+    const tm = r ? curr.teams[r.team] : null
+    const direct =
+      r !== null && tm !== null && !view.replay &&
+      (curr.phase === 'penalty' || (curr.phase === 'freekick' && Math.hypot(r.x - goalX(tm), r.y) < 36 && Math.abs(r.y) < 26))
+    if (direct && r && tm) {
+      this.spAnchor = { kx: r.x, ky: r.y, gx: goalX(tm), pk: curr.phase === 'penalty' }
+      this.spHold = 1.4
+    } else if (this.spAnchor && curr.phase === 'play') {
+      this.spHold -= dt // 찬 뒤 공이 날아가는 것을 잠깐 더 본다
+      if (this.spHold <= 0) this.spAnchor = null
+    } else if (!direct) this.spAnchor = null
+    const want = this.spAnchor ? 1 : 0
+    this.spBlend += (want - this.spBlend) * (1 - Math.pow(0.02, dt))
+    let px = cp.x
+    let py = cp.y
+    let pz = cp.z
+    let lx = cl.x
+    let ly = cl.y
+    let lz = cl.z
+    let fovNow = this.camFov
+    if (this.spBlend > 0.001 && this.spAnchor) {
+      const a = this.spAnchor
+      const ux0 = a.gx - a.kx
+      const uy0 = 0 - a.ky
+      const ul = Math.max(1e-6, Math.hypot(ux0, uy0))
+      const ux = ux0 / ul
+      const uy = uy0 / ul
+      const side = a.ky >= 0 ? -1 : 1 // 가운데 쪽으로 살짝 비켜서 골문이 비스듬히 보인다
+      const back = a.pk ? 6 : 7.5
+      const off = a.pk ? 1.6 : 2.2
+      const camSx = a.kx - ux * back + -uy * side * off
+      const camSy = a.ky - uy * back + ux * side * off
+      const camH = a.pk ? 2.8 : 3.4
+      // 시선 — 차기 전엔 골문 쪽 앞을, 찬 뒤엔 공을
+      const kicked = curr.phase === 'play'
+      const lookSx = kicked ? bx : a.kx + ux * Math.max(8, ul * 0.55)
+      const lookSy = kicked ? by : a.ky + uy * Math.max(8, ul * 0.55)
+      const spFov = a.pk ? 30 : 36
+      const k = this.spBlend
+      px += (camSx - px) * k
+      py += (camH - py) * k
+      pz += (-camSy - pz) * k
+      lx += (lookSx - lx) * k
+      ly += (1.0 - ly) * k
+      lz += (-lookSy - lz) * k
+      fovNow += (spFov - fovNow) * k
+    }
+    this.camera.position.set(px, py, pz)
+    this.camera.lookAt(lx, ly, lz)
+    const fov = fovForAspect(fovNow, this.camera.aspect)
     if (Math.abs(fov - this.camera.fov) > 0.01) {
       this.camera.fov = fov
       this.camera.updateProjectionMatrix()

@@ -414,7 +414,19 @@ export function performRestartKick(st: GameState, aim: RestartAim | null = null)
       else if (phase === 'freekick') doShoot(st, k, dx, dy, clamp(0.6 + aim.power * 0.4, 0.6, 1), false, null)
       else doPass(st, k, 'lob', -1, dx, dy, 1)
     } else if (aim.kind === 'W') doPass(st, k, 'through', pickPassTarget(st, k, dx, dy, true), dx, dy, 0.5)
-    else if (aim.kind === 'A') doPass(st, k, phase === 'corner' ? 'highcross' : 'lob', pickPassTarget(st, k, dx, dy, false), dx, dy, 0.6)
+    else if (aim.kind === 'A') {
+      if (phase === 'corner') doPass(st, k, 'highcross', pickPassTarget(st, k, dx, dy, false), dx, dy, 0.6)
+      else {
+        // 프리킥·골킥 롱볼 — 가까운 동료를 고르지 않고 **방향키 쪽 먼 지점**에 떨어뜨린다. 힘(홀드)이 거리:
+        // 18 m(툭) ~ 50 m(꽉). 예전엔 pickPassTarget 이 가까운 동료를 골라 짧게만 떨어졌다 (사용자 제보 2026-09-11)
+        const l = Math.max(1e-6, Math.hypot(dx, dy))
+        const L = 18 + 32 * aim.power
+        doPass(st, k, 'lob', -1, dx, dy, 1, {
+          x: clamp(k.x + (dx / l) * L, -HALF_L + 2, HALF_L - 2),
+          y: clamp(k.y + (dy / l) * L, -HALF_W + 1, HALF_W - 1),
+        })
+      }
+    }
     else doPass(st, k, 'ground', pickPassTarget(st, k, dx, dy, false), dx, dy, 0.3)
     st.ball.restartBy = k.idx
     if (noOff) clearOffside(st)

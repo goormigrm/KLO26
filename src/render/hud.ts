@@ -2,7 +2,7 @@
 // 매 프레임 갱신하되 바뀐 글자만 쓴다. sim 을 바꾸지 않는다.
 
 import { addedMinute, matchMinute } from '../core/sim'
-import type { GameState } from '../core/state'
+import { goalX, type GameState } from '../core/state'
 import { Radar } from './radar'
 
 /** callText 를 이만큼(틱) 띄운다 — 킥오프·추가시간 알림 */
@@ -169,10 +169,13 @@ export class Hud {
       case 'corner':
         return mine ? '코너킥 — 방향키 + A(크로스) / S' : `${who(r!.team)} 코너킥`
       case 'goalkick':
-        return mine ? '골킥 — 방향키 + S / A / D' : `${who(r!.team)} 골킥`
+        return mine ? '골킥 — 방향키 + S 짧게 / A 홀드 롱볼 / D 홀드 펀트' : `${who(r!.team)} 골킥`
       case 'freekick': {
         const call = st.callText ? `${st.callText} — ` : ''
-        return mine ? `${call}프리킥 — 방향키 + S / A / D(홀드=슛)` : `${call}${who(r!.team)} 프리킥`
+        const dG = Math.round(Math.hypot(r!.x - goalX(st.teams[r!.team]), r!.y))
+        return mine
+          ? `${call}프리킥 · 골문 ${dG} m — 방향키 + S 짧게 / A 홀드 롱볼 / D 홀드 슛`
+          : `${call}${who(r!.team)} 프리킥 · 골문 ${dG} m`
       }
       case 'penalty':
         return mine ? '⚽ 페널티킥 — 방향키(코너) + D 홀드(파워)' : `${who(r!.team)} 페널티킥`

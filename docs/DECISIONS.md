@@ -200,5 +200,7 @@ KM26 → KMD26v1.0 → KLD26 의 결. 배포 주소 `https://goormigrm.github.io
 | G-29 (9/11) | 골 넣어도 허전하다 — 세레모니 · 온라인은 양쪽 다 생략해야 넘어가게 | `GOAL_TICKS` 2.5 → 9 초, `ai.celebrate`(득점자에게 모임·득점자 코너 질주·먹은 팀 복귀), Enter = `BTN_SKIP`(비트 13). `tickPhase` 가 사람 팀 전원 `skipCele` 면 꼬리만 남긴다(봇 동의). 세레모니 중 사람 선수도 AI 이동 | `core/rules.ts` · `core/ai.ts` · `core/sim.ts` · `core/input.ts` · `tests/celebration.test.ts` |
 | G-30 (9/11) | 골 리플레이 가능한지 검토 → 넣기 | **가능, 렌더 전용으로.** 세션 링 버퍼(8 초 포즈) → 골 뒤 직전 4.5 초를 0.9 배속·FOV 20 으로 다시 그림. 시뮬·락스텝 무관, 결정론 영향 없음. Enter 로 내 화면 리플레이 즉시 취소 | `game/session.ts recordFrame/startReplay/drawReplay` · `render3d/renderer3d.ts ViewInfo.replay` · `render/hud.ts` |
 | G-31 (9/11) | 실제 축구에서 속도가 슈팅보다 센 게 맞나 — 슈팅은 골키퍼를 이기고, 속도는 뺏김·불안한 자세로 값을 치러야 | 그대로 옮겼다. `ball.shotQ`(찬 선수의 결정력)를 골키퍼 잡기·쳐내기에, 슛 속도에 `sho`, 전력 질주 중 슛 `rush`(오차·힘·궤적), 전력 드리블 태클 ×(1+2·loose), 전력 질주 퍼스트 터치 −0.18, 경합 반응 시간을 `posn` 에. 200경기: 슈팅 72.8 · **속도 72.3**(89.8 에서) · 수비 83.0 · 드리블 78.8. 속도가 슈팅 아래로 | `core/ball.ts` · `core/sim.ts` · `core/state.ts` · `tests/finishing.test.ts` · `DESIGN 4.3b` |
+| G-32 (9/11) | 프리킥·골킥이 롱볼이 안 되고 땅볼만 된다 | A 가 누르는 순간 가까운 동료에게 짧은 로빙만 갔다. **A 도 홀드**(D 처럼)로 바꾸고, 프리킥·골킥에서는 동료를 고르지 않고 **방향키 쪽 먼 지점**(18~50 m)에 떨어뜨린다. 코너 A 는 하이 크로스 그대로 | `core/sim.ts handleInput` · `core/rules.ts performRestartKick` · `tests/setpiece.test.ts` |
+| G-33 (9/11) | 직접 프리킥·PK 는 시점이 키커 뒤로 바뀌었으면 | 렌더 전용 세트피스 카메라 — 골문 36 m 안 프리킥과 PK 에서 키커 뒤·가운데 쪽으로 비켜 골문을 비스듬히. 찬 뒤 1.4 초 공을 따라 본다. 방송 카메라와 섞여 툭 끊기지 않는다. 배너에 골문 거리 | `render3d/renderer3d.ts` · `render/hud.ts` |
 
 앞으로 생기는 갈림길은 이 문서에 번호를 이어 적는다.

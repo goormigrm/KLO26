@@ -155,11 +155,13 @@ function handleInput(st: GameState, t: number, inp: Input): void {
   }
   // 리스타트 킥커: 킥 키를 누르면 방향키 쪽으로 (스로인은 손, 골킥의 D 는 길게 — rules 가 가른다)
   if (st.phase !== 'play' && st.restart && st.restart.team === t && st.restart.kicker === c.idx) {
-    if (held & BTN_D) team.holdShoot++
-    const fire = edge & (BTN_S | BTN_W | BTN_A)
+    // D(슛·펀트)와 A(롱볼)는 **홀드**로 힘을 모아 떼는 순간 찬다. S·W 는 누르는 순간 (2026-09-11: A 도 홀드)
+    if (held & (BTN_D | BTN_A)) team.holdShoot++
+    const fire = edge & (BTN_S | BTN_W)
     const dRelease = (prev & BTN_D) && !(held & BTN_D)
-    if (fire || dRelease) {
-      const kind: RestartAim['kind'] = dRelease ? 'D' : edge & BTN_W ? 'W' : edge & BTN_A ? 'A' : 'S'
+    const aRelease = (prev & BTN_A) && !(held & BTN_A)
+    if (fire || dRelease || aRelease) {
+      const kind: RestartAim['kind'] = dRelease ? 'D' : aRelease ? 'A' : edge & BTN_W ? 'W' : 'S'
       performRestartKick(st, { kind, dx: team.inX, dy: team.inY, power: clamp(team.holdShoot / 36, 0, 1) })
       team.holdShoot = 0
     }

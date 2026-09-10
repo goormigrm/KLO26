@@ -1,8 +1,7 @@
-// 키 입력 표시 — **테스트용**이다 (DESIGN 에 없다. 사용자 요청 2026-09-09).
+// 입력 키 표시 — 왼쪽 아래에 **지금 누르는 키**(방향키 제외)와 sim 에 들어간 조합을 띄운다.
 //
-// 지금 눌린 물리 키와, 그 결과로 sim 에 들어가는 `Input` 비트를 화면에 띄운다.
-// 키가 안 먹는지 / 조합이 잡히는지 / edge(한 번만) 키가 제대로 나가는지를 눈으로 본다.
-// 배포에서는 테스트 모드를 안 켜면 나오지 않는다.
+// 처음엔 테스트 모드 전용이었는데(2026-09-09), "Q+D · A+A 가 실제로 들어가는지 궁금하다"는 요청으로
+// 설정에서 켜고 끄는 일반 기능이 됐다 (2026-09-11). 내 화면에만 보이고 상대에겐 안 간다.
 
 import {
   BTN_A, BTN_C, BTN_D, BTN_E, BTN_PACE, BTN_PRESET_NEXT, BTN_PRESET_PREV, BTN_Q, BTN_S, BTN_SPACE, BTN_SUB, BTN_W, BTN_Z,
@@ -29,13 +28,6 @@ const ROWS: [string, string, number][][] = [
     ['Shift', 'ShiftLeft', BTN_PACE],
     ['Space', 'Space', BTN_SPACE],
   ],
-]
-
-const ARROWS: [string, string][] = [
-  ['↑', 'ArrowUp'],
-  ['←', 'ArrowLeft'],
-  ['↓', 'ArrowDown'],
-  ['→', 'ArrowRight'],
 ]
 
 const BIT_NAMES: [number, string][] = [
@@ -68,14 +60,13 @@ export class KeyView {
   constructor(parent: HTMLElement) {
     this.root = document.createElement('div')
     this.root.className = 'keyview'
-    const pad = ARROWS.map(([label, code]) => `<b data-k="${code}" class="ar ${code}">${label}</b>`).join('')
     const rows = ROWS.map(
       (r) => `<div class="kv-row">${r.map(([label, code]) => `<b data-k="${code}">${label}</b>`).join('')}</div>`,
     ).join('')
+    // 방향키는 안 그린다 — 화면의 › 표시가 이미 보여 준다 (사용자 요청 2026-09-11)
     this.root.innerHTML = `
-      <div class="kv-title">키 입력 <small>테스트</small></div>
+      <div class="kv-title">입력 키 <small>내 화면에만</small></div>
       <div class="kv-body">
-        <div class="kv-pad">${pad}</div>
         <div class="kv-keys">${rows}</div>
       </div>
       <div class="kv-bits" data-b></div>
@@ -99,7 +90,7 @@ export class KeyView {
       this.bits.textContent = names.length ? names.join(' + ') : '—'
       this.bits.classList.toggle('none', names.length === 0)
     }
-    const meta = `mx ${v.input.mx} · my ${v.input.my} · ${v.hasBall ? '공격' : '수비'} · ${v.controlled >= 0 ? v.name : '조작 없음'}`
+    const meta = `${v.hasBall ? '공격' : '수비'} 키 · ${v.controlled >= 0 ? v.name : '조작 없음'}`
     if (meta !== this.lastMeta) {
       this.lastMeta = meta
       this.meta.textContent = meta

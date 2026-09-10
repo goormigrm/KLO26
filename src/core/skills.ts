@@ -34,12 +34,13 @@ export interface Skills {
   sta: number
   agg: number
   isGK: boolean
-  /** GK: 반응 지연(초) · 도달 거리(m) · 잡기 · 킥 · 위치 */
+  /** GK: 반응 지연(초) · 도달 거리(m) · 잡기 · 킥 · 위치 · 펀칭 */
   gkReact: number
   gkReach: number
   gkHand: number
   gkKick: number
   gkPos: number
+  gkPunch: number
   /** 능숙도 0~1 (표시·디버그) */
   fam: number
 }
@@ -115,14 +116,18 @@ export function skillsOf(spec: PlayerSpec, slot: string, band: Band): Skills {
     dec: (S(a.dec) * 0.55 + S(a.cnt) * 0.25 + S(a.cmp) * 0.2) * heavy,
     head: (S(a.hea) * 0.55 + S(a.jum) * 0.28 + S(a.str) * 0.1 + S(a.bra) * 0.07) * (1 + tall * 0.11 + mass * 0.03) * light,
     str: S(a.str) * (1 + mass * 0.12 + tall * 0.04),
-    sta: S(a.sta),
+    // 활동량(wor)은 체력이 버티는 정도에 섞는다 — 예전엔 아무 데도 안 읽혔다 (2026-09-11 검증)
+    sta: S(a.sta) * 0.7 + S(a.wor) * 0.3,
     agg: S(a.agg),
     isGK,
-    gkReact: 0.25 - 0.15 * (S(g.ref) * 0.6 + S(g.one) * 0.4),
-    gkReach: 1.2 + 1.0 * (S(g.ref) * 0.5 + S(a.agi) * 0.3 + S(a.jum) * 0.2) + tall * 0.25,
+    // 2026-09-11 검증 — GK 능력치 HI/LO 가 승률 50.6% 로 거의 안 닿았다. 폭을 넓혔다:
+    //  반응 0.19→0.11 s 이던 것을 0.22→0.10 s, 도달 1.4→1.7 m 이던 것을 1.3→2.0 m
+    gkReact: 0.3 - 0.22 * (S(g.ref) * 0.6 + S(g.one) * 0.4),
+    gkReach: 1.0 + 1.4 * (S(g.ref) * 0.45 + S(g.aer) * 0.15 + S(a.agi) * 0.25 + S(a.jum) * 0.15) + tall * 0.25,
     gkHand: S(g.han) * 0.7 + S(g.cmd) * 0.3,
     gkKick: S(g.kic) * 0.8 + S(a.pas) * 0.2,
     gkPos: S(g.cmd) * 0.4 + S(g.com) * 0.3 + S(a.pos) * 0.3,
+    gkPunch: S(g.pun) * 0.7 + S(g.han) * 0.3,
     fam: fam / 100,
   }
   if (isGK && misuse < 1) {
@@ -131,6 +136,7 @@ export function skillsOf(spec: PlayerSpec, slot: string, band: Band): Skills {
     sk.gkReach = 1.2
     sk.gkHand = 0.25
     sk.gkPos = 0.3
+    sk.gkPunch = 0.25
   }
   return sk
 }

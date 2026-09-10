@@ -16,6 +16,8 @@
     "clubs": "vite-node tools/clubs_balance.ts",
     "economy": "vite-node tools/economy.ts",
     "power": "vite-node tools/power.ts",
+    "attrcheck": "vite-node tools/attrcheck.ts",
+    "tactics": "vite-node tools/tactics.ts",
     "build:cards": "python tools/build_cards.py"
   },
   "dependencies": {

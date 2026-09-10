@@ -241,8 +241,8 @@ export function tryControl(st: GameState): void {
   else if (intended) chance = 0.74 + 0.24 * p.sk.ctl - clamp((speed - 16) / 34, 0, 0.28)
   else {
     chance = 0.6 + 0.4 * p.sk.ctl - clamp((speed - 6) / 30, 0, 0.5)
-    // 남의 패스를 가로채는 것은 마크(mark)가 좋을수록 깔끔하다
-    if (b.lastTeam !== p.team && b.passLive) chance += 0.15 * p.sk.mark
+    // 남의 패스를 가로채는 것은 마크(mark)가 좋을수록 깔끔하다 (0.15 → 0.4 — 2026-09-11 검증에서 mar 가 안 닿았다)
+    if (b.lastTeam !== p.team && b.passLive) chance += 0.4 * p.sk.mark - 0.1
   }
   if (rand(st.rng) < chance) {
     giveBall(st, p)
@@ -297,11 +297,14 @@ export function contestBall(st: GameState, o: Player): void {
   const team = st.teams[o.team]
   const slow = team.human && team.controlled === o.idx && team.slow
   const gkHolding = o.holdT > 0
-  const reach = gkHolding ? 1.0 : 0.6 + (1 - o.sk.drib) * 0.5 - (slow ? 0.15 : 0)
+  const baseReach = gkHolding ? 1.0 : 0.6 + (1 - o.sk.drib) * 0.5 - (slow ? 0.15 : 0)
   for (const q of st.players) {
     if (q.team === o.team || q.action !== ACT_RUN || q.sentOff) continue
     if (!q.press && q.tackleT <= 0) continue
     const d = dist(feetX(q, 0.3), feetY(q, 0.3), b.x, b.y)
+    // 2026-09-11 검증 — 태클(tck)만 올려서는 승률이 안 움직였다(태클이 판에 5번뿐). 잘 하는 수비수는
+    // **더 먼 발에서** 공을 건드려 기회 자체가 늘게 한다
+    const reach = gkHolding ? baseReach : baseReach + 0.3 * q.sk.tck
     if (d > reach) continue
     if (gkHolding) {
       // 골키퍼가 손에 들고 있는 공은 뺏을 수 없다 — 도전 자체가 반칙 (DESIGN 4.7)
@@ -309,7 +312,7 @@ export function contestBall(st: GameState, o: Player): void {
       return
     }
     const angleF = 0.55 + 0.45 * (1 - fromBehind(o, q))
-    let p = 0.05 * (0.5 + q.sk.tck) * (1.4 - 0.8 * o.sk.drib) * angleF * (0.6 + 0.8 * (q.sk.str / (q.sk.str + o.sk.str + 0.0001)))
+    let p = 0.05 * (0.3 + 1.3 * q.sk.tck) * (1.4 - 0.8 * o.sk.drib) * angleF * (0.6 + 0.8 * (q.sk.str / (q.sk.str + o.sk.str + 0.0001)))
     if (q.tackleT > 0) p *= 3
     if (slow) p *= 0.6
     // 견제(C 홀드) 중인 수비수는 자세를 잡고 있다 — 드리블러가 들이받으면 더 잘 뺏는다 (2026-09-10)
@@ -532,13 +535,15 @@ export function doPass(
   }
   // 오차
   const acc = aerial || kind === 'lowcross' ? p.sk.crs : p.sk.pas
-  let sigma = (1 - acc) * 6
+  // 2026-09-11 검증 — 각도 오차(pas 38→92 에서 3.7°→0.5°)만으로는 패스 성공률이 43% 에서 안 움직였다.
+  // 패스가 죽는 이유는 방향보다 **세기**(짧아서 끊기거나 길어서 지나감)라서, 세기 오차를 능력치에 건다.
+  let sigma = (1 - acc) * 8
   if (nearestOppDist(st, p) < 1.5) sigma += 2
   if (st.tick - p.gotT < 12) sigma *= 1.3
   if (p.stamina < 0.3) sigma *= 1.25
   if (kind === 'through') sigma *= 1.4
   const a = atan2A(ay - by, ax - bx) + Math.round(randN(st.rng) * sigma * DEG)
-  speed *= 1 + randN(st.rng) * 0.05
+  speed *= 1 + randN(st.rng) * (0.03 + 0.16 * (1 - acc))
   releaseBall(st, p)
   b.vx = cosA(a) * speed
   b.vy = sinA(a) * speed
@@ -588,7 +593,7 @@ export function doThrow(st: GameState, p: Player, target: number, dx: number, dy
   }
   const T = clamp(d / 12, 0.55, 1.5)
   const speed = Math.min(THROW_SPEED_MAX, (d / T) * 1.1)
-  const sigma = (1 - p.sk.pas) * 5
+  const sigma = (1 - p.sk.pas) * 7
   const a = atan2A(ay - by, ax - bx) + Math.round(randN(st.rng) * sigma * DEG)
   releaseBall(st, p, false)
   b.vx = cosA(a) * speed
@@ -762,7 +767,7 @@ export function gkCatch(st: GameState, gk: Player): void {
       if (lat > HAND_STAND) {
         // 손이 안 닿는다 — 도달 거리 안이면 몸을 날린다. 닿을지는 실제 거리로 판정한다
         if (lat > gk.sk.gkReach + 0.4) return
-        const diveSpeed = 4.5 + 2.5 * gk.sk.gkHand
+        const diveSpeed = 3.8 + 3.4 * gk.sk.gkHand
         gk.action = ACT_DIVE
         gk.actT = 24
         gk.vx = ((px - gk.x) / lat) * diveSpeed
@@ -779,8 +784,8 @@ export function gkCatch(st: GameState, gk: Player): void {
   else {
     // 멀리 뻗을수록·빠를수록 어렵다 (계수는 2026-09-09 계측 — 1대1 14 m 전환율 39%)
     const stretch = clamp(d / hand, 0, 1)
-    chance = 0.86 - 0.46 * stretch - clamp((speed - 14) / 26, 0, 0.32)
-    chance *= 0.72 + 0.42 * gk.sk.gkHand
+    // 2026-09-11 검증 — 곱(0.88~1.11)으로는 폭이 좁았다. 바탕값에 넣어 LO 0.72 / HI 0.92
+    chance = 0.6 + 0.34 * gk.sk.gkHand - 0.46 * stretch - clamp((speed - 14) / 26, 0, 0.32)
   }
   const S = st.stats[gk.team]
   if (rand(st.rng) < chance) {
@@ -795,7 +800,7 @@ export function gkCatch(st: GameState, gk: Player): void {
     return
   }
   // 쳐내기 — 잡을 확률에서 남은 만큼만. 완전히 놓칠 수도 있다
-  if (rand(st.rng) > 0.55 + 0.35 * gk.sk.gkHand) return
+  if (rand(st.rng) > 0.4 + 0.3 * gk.sk.gkHand + 0.25 * gk.sk.gkPunch) return
   if (isShot && b.onTarget) {
     S.saves++
     st.events.push({ tick: st.tick, type: 'save', team: gk.team, player: gk.idx, x: b.x, y: b.y })

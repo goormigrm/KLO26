@@ -1,4 +1,4 @@
-# HANDOVER — 2026-09-11 (8차)
+# HANDOVER — 2026-09-11 (9차)
 
 > **이 문서가 최신입니다.** 단계 1~7 이 전부 들어가 있고, 2026-09-10~11 에 **사용자가 직접 해 보고 낸 제보·요청 24건**을 반영했습니다.
 > 엔진(골키퍼·슛 보조·킥오프·추가시간·수비)과 스쿼드 화면(세로 전술판·명단 한 통·별점·JSON)이 이번에 크게 바뀌었습니다.
@@ -10,7 +10,7 @@
 |---|---|
 | 날짜 | 2026-09-10 ~ 09-11 (직전 6차: 09-11 코인토스, 5차: 09-10) |
 | 저장소 · 브랜치 | `https://github.com/goormigrm/KLO26` · `main` |
-| 마지막 커밋 | 🤝 팀워크·영입 제한·구단 이름 (해시는 `git log -1`) |
+| 마지막 커밋 | 🔬 능력치·전술 검증 · 패스 받기 · 공지 사진 (해시는 `git log -1`) |
 | git 상태 | **클린** (`main...origin/main` — 미커밋 변경 0) |
 | 배포 | <https://goormigrm.github.io/KLO26/> — 이번 세션 커밋 9건, 확인한 것 전부 Actions success |
 | 작업 디렉터리 | 노트북: `C:\Users\tkdrm\Workspace\personal\KLO26` · 메인 PC: `C:\Users\tkdrm\OneDrive\Desktop\klo26` |
@@ -81,7 +81,37 @@
 | 버그 정정 | Esc 가 **온라인에서 메뉴를 닫지 못했다** — `toggleMenu` 가 `paused` 로 판단했는데 온라인은 락스텝이라 언제나 `false`. `!this.overlay.hidden` 으로 바꿨다 |
 | 확인 | 브라우저에서 로비 팝업 · 경기 중 창 · 그림자/조작 안내 즉시 반영 · 메뉴 → 설정 → 닫기 → 메뉴 복귀 · 로비로 확인창 → 나가기까지 **눈으로 확인**. `npm test` 94개 통과 |
 
-### 🤝 스쿼드 경제 다시 짜기 (9/11 — 가장 최근)
+### 🔬 능력치·전술 검증 + 조작·표시 (9/11 — 가장 최근)
+
+사용자 질문 "능력치가 실제 매치엔진에 반영되나 (특히 슈팅·수비)" · "전술이 영향이 있나" 에 **재서 답했고**, 안 닿던 것을 고쳤다.
+
+| 무엇 | 핵심 |
+|---|---|
+| **능력치 A/B** | `tools/attrcheck.ts` — 같은 두 스쿼드에서 한 묶음만 HI 92/LO 38, 홈원정 교대, 대조군 = 정확히 50%. **슈팅 74% 닿음 · 태클 49 · 마크 49 · 패스 49 · 골키퍼 51 = 안 닿음.** 손질 뒤 56·53·55·68. 표는 DESIGN 4.5a. **속도 90% 가 가장 세다**(백로그) |
+| **왜 안 닿았나** | 패스: 각도 오차만 있어 성공률 43% 고정 → **세기 오차** 추가. GK: 잡기 확률이 곱(0.88~1.11)이라 폭이 없었음 → 바탕값으로. 태클: 판에 5번뿐이라 성공식만으론 무의미 → **닿는 거리**에 tck. 마크: 계수 0.15 → 0.4 |
+| **전술** | `tools/tactics.ts` — 라인 높이 수비 44.1 m · 균형 50.4 · 공격 53.1, 지문 전부 다름. "전술 균형" 라벨은 잔재가 아님 → `전술 균형 · [ ] 로 바꿈` |
+| **패스 받기** | 조작이 찬 선수에 머물러 방향키가 끌고 갔다. `handleInput` 이 `controlled === b.lastTouch` 일 때 **받을 선수로 한 번** 넘기고, 이동 블록이 요격 지점으로 자동 달리기(방향키 35%). S 로 바꾸면 존중. `tests/receiver.test.ts` 3개 |
+| **공 가진 선수 표시** | `renderer3d.ownerRing/ownerName` — 조작 선수가 아닐 때 흰(아군)/붉은(상대) 링 + 이름 |
+| **입력 키 표시** | `KeyView` 를 일반 기능으로 — 설정 `keyView`(기본 켜짐), 왼쪽 아래(`bottom: 150px`), 방향키 칸 없음 |
+| **공지 사진·GIF** | bedorage-duck 방식. `vite.config.ts` `snapPlugin`(`POST /__snap` → `docs/img/`, `apply: 'serve'`) + `src/debug/shot.ts`(SVG foreignObject PNG · GIF89a LZW). **패널이 숨겨지면 rAF 0회 → 캡처 안 됨** → `captureTick` 이 틱에서 직접 `frame()` 을 부른다. `server.watch.ignored` 에 `docs/img/` (파일이 떨어질 때 새로고침 방지) |
+| 확인 | 브라우저에서 입력 키 상자·전술 라벨·공 가진 선수 링 **눈으로 확인**. `docs/img/` 에 사진 5장 + GIF 2개. `npm test` **111개** |
+
+### 스크린샷·GIF 다시 뜨기
+
+개발 서버(`npm run dev`)를 켜고 브라우저 콘솔에서:
+
+| 화면 | 명령 |
+|---|---|
+| 로비·스쿼드·구단 고르기 (세션 밖) | 그 화면을 띄운 뒤 `await __shot('shot_lobby.png')` |
+| 경기 한 장 (HUD 포함) | 경기 중 `__klo.snap('shot_match.png')` |
+| 경기 GIF (캔버스만 · 빠름) | `__klo.gif('gif_play.gif', 6, 10, 560)` 뒤 6초 동안 조작 |
+| 코인토스처럼 DOM 이 든 GIF | 경기 시작 직후 `__klo.gifDom('gif_toss.gif', 4, 4, 640)` |
+
+- 파일은 `docs/img/` 에 떨어진다(저장소엔 안 넣는다). 완료는 콘솔 `[snap]`/`[gif]` 또는 `window.__snapLog`.
+- 브라우저 패널이 숨겨져 있어도 된다 — 틱 루프가 직접 그린다.
+- 글꼴은 시스템 글꼴로 떨어진다(외부 글꼴 CDN 은 캔버스를 더럽혀 뺀다). 이모지는 그대로.
+
+### 🤝 스쿼드 경제 다시 짜기 (9/11)
 
 사용자 요청 6건. **모든 수치는 `npm run economy` 로 다시 잴 수 있다.**
 
@@ -149,6 +179,9 @@
 | 경기 중 로비로/설정 분리 · 설정 패널을 로비와 공유 | `ui/settings.ts` · `session.ts showSettings/confirmQuit` · `renderer3d.ts setShadows/setResScale` · `lobby.ts` · `DESIGN 7.2` · `DECISIONS G-14` · 플레이 가이드 |
 | Esc 는 `overlay.hidden` 으로 판단 (`paused` 아님) | `session.ts toggleMenu` · `DECISIONS G-15` |
 | 공지글은 코드 블록 안에 둔다 (줄바꿈 보존) | `docs/공지글-모음.md` — 문안 · 짧은 문안 · 댓글 상투구 · 2차 틀 · "고치기 전 확인" 표 |
+| 태클·마크·패스·GK 능력치가 경기에 닿게 (계수 손질) | `core/ball.ts` · `core/skills.ts` · `core/ai.ts` · `DESIGN 4.5a` · `DECISIONS G-22` |
+| 패스 받을 선수는 잡을 때까지 공 쪽으로 (조작도 그 선수로) | `core/sim.ts` · `DESIGN 4.8a` · `DECISIONS G-24` · 플레이 가이드 |
+| 공지 사진·GIF 는 개발 서버 `/__snap` 로 `docs/img/` 에 (저장소엔 안 넣는다) | `vite.config.ts` · `src/debug/shot.ts` · `DECISIONS G-27` · 공지글 0장 |
 | 영입은 선발 5 · 후보 2 · 웃돈 ×1.5 | `cards/squad.ts` · `ui/squad.ts` · `DESIGN 5.6a` · `DECISIONS G-17` · README · 플레이 가이드 · 공지글 |
 | 팀컬러 → **팀워크** + 약체 가산 | `cards/squad.ts teamworkBonus/clubHandicap` · `DESIGN 5.6` · `DECISIONS G-18` · 전 문서 용어 통일 |
 | 구단 이름은 KM26 것을 쓴다 | `tools/build_cards.py CLUB_NAME` · `src/data/cards.json` · `DECISIONS G-19` |
@@ -221,6 +254,10 @@
 48. **Read 도구가 "unchanged since last Read" 라고 잘못 볼 때가 있다** (다른 PC 커밋을 pull 한 직후). `cat -n` 으로 읽으면 된다 — Edit 는 디스크 기준이라 그대로 동작한다.
 49. **PowerShell 에서 python heredoc 은 한글·이모지에서 깨진다** (`cp949`). 스크립트를 **파일로 써서** 실행할 것 (메모리의 "heredoc 금지"와 같은 이유).
 50. 입력을 화면에 보여 주는 것(방향 표시)은 **렌더가 `team.inX/inY` 를 읽으면 된다** — sim 에 아무것도 더하지 않는다(결정론 무관).
+59. **"능력치가 반영되나" 는 코드를 읽어서 답하지 말고 A/B 로 잰다.** 계수가 코드에 있어도 승률이 50% 면 안 닿는 것이다(태클·마크·패스·GK 가 그랬다). 같은 스쿼드·홈원정 교대·대조군이면 200경기로 3%p 를 가른다.
+60. **"닿는다" 를 만들려면 빈도부터 본다.** 태클 성공식을 아무리 키워도 판에 5번이면 승률이 안 움직인다 — 기회(닿는 거리)를 늘려야 한다. 패스도 각도가 아니라 세기가 죽는 이유였다.
+61. **브라우저 패널이 숨겨지면 rAF 가 0회다.** 그리기 뒤에 붙인 캡처·계측은 영영 안 불린다(시뮬은 워커 타이머라 계속 돈다). 워커 틱에서 직접 `frame()` 을 부르면 된다 — bedorage-duck 이 겪은 그 함정.
+62. **키를 물리적으로 보낼 수 없는 자동화 환경에서는 `window.dispatchEvent(new KeyboardEvent)` 로 게임 키를 넣는다.** 앱의 window 리스너에는 닿는다 (브라우저 도구의 `key` 액션은 페이지에 안 닿았다).
 56. **"상한 하나로 두 가지 일을 시킬 수 없다."** 급여 상한은 (가) 약한 구단도 자기 팀을 짤 수 있게 **낮으면 안 되고** (나) 올스타 팀을 못 사게 **높으면 안 된다**. 둘이 부딪히면 상한이 아니라 **다른 축**(인원 제한·웃돈)을 만들어야 한다.
 57. **P2P 에서 상대가 보낸 값으로 규칙을 재지 않는다.** 주력 구단을 `sq.club` 선언값으로 세면 영입 제한을 우회할 수 있다. **세어서 정하면**(선발 최다) 거짓말이 이득이 되지 않는다.
 58. **규칙을 새로 넣을 때 저장된 데이터를 말없이 버리지 않는다.** `loadSquad` 가 `checkSquad(...).ok` 를 보면 새 규칙 하나로 사용자의 스쿼드가 증발한다. **고칠 수 있는 문제(soft)와 못 고치는 문제(hard)를 나눈다.**
@@ -257,6 +294,10 @@
 | `src/render/hud.ts` | 전광판(`45'+2`) · 배너(킥오프·추가시간 자막) |
 | `tests/feedback.test.ts` | **2026-09-10 제보 회귀 테스트** (GK 순간이동 · 백패스 · 슛 보조 · 추가시간 · 수비 키) |
 | `tools/asym.ts` | 홈/원정 비대칭 진단 (같은 스쿼드 · 하프별) |
+| `tools/attrcheck.ts` | **능력치 묶음별 A/B** (HI/LO · 홈원정 교대 · 대조군 50%) — 능력치가 경기에 닿는지 (`npm run attrcheck [N]`) |
+| `tools/tactics.ts` | 전술 프리셋별 라인 높이·퍼짐·결과·지문 (`npm run tactics`) |
+| `src/debug/shot.ts` | 공지 사진·GIF — DOM+캔버스 PNG · GIF89a 인코더 (DEV 전용 동적 import) |
+| `tests/receiver.test.ts` | 패스 받을 선수가 공 쪽으로 가는지 · S 로 풀리는지 (3개) |
 | `tools/economy.ts` | **급여·영입 경제 진단** — 구단별 최강 선발 OVR·급여·영입 인원, 제한 있음/없음 비교 (`npm run economy`) |
 | `tools/power.ts` | 구단 전력(최고 18명 급여 합) — 약체 가산 구간을 정할 때 (`npm run power`) |
 | `tests/signings.test.ts` | 영입 제한·웃돈·주력 구단 판정·hard/soft 오류 (10개) |
@@ -265,7 +306,7 @@
 
 ```bash
 npm install
-npm test               # 14 파일 · 108개
+npm test               # 15 파일 · 111개
 npm run build
 npm run dev            # http://localhost:5175/KLO26/
 npm run verify 200     # 단계 7 검증 (20분 이상 — 표본을 줄이지 말 것)

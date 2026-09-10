@@ -124,7 +124,8 @@ export class Hud {
       const pow = Math.min(1, hold)
       this.el.powbar.hidden = hold <= 0
       this.el.pow.style.width = `${Math.round(pow * 100)}%`
-      this.set('preset', `전술 ${PRESET_NAMES[team.preset] ?? ''}`)
+      // "전술 균형" 만 있으면 무슨 글자인지 모른다(사용자 지적 2026-09-11) — 바꾸는 키까지 적는다
+      this.set('preset', `전술 ${PRESET_NAMES[team.preset] ?? ''} · [ ] 로 바꿈`)
     } else me.hidden = true
 
     // 교체·카드 요약

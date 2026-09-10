@@ -69,6 +69,8 @@ npm run dev     # http://localhost:5175/KLO26/
 | `npm run verify` | 단계 7 검증 — 슬라이더 지문 · 짝 비교 · 팀워크/강화 효과 · 홈원정 대칭 · 결정론 |
 | `npm run economy` | 급여·영입 경제 진단 — 구단별 최강 선발과 격차 |
 | `npm run power` | 구단 전력(최고 18명 급여 합) — 약체 가산 구간 확인 |
+| `npm run attrcheck` | 능력치 묶음별 A/B — 능력치가 경기에 닿는지 (대조군 50%) |
+| `npm run tactics` | 전술 프리셋별 라인 높이·퍼짐·결과 — 전술이 움직임을 바꾸는지 |
 | `npm run oneone` | 1대1 (공격수 vs 골키퍼) 전환율 |
 | `npm run cards` | 카드 OVR 보정 · 급여 상한 계산 |
 | `npm run clubs 90` | 실제 구단끼리 90판 계측 (1부/2부 차이 · 골) |

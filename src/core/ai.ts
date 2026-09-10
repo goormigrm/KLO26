@@ -190,7 +190,9 @@ function carrierDecide(st: GameState, p: Player, noise: number): void {
     const fwdK = 0.6 + team.sliders.mentality * 0.2
     const open = Math.min(8, nearestOppDist(st, q)) / 8
     const lane = laneClear(st, p, q) / 3
-    let s = 0.2 + 0.3 * gain * fwdK + 0.25 * open + 0.25 * lane + 0.15 * p.sk.pas - (dq > 35 ? 0.3 : dq > 25 ? 0.1 : 0) + randN(r) * noise
+    // 시야(vis)가 좋을수록 "열린 동료"를 정확히 본다 — 낮으면 open·lane 판단에 잡음이 는다 (2026-09-11)
+    const eye = 0.6 + 0.4 * p.sk.vis
+    let s = 0.2 + 0.3 * gain * fwdK + (0.25 * open + 0.25 * lane) * eye + 0.15 * p.sk.pas - (dq > 35 ? 0.3 : dq > 25 ? 0.1 : 0) + randN(r) * noise * (1.6 - 0.6 * p.sk.vis)
     if (justGot) s -= 0.35
     let kind: PassKind = 'ground'
     if (gain > 0.2 && spaceAhead(st, q, dir) > 5) {

@@ -6,6 +6,7 @@ import { FORMATIONS } from './formation'
 import { makeRng } from './rng'
 import { skillsOf } from './skills'
 import { aiDecide, ballOwnerTeam, nearestToBall, updateAnchors } from './ai'
+import { interceptPoint } from './ball'
 import {
   attachBall, contestBall, doClear, doPass, doShoot, gkCatch, gkDistribute, pickPassTarget, slideContest, tryControl,
   type PassKind,
@@ -98,6 +99,9 @@ export function createState(cfg: MatchConfig): GameState {
   return st
 }
 
+/** 받을 선수의 요격 지점 (할당을 피하려 재사용) */
+const RECV_TMP = { x: 0, y: 0 }
+
 function setPreset(team: Team, i: number): void {
   team.preset = i
   team.sliders = copySliders(team.presets[i])
@@ -125,8 +129,15 @@ function handleInput(st: GameState, t: number, inp: Input): void {
   // 교체 명령 — 아무 때나 넣고 다음 데드볼에 적용 (DESIGN 2장)
   if (edge & BTN_SUB) team.pendingSub = { out: inp.a, in: inp.b }
 
+  // 내가 찬 패스가 날아가는 동안은 **받으라고 보낸 선수**가 조작 선수다 (2026-09-11 제보:
+  // 공에 가장 가까운 선수로 넘어가면서 누르고 있던 방향키 때문에 공과 상관없는 쪽으로 뛰었다)
+  const myPassLive =
+    b.passLive && b.lastTeam === t && b.passTo >= 0 && st.players[b.passTo].team === t && !st.players[b.passTo].sentOff
   if (hasBall) team.controlled = b.owner
-  else {
+  else if (myPassLive && team.controlled === b.lastTouch) {
+    // 찬 선수에 머물러 있던 조작을 받을 선수로 **한 번** 넘긴다. 그 뒤 S 로 다른 선수를 잡으면 존중한다
+    team.controlled = b.passTo
+  } else {
     const cur = team.controlled
     const valid = cur >= 0 && st.players[cur].team === t && !st.players[cur].sk.isGK && !st.players[cur].sentOff
     if (!valid) team.controlled = nearestToBall(st, t, -1)
@@ -248,7 +259,19 @@ export function step(st: GameState, inputs: [Input, Input]): void {
       dvy = team.inY * p.sk.vmax
       sprint = team.sprint
       if (team.slow && b.owner === p.idx) speedK *= 0.45
-      if (b.owner !== p.idx && (p.press || p.tackleT > 0)) {
+      if (b.owner < 0 && b.passLive && b.passTo === p.idx && b.lastTeam === p.team) {
+        // 나에게 오는 패스 — 잡기 전까지는 공 쪽으로 스스로 달린다. 방향키는 35% 만 섞여 살짝 트는 정도.
+        // 상대가 먼저 길을 막으면 tryControl 이 그쪽에 준다 (가로채기는 그대로 산다)
+        interceptPoint(st, p, RECV_TMP)
+        const ddx = RECV_TMP.x - p.x
+        const ddy = RECV_TMP.y - p.y
+        const d = len(ddx, ddy)
+        if (d > 0.3) {
+          dvx = (ddx / d) * p.sk.vmax + dvx * 0.35
+          dvy = (ddy / d) * p.sk.vmax + dvy * 0.35
+          sprint = sprint || d > 5
+        }
+      } else if (b.owner !== p.idx && (p.press || p.tackleT > 0)) {
         // 압박(D)·태클(Space): 공을 향해 스스로 달린다. 방향키는 45% 만큼 옆으로 튼다
         const tx = b.x + b.vx * 0.25
         const ty = b.y + b.vy * 0.25

@@ -127,3 +127,16 @@ window.addEventListener('resize', () => {
 })
 
 boot()
+
+// ---------------------------------------------------------------- 공지글 첨부 (개발 서버에서만)
+// 로비·스쿼드처럼 세션 밖 화면을 찍는다: 콘솔에서 `__shot('이름.png')`. 경기 중은 `__klo.snap/gif`.
+// 배포 번들에는 shot.ts 가 들어가지 않는다 (DEV 가 아니면 이 블록이 통째로 사라진다).
+if (import.meta.env.DEV) {
+  ;(window as unknown as { __shot?: unknown }).__shot = async (name: string, scale = 1) => {
+    const m = await import('./debug/shot')
+    const url = await m.snapDom(scale)
+    const r = await m.postSnap(name, m.dataUrlBytes(url))
+    console.log('[shot]', r)
+    return r
+  }
+}

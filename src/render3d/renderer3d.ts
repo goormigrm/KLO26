@@ -118,6 +118,11 @@ export class Renderer3D {
   private chevMat: THREE.MeshBasicMaterial
   private name: THREE.Sprite | null = null
   private nameFor = -1
+  /** 공을 가진 선수 표시 — 조작 선수가 아닐 때 (사용자 요청 2026-09-11). 아군 흰색 · 상대 붉은색 */
+  private ownerRing: THREE.Mesh
+  private ownerName: THREE.Sprite | null = null
+  private ownerNameFor = -1
+  private ownerNameColor = ''
   private camX = 0
   private camLookY = 0
   private camFov = FOV_WIDE
@@ -179,6 +184,14 @@ export class Renderer3D {
     this.oppRing.position.y = 0.02
     this.oppRing.visible = false
     this.scene.add(this.oppRing)
+    this.ownerRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.5, 0.64, 32),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75, side: THREE.DoubleSide, depthWrite: false }),
+    )
+    this.ownerRing.rotation.x = -Math.PI / 2
+    this.ownerRing.position.y = 0.02
+    this.ownerRing.visible = false
+    this.scene.add(this.ownerRing)
     // ">" 모양 — 평평하게 눕힌 뒤(메시) 그룹을 돌려 방향키 쪽을 가리킨다. 슛을 모으면 붉어지고 길어진다
     const shape = new THREE.Shape()
     shape.moveTo(-0.38, 0.5)
@@ -236,6 +249,11 @@ export class Renderer3D {
       if (e.type === 'card') this.refs.showCard(e.n ?? 1, e.x, e.y)
       else if (e.type === 'offside') this.refs.raiseFlag(e.y)
     }
+  }
+
+  /** WebGL 캔버스 — 스크린샷·GIF 용. `draw()` 직후 같은 작업 안에서 읽어야 그림이 남아 있다 */
+  get canvasEl(): HTMLCanvasElement {
+    return this.gl.domElement
   }
 
   /** 그림자 켜기/끄기 — 경기 중에도 바꿀 수 있다 (2026-09-11 설정 창) */
@@ -330,6 +348,36 @@ export class Renderer3D {
       if (this.name) this.name.visible = false
     }
     if (this.name && c >= 0) this.name.visible = true
+
+    // ---- 공을 가진 선수 (조작 선수가 아닐 때) — 링 + 이름 ----
+    const ow = curr.ball.owner
+    if (ow >= 0 && ow < n && ow !== c) {
+      const rig = this.rigs[ow]
+      const mine = curr.players[ow].team === view.humanTeam
+      const color = mine ? '#f4f4f4' : '#ff8a7a'
+      ;(this.ownerRing.material as THREE.MeshBasicMaterial).color.set(mine ? 0xffffff : 0xff6a5a)
+      this.ownerRing.visible = true
+      this.ownerRing.position.set(rig.root.position.x, 0.02, rig.root.position.z)
+      if (this.ownerNameFor !== ow || this.ownerNameColor !== color) {
+        if (this.ownerName) {
+          this.scene.remove(this.ownerName)
+          ;(this.ownerName.material as THREE.SpriteMaterial).map?.dispose()
+          this.ownerName.material.dispose()
+        }
+        const p = curr.players[ow]
+        this.ownerName = nameSprite(`${p.spec.no} ${p.spec.name}`, color)
+        this.scene.add(this.ownerName)
+        this.ownerNameFor = ow
+        this.ownerNameColor = color
+      }
+      if (this.ownerName) {
+        this.ownerName.visible = true
+        this.ownerName.position.set(rig.root.position.x, rig.height + 1.25, rig.root.position.z)
+      }
+    } else {
+      this.ownerRing.visible = false
+      if (this.ownerName) this.ownerName.visible = false
+    }
     // 방향키 표시 — 누르고 있는 동안 조작 선수 앞 1.3 m 에 ">" (공격: 노랑 · 슛 모으는 중: 빨강 · 수비: 흰색)
     const team = curr.teams[view.humanTeam]
     const ix = team ? team.inX : 0

@@ -118,6 +118,24 @@ export class Session {
   private sndSeen = 0
   private hashes = new Map<number, number>()
   private peerLeft = false
+  /** 공지글 첨부용 캡처 (DEV) — 프레임 끝에서 처리한다 */
+  private snapName: string | null = null
+  private gifRec: {
+    name: string
+    w: number
+    h: number
+    /** 몇 틱마다 한 장 (60틱 = 1초) */
+    every: number
+    left: number
+    lastTick: number
+    /** 이번 그리기 뒤에 한 장 뜬다 (틱 루프가 켠다) */
+    armed: boolean
+    /** 캔버스만(false) / 화면 전체 DOM 포함(true — 느리다) */
+    dom: boolean
+    frames: Uint8ClampedArray[]
+    pending: Promise<void>
+    delayCs: number
+  } | null = null
 
   constructor(
     host: HTMLElement,
@@ -142,7 +160,8 @@ export class Session {
     this.renderer = new Renderer3D(stage, { shadows: cfg.settings.shadows, resScale: cfg.settings.resScale })
     this.renderer.setMatch(this.state, this.kits, this.gkKits)
     this.hud = new Hud(stage, this.radarColors, this.keysShown)
-    if (cfg.test?.keyView) this.keyView = new KeyView(stage)
+    // 입력 키 표시 — 설정(기본 켜짐) 또는 테스트 모드 (2026-09-11 사용자 요청: Q+D 가 실제로 들어가는지 보고 싶다)
+    if (cfg.settings.keyView || cfg.test?.keyView) this.keyView = new KeyView(stage)
     // 상단에 **로비로 · 설정 · 메뉴**를 나눠 둔다 (bedorage-duck 방식 — 사용자 요청 2026-09-11)
     ;(host.querySelector('#btn-menu') as HTMLButtonElement).onclick = () => this.toggleMenu()
     ;(host.querySelector('#btn-settings') as HTMLButtonElement).onclick = () => this.showSettings()
@@ -173,6 +192,15 @@ export class Session {
         this.cfg.net
           ? { me: this.cfg.net.me, delay: this.cfg.net.lockstep.delay, rtt: this.cfg.net.link.rtt, stalls: this.stalls, resyncs: this.resyncs }
           : null,
+      // 공지글 첨부 — 개발 서버에서만 (docs/img/ 에 저장). 배포 번들에는 shot.ts 가 없다
+      snap: (name: string) => {
+        this.snapName = name
+      },
+      // HUD·코인토스 같은 DOM 까지 든 GIF — 화면 전체를 프레임마다 그리므로 느리다 (4fps 권장)
+      gifDom: (name: string, seconds = 5, fps = 4, width = 640) => this.startGif(name, seconds, fps, width, true),
+      gif: (name: string, seconds = 6, fps = 10, width = 480) => this.startGif(name, seconds, fps, width, false),
+      // 패널이 숨겨져 있어도 한 장 그린다 (rAF 가 멈춰 있을 때 확인용)
+      frameNow: () => this.frame(performance.now()),
     }
   }
 
@@ -317,6 +345,7 @@ export class Session {
       }
       capturePose(this.state, this.prev)
       step(this.state, inputs)
+      if (import.meta.env.DEV) this.captureTick(now)
       if (net) {
         // 60틱마다 해시 — 게스트가 방장에게 보내고, 다르면 방장이 스냅샷을 보낸다 (DESIGN 4.13)
         if (this.state.tick % 60 === 0) {
@@ -362,6 +391,7 @@ export class Session {
     }
     this.renderer.draw(this.prev, this.state, alpha, dt, { humanTeam: me, controlled })
     this.hud.update(this.state, { humanTeam: me, controlled, message })
+    if (import.meta.env.DEV) this.captureAfterDraw()
     this.snd.update(this.state, dt)
     if (this.keyView) {
       const p = controlled >= 0 ? this.state.players[controlled] : null
@@ -424,6 +454,86 @@ export class Session {
     this.tossing = false
   }
 
+  /** GIF 녹화 시작 — `dom` 이면 HUD·오버레이까지(느림), 아니면 캔버스만 */
+  private startGif(name: string, seconds: number, fps: number, width: number, dom: boolean): void {
+    const canvas = this.renderer.canvasEl
+    const ratio = dom ? window.innerHeight / Math.max(1, window.innerWidth) : canvas.height / Math.max(1, canvas.width)
+    const w = width
+    const h = Math.round(w * ratio)
+    this.gifRec = {
+      name, w, h, dom,
+      every: Math.max(1, Math.round(60 / fps)),
+      left: Math.round(seconds * fps),
+      lastTick: -1e9,
+      armed: false,
+      frames: [],
+      pending: Promise.resolve(),
+      delayCs: Math.round(100 / fps),
+    }
+  }
+
+  /**
+   * 틱 루프에서 부른다 — 캡처가 걸려 있으면 **직접 그린다**.
+   * 브라우저 패널이 숨겨지면 rAF 가 0회라 `frame()` 이 안 돌고, 캡처는 그리기 뒤에 붙어 있어 영영 안 불렸다
+   * (bedorage-duck 이 겪은 것과 같다 — 시뮬은 워커 타이머라 계속 돈다). DEV 에서만 불린다.
+   */
+  private captureTick(now: number): void {
+    const g = this.gifRec
+    if (g && this.state.tick - g.lastTick >= g.every) {
+      g.lastTick = this.state.tick
+      g.armed = true
+    }
+    if (this.snapName || (g && g.armed)) this.frame(now)
+  }
+
+  /**
+   * 공지글 첨부 캡처 — `draw()` 직후에만 WebGL 그림이 남아 있다. `frame()` 끝에서 불린다.
+   * `__klo.snap('이름.png')` 은 화면 전체(HUD 포함)를, `__klo.gif/gifDom('이름.gif', 초, fps)` 는 GIF 로.
+   */
+  private captureAfterDraw(): void {
+    const w = window as unknown as { __snapLog?: string[] }
+    const log = (msg: string): void => {
+      console.log(msg)
+      ;(w.__snapLog ??= []).push(msg)
+    }
+    if (this.snapName) {
+      const name = this.snapName
+      this.snapName = null
+      loadShot()
+        .then(async (m) => {
+          const url = await m.snapDom(1)
+          log(`[snap] ${await m.postSnap(name, m.dataUrlBytes(url))}`)
+        })
+        .catch((e: unknown) => log(`[snap] 실패 ${String(e)}`))
+    }
+    const g = this.gifRec
+    if (g && g.armed) {
+      g.armed = false
+      if (g.dom) {
+        // DOM 포함 — 비동기 한 장. 순서가 섞이지 않게 앞 장을 기다린다
+        g.pending = g.pending.then(async () => {
+          const m = await loadShot()
+          const url = await m.snapDom(g.w / window.innerWidth)
+          g.frames.push(await m.frameFromDataUrl(url, g.w, g.h))
+        })
+      } else {
+        // 캔버스만 — 지금 당장 떠야 한다 (다음 그리기 전에)
+        const f = captureFrame(this.renderer.canvasEl, g.w, g.h)
+        if (f) g.frames.push(f)
+      }
+      if (--g.left <= 0) {
+        this.gifRec = null
+        g.pending
+          .then(async () => {
+            const m = await loadShot()
+            const bytes = m.encodeGif(g.frames, g.w, g.h, g.delayCs)
+            log(`[gif] ${await m.postSnap(g.name, bytes)} · ${g.frames.length}장`)
+          })
+          .catch((e: unknown) => log(`[gif] 실패 ${String(e)}`))
+      }
+    }
+  }
+
   /** Esc — 창이 떠 있으면 닫고, 없으면 메뉴를 연다. 온라인은 멈추지 않으므로 `paused` 로 판단하면 안 된다 */
   private toggleMenu(): void {
     if (this.state.done || this.tossing) return
@@ -482,6 +592,13 @@ export class Session {
           setKeysHint: (on) => {
             this.keysShown = on
             this.hud.setKeysShown(on)
+          },
+          setKeyView: (on) => {
+            if (on && !this.keyView) this.keyView = new KeyView(this.renderer.container)
+            else if (!on && this.keyView) {
+              this.keyView.dispose()
+              this.keyView = null
+            }
           },
           rerender: draw,
         })
@@ -666,4 +783,23 @@ export class Session {
       setTimeout(() => this.cfg.net?.link.leave(), 120)
     }
   }
+}
+
+/**
+ * 캡처 모듈 — **DEV 에서만** 불러온다. 상수 조건 삼항이라 배포 빌드에서는 esbuild 가 `import()` 째로 지워
+ * `shot-*.js` 청크가 나오지 않는다 (메서드 안에 그냥 두면 Rollup 이 청크를 만든다 — 2026-09-11 확인).
+ */
+const loadShot = (): Promise<typeof import('../debug/shot')> =>
+  import.meta.env.DEV ? import('../debug/shot') : Promise.reject(new Error('DEV 전용'))
+
+/** GIF 프레임 — 캔버스를 줄여 RGBA 로. `draw()` 와 같은 작업 안에서 불러야 한다 (DEV 전용) */
+let frameTmp: HTMLCanvasElement | null = null
+function captureFrame(src: HTMLCanvasElement, w: number, h: number): Uint8ClampedArray | null {
+  const c = frameTmp ?? (frameTmp = document.createElement('canvas'))
+  c.width = w
+  c.height = h
+  const g = c.getContext('2d', { willReadFrequently: true })
+  if (!g) return null
+  g.drawImage(src, 0, 0, w, h)
+  return g.getImageData(0, 0, w, h).data
 }

@@ -190,5 +190,11 @@ KM26 → KMD26v1.0 → KLD26 의 결. 배포 주소 `https://goormigrm.github.io
 | G-19 (9/11) | 구단 이름도 개리그 매니저처럼 실제와 다르게 | KM26 `index.html` 의 구단표를 그대로 옮겼다(29개 전부 · id 가 같아 1:1). 선수 보호명과 같은 뜻 — 실제 이름을 저장소에 두지 않는다. `build_cards.py` 의 `CLUB_NAME` 한 곳만 고치면 되고, 이번엔 `cards.json` 도 함께 고쳤다. **`POOL_HASH` 는 선수 id·능력치에서만 나오므로 저장된 스쿼드는 살아남는다** | `tools/build_cards.py CLUB_NAME` · `src/data/cards.json` |
 | G-20 (9/11) | 구단 고르기를 1부·2부로 나눠 세우기 | `drawClubs` 가 `div` 로 묶어 제목(`1부 12개 구단` / `2부 17개 구단`)을 단다. 카드마다 **약체 가산 +N** 태그도 붙여 고르기 전에 보이게 | `ui/squad.ts drawClubs` · `style.css .divhead/.hctag` |
 | G-21 (9/11) | 교체·영입한 뒤에도 선택이 남아 있어 헷갈린다 | 맞바꾸기(자리 클릭·끌어놓기·⬇후보로·빠른 맞바꾸기)와 영입 **모두 끝나면 `sel = -1`**. 다음 클릭이 실수로 또 교체되지 않는다 | `ui/squad.ts bind/bindList` |
+| G-22 (9/11) | 능력치가 실제 경기에 반영되나 전체 검증 (특히 슈팅·수비) | **재서 답했다** — `tools/attrcheck.ts` (묶음별 HI/LO A/B · 홈원정 교대 · 대조군 50%). 슈팅은 닿았고(74%), **태클·마크·패스·골키퍼는 49~51% 로 안 닿았다.** 넷 다 고쳐 56~68% 로 올렸다. 표는 DESIGN 4.5a | `core/ball.ts` · `core/skills.ts` · `core/ai.ts` · `tools/attrcheck.ts` |
+| G-23 (9/11) | 전술이 영향이 있나 · "전술 균형" 글자는 뜻이 있나 | 있다 — `tools/tactics.ts` 로 재니 라인 높이가 수비 44 m → 공격 53 m. 글자는 KM26 잔재가 아니라 **지금 전술 프리셋**이었다. 지우는 대신 `전술 균형 · [ ] 로 바꿈` 으로 뜻이 보이게 | `render/hud.ts` · `tools/tactics.ts` |
+| G-24 (9/11) | 패스 받을 선수가 공과 상관없는 쪽으로 뛴다 | 조작이 찬 선수에 머물러 방향키가 그 선수를 끌고 갔다. 패스가 살아 있는 동안 조작을 **받을 선수로 넘기고** 잡을 때까지 요격 지점으로 스스로 달리게(방향키 35%). S 로 바꾸면 존중. 상대 가로채기는 그대로 | `core/sim.ts handleInput/step` · `tests/receiver.test.ts` |
+| G-25 (9/11) | 공을 가진 선수도 (조작 선수가 아니어도) 링과 이름 | `ownerRing` + `ownerName` — 아군 흰색 · 상대 붉은색. 조작 선수 표시(노랑)와 겹치면 조작 쪽만 | `render3d/renderer3d.ts` |
+| G-26 (9/11) | 방향키 빼고 내가 누르는 키를 왼쪽 아래에 · 설정에서 켜고 끄기 | 테스트 전용이던 `KeyView` 를 일반 기능으로 — 설정 `keyView`(기본 켜짐), 방향키 칸 제거, 조합(`Q + D`)을 글자로. 상대에겐 안 간다 | `render/keyview.ts` · `ui/settings.ts` · `game/session.ts` |
+| G-27 (9/11) | 공지글에 사진·GIF 넣기 (bedorage-duck 방식) | 개발 서버 플러그인 `/__snap` 이 `docs/img/` 에 쓴다(배포 무관, `apply: 'serve'`). 페이지 쪽은 `src/debug/shot.ts` — DOM+캔버스 PNG(SVG foreignObject), GIF89a 인코더(LZW·252색). **패널이 숨겨지면 rAF 가 0회라 캡처가 안 불렸다** → 틱 루프에서 `captureTick` 이 직접 그린다. 그림은 저장소에 안 넣는다(`.gitignore`) | `vite.config.ts` · `src/debug/shot.ts` · `game/session.ts` · `main.ts` |
 
 앞으로 생기는 갈림길은 이 문서에 번호를 이어 적는다.

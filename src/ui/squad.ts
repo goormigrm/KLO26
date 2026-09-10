@@ -16,7 +16,7 @@ import {
 import { CLUBS, POOL, POOL_HASH, POOL_SIZE, cardById } from '../data/pool'
 import type { Card } from '../cards/cards'
 import { sfx } from '../audio/sfx'
-import { miniBars, starHtml } from './stars'
+import { pipsHtml, starHtml } from './stars'
 
 const SLOTS_KEY = 'klo26.squads'
 const CUR_KEY = 'klo26.squad'
@@ -229,20 +229,22 @@ export class SquadScreen {
     const shape = FORMATIONS[sq.formation]
 
     // ---- 전술판 위 선수 ----
+    // 전술판은 **세로** — 자기 골문이 아래, 공격 방향이 위 (사용자 요청 2026-09-11). SLOT_XY 의 x(골라인→상대 골라인)가 위아래, y 가 좌우
     const chip = (i: number): string => {
       const c = cardById(sq.ids[i])
       const slot = i === 0 ? 'GK' : shape[i - 1][1]
       const xy = SLOT_XY[slot] ?? { x: 0.5, y: 0.5 }
       const on = this.sel === i ? ' on' : this.mark(i)
-      const style = `left:${xy.x * 100}%;top:${xy.y * 100}%`
+      // 셋이 나란한 줄의 가운데 자리(CM·ST·CB·CAM·DM)는 7% 아래로 — 세로판에서 칩이 겹치지 않게 (4% 는 18px 겹쳤다)
+      const stagger = slot === 'CM' || slot === 'ST' || slot === 'CB' || slot === 'CAM' || slot === 'DM' ? 7 : 0
+      const style = `left:${xy.y * 100}%;top:${(1 - xy.x) * 100 + stagger}%`
       if (!c) return `<button class="chip empty${on}" data-slot="${i}" style="${style}"><b>${slot}</b></button>`
       const fam = this.famAt(c, i)
       const enh = sq.enh[i] ?? 0
       return `<button class="chip${on}" data-slot="${i}" draggable="true" style="${style};--fam:${famColor(fam)}">
-        <span class="no">${c.no}</span>
         <b>${c.name}</b>
         <span class="ov">${starHtml(ovrStars(cardOvr(c, enh + color.bonus)), true)}</span>
-        <small>${slot}${enh ? ` +${enh}` : ''}</small>
+        <small>${slot} · ${c.no}번${enh ? ` · +${enh}` : ''}</small>
       </button>`
     }
     const pitch = Array.from({ length: START_SIZE }, (_, i) => chip(i)).join('')
@@ -275,17 +277,6 @@ export class SquadScreen {
           <button class="btn main" id="sq-done"${check.ok ? '' : ' disabled'}>이 스쿼드로 (저장)</button>
         </div>
       </div>
-      <div class="autobar">
-        <span class="lab">자동 채우기</span>
-        <button class="btn secondary" id="auto-xi">선발 11명</button>
-        <button class="btn secondary" id="auto-bench">후보 7명</button>
-        <span class="lab">기준</span>
-        <div class="seg" id="auto-by">
-          <button data-v="fam"${this.autoBy === 'fam' ? ' class="on"' : ''} title="포메이션 자리마다 그 자리 능숙도가 높은 선수부터">포메이션 능숙도 우선</button>
-          <button data-v="ovr"${this.autoBy === 'ovr' ? ' class="on"' : ''} title="자리에 서도 되는 선수 중 능력치가 높은 선수부터">선수 능력치 우선</button>
-        </div>
-        <small>내 구단 선수로만 채웁니다 · 선발을 채우면 비는 후보 자리는 자동으로 메웁니다</small>
-      </div>
       ${this.slotsStrip()}
       <div class="gauges v2">
         <div class="g salary${salCls}">
@@ -305,12 +296,23 @@ export class SquadScreen {
       ${this.msg ? `<div class="okmsg">${this.msg}</div>` : ''}
       <div class="sq-body">
         <div class="sq-board">
-          <div class="pitch">
+          <div class="autobar board">
+            <span class="lab">자동 채우기</span>
+            <button class="btn" id="auto-xi">선발 11명</button>
+            <button class="btn" id="auto-bench">후보 7명</button>
+            <span class="lab">기준</span>
+            <div class="seg" id="auto-by">
+              <button data-v="fam"${this.autoBy === 'fam' ? ' class="on"' : ''} title="포메이션 자리마다 그 자리 능숙도가 높은 선수부터">포메이션 능숙도 우선</button>
+              <button data-v="ovr"${this.autoBy === 'ovr' ? ' class="on"' : ''} title="자리에 서도 되는 선수 중 능력치가 높은 선수부터">선수 능력치 우선</button>
+            </div>
+            <small>내 구단 선수로만 채웁니다 · 선발을 채우면 비는 후보 자리는 자동으로 메웁니다</small>
+          </div>
+          <div class="pitch vertical">
             <div class="p-half"></div><div class="p-circle"></div><div class="p-spot"></div>
-            <div class="p-box left"></div><div class="p-box right"></div>
-            <div class="p-six left"></div><div class="p-six right"></div>
-            <div class="p-goal left"></div><div class="p-goal right"></div>
-            <div class="p-arrow">공격 방향 →</div>
+            <div class="p-box top"></div><div class="p-box bottom"></div>
+            <div class="p-six top"></div><div class="p-six bottom"></div>
+            <div class="p-goal top"></div><div class="p-goal bottom"></div>
+            <div class="p-arrow">공격 방향 ↑</div>
             ${pitch}
           </div>
           <div class="sub-h">벤치 7 <small>${
@@ -336,7 +338,7 @@ export class SquadScreen {
             <select class="sel" id="f-pos"><option value="">전 포지션</option>${POS_ORDER.map((p) => `<option${p === this.filterPos ? ' selected' : ''}>${p}</option>`).join('')}</select>
             <select class="sel" id="f-sort"><option value="ovr"${this.sort === 'ovr' ? ' selected' : ''}>종합 순</option><option value="sal"${this.sort === 'sal' ? ' selected' : ''}>급여 순</option><option value="name"${this.sort === 'name' ? ' selected' : ''}>이름 순</option></select>
           </div>
-          <div class="crow-head"><span>종합</span><span>이름</span><span>구단 · 포지션 · 급여</span><span class="lab">${(this.filterPos === 'GK' ? SIX_GK : SIX_FIELD).map(([k, n]) => `<i title="${n}">${k}</i>`).join('')}</span></div>
+          <div class="crow-head"><span>종합</span><span>이름</span><span>구단 · 포지션 · 급여</span><span class="lab">${(this.filterPos === 'GK' ? SIX_GK : SIX_FIELD).map(([k, n]) => `<i title="${k}">${n}</i>`).join('')}</span></div>
           <div class="crow-list">${list.slice(0, 200).map((c) => this.cardRow(c)).join('')}</div>
           <p class="hintline">${list.length}장${list.length > 200 ? ' (앞 200장)' : ''}${this.ownOnly ? '' : ' · 다른 구단을 섞으면 팀컬러가 깨집니다'}</p>
         </div>
@@ -369,7 +371,7 @@ export class SquadScreen {
       <span class="ov">${starHtml(ovrStars(cardOvr(c, 0)), true)}</span>
       <b>${c.name}</b>
       <small${showFam ? ` style="color:${famColor(fam)}"` : ''}>${cl?.short ?? ''} · ${c.pos}${showFam ? ` · 능숙도 ${fam}` : ''} ${salHtml}</small>
-      ${miniBars(Object.values(s), labels)}
+      ${pipsHtml(Object.values(s).map(statStars), labels)}
     </button>`
   }
 

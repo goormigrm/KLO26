@@ -461,3 +461,43 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
 .autobar .lab { font: 700 10.5px 'IBM Plex Mono', monospace; color: var(--ink-3); letter-spacing: .08em; text-transform: uppercase; }
 .autobar .btn { padding: 5px 12px; font-size: 12.5px; }
 .autobar small { color: var(--ink-3); font-size: 11px; margin-left: auto; }
+
+/* ---- 2026-09-11: 세로 전술판 · 이름이 보이는 칩 · 별 폭 버그 · 능력치 눈금 · 자동 채우기 띠를 전술판 위로 ---- */
+/* 별은 글자 폭만큼만 — 그리드 칸에서 늘어나면 금색 덮개(width %)가 별 다섯을 다 덮어 전부 만점처럼 보였다 */
+.stars { width: max-content; }
+.st .stars { justify-self: start; }
+.pitch.vertical { aspect-ratio: 68 / 105; background: repeating-linear-gradient(180deg, #2b8043 0 8.33%, #26743c 8.33% 16.66%); }
+.pitch.vertical .p-half { left: 0; right: 0; top: 50%; bottom: auto; width: auto; height: 2px; }
+.pitch.vertical .p-box { left: 20%; width: 60%; height: 15.7%; top: auto; }
+.pitch.vertical .p-box.top { top: 0; border-top: 0; }
+.pitch.vertical .p-box.bottom { bottom: 0; border-bottom: 0; }
+.pitch.vertical .p-six { left: 36.5%; width: 27%; height: 5.2%; top: auto; }
+.pitch.vertical .p-six.top { top: 0; border-top: 0; }
+.pitch.vertical .p-six.bottom { bottom: 0; border-bottom: 0; }
+.pitch.vertical .p-goal { left: 44.6%; width: 10.8%; height: 1.4%; top: auto; }
+.pitch.vertical .p-goal.top { top: -1.4%; }
+.pitch.vertical .p-goal.bottom { bottom: -1.4%; }
+.pitch.vertical .chip { width: 104px; grid-template-columns: 1fr; grid-template-rows: auto auto auto; gap: 1px 0; padding: 5px 6px 4px;
+  justify-items: center; text-align: center; border-left-width: 1px; border-top: 3px solid var(--fam, #2c3644); }
+.pitch.vertical .chip b { grid-row: auto; max-width: 92px; font-size: 12.5px; }
+.pitch.vertical .chip .ov { grid-row: auto; }
+.pitch.vertical .chip small { grid-column: auto; white-space: nowrap; }
+.pitch.vertical .chip.empty { width: 64px; grid-template-rows: 1fr; padding: 8px 6px; }
+.sq-body { grid-template-columns: 460px 280px minmax(0, 1fr); }
+@media (max-width: 1400px) { .sq-body { grid-template-columns: 400px 250px minmax(0, 1fr); } }
+.bench { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); }
+.bchip b { white-space: normal; line-height: 1.2; }
+.autobar.board { border: 1px solid #e3b34166; background: linear-gradient(180deg, #221f14, var(--bg-2)); margin-bottom: 8px; padding: 8px 10px; }
+.autobar.board .lab { color: var(--gold); }
+.autobar.board .btn { padding: 5px 12px; font-size: 12.5px; }
+.autobar.board small { margin-left: 0; flex-basis: 100%; }
+/* 능력치 눈금 — 별과 같은 5단계, 반 칸 단위 (목록) */
+.pips { display: inline-grid; grid-template-columns: repeat(6, 36px); gap: 6px; align-items: center; }
+.pip { display: grid; grid-template-columns: repeat(5, 6px); gap: 1px; cursor: help; }
+.pip i { display: block; height: 9px; background: #2a3340; border-radius: 1px; }
+.pip i.f { background: var(--gold); }
+.pip i.h { background: linear-gradient(90deg, var(--gold) 50%, #2a3340 50%); }
+.crow-head .lab { grid-template-columns: repeat(6, 36px); gap: 6px; font-size: 9.5px; letter-spacing: 0; }
+.pitch.vertical .chip { width: 86px; padding: 4px 4px 3px; }
+.pitch.vertical .chip b { max-width: 78px; font-size: 12px; }
+.pitch.vertical .chip small { font-size: 9px; }

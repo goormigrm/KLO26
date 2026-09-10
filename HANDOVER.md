@@ -1,26 +1,26 @@
-# HANDOVER — 2026-09-11 (12차)
+# HANDOVER — 2026-09-11 (13차)
 
-> **이 문서가 최신입니다.** 단계 1~7 이 전부 들어가 있고, 2026-09-10~11 에 **사용자가 직접 해 보고 낸 제보·요청 24건**을 반영했습니다.
-> 엔진(골키퍼·슛 보조·킥오프·추가시간·수비)과 스쿼드 화면(세로 전술판·명단 한 통·별점·JSON)이 이번에 크게 바뀌었습니다.
+> **이 문서가 최신입니다.** 단계 1~7 이 전부 들어가 있고, 2026-09-10~11 에 사용자가 직접 해 보고 낸 **제보·요청 34건**을 반영했습니다.
+> 이번 세션(7~13차)은 **경기 중 설정 분리 → 원정 버그 → 스쿼드 경제(영입 제한·팀워크·구단명) → 능력치 A/B 검증과 손질 → 세레모니·리플레이 → 속도 지배 완화 → 결정력 vs 골키퍼 → 세트피스 시점·롱볼** 순서였습니다.
 > 남은 것은 **다른 회선 두 대 실제 대전**(PREP B-1), **강화 효과 키우기**, **파울 빈도**, 그리고 공개입니다.
 
 ## 세션 메타데이터
 
 | 항목 | 값 |
 |---|---|
-| 날짜 | 2026-09-10 ~ 09-11 (직전 6차: 09-11 코인토스, 5차: 09-10) |
+| 날짜 | 2026-09-10 ~ 09-11 (직전 12차: 09-11 세트피스, 6차: 09-11 코인토스) |
 | 저장소 · 브랜치 | `https://github.com/goormigrm/KLO26` · `main` |
-| 마지막 커밋 | 🎯 세트피스 키커 뒤 시점 · A 홀드 롱볼 (해시는 `git log -1`) |
-| git 상태 | **클린** (`main...origin/main` — 미커밋 변경 0) |
-| 배포 | <https://goormigrm.github.io/KLO26/> — 이번 세션 커밋 9건, 확인한 것 전부 Actions success |
+| 마지막 커밋 | HANDOVER 13차 (그 앞이 `8b86abb` 🧤 PK 골키퍼 골라인) |
+| git 상태 | **클린** (`main...origin/main` — 미커밋 변경 0, 이 문서 커밋 전 기준) |
+| 배포 | <https://goormigrm.github.io/KLO26/> — 이번 세션 커밋 14건, 확인한 것 전부 Actions success (동시 푸시로 하나가 cancelled 된 것은 다음 것이 덮었다) |
 | 작업 디렉터리 | 노트북: `C:\Users\tkdrm\Workspace\personal\KLO26` · 메인 PC: `C:\Users\tkdrm\OneDrive\Desktop\klo26` |
+| 테스트 | `npm test` — **18 파일 · 121개** 통과 |
 
 두 PC 를 오가므로 다음 세션은 `git fetch origin && git status -sb` 부터.
 
 ### 이번 세션 커밋 (git log 참조 — 여기 중복 작성 안 함)
 
-`0d21f22` v0.8.0 제보 11건 → `a92f677` verify 결과·asym 도구 → `bccfa94` v0.8.1 스쿼드 6건 →
-`1cbc9f9` 급여 게이지 고침 → `9f6033b` 세로 전술판 4건 → `29450a0` 명단 배치 → `17ea693` 구단 필터·문서 정정 → `37439ca` HANDOVER 6차 → **코인토스·홈 컬러**
+`bd901c5` 코인토스 → `3de4ab7` 설정 분리·공지글 → `6948e69` 원정 버그 → `241bfb3` 팀워크·영입·구단명 → `ae11a7a` 능력치 검증·패스 받기·공지 사진 → `6692898` 캡처 → `9511b99` 속도·세레모니·리플레이 → `a6f4ad9` 세레모니 카메라 → `4eb9aed` 결정력 vs GK → `09a2a98` 세트피스 시점·롱볼 → `8a03ccb` 카메라 다듬기 → `8b86abb` PK 골키퍼
 
 ---
 
@@ -28,105 +28,44 @@
 
 | 단계 | 무엇 | 상태 |
 |---|---|---|
-| 1 | 실제 K리그 2026 선수 데이터 (보호명 · 1,056명 · 29구단) | ✅ |
+| 1 | 실제 K리그 2026 선수 데이터 (보호명 · 1,056명 · 29구단 · **구단명은 KM26 가상 이름**) | ✅ |
 | 2 | 결정론 시뮬 코어 | ✅ 해시 100/100 |
-| 3 | Three.js 방송 카메라 · 찰흙 선수 · 표준 키보드 · 폰 차단 | ✅ |
-| 4 | 오프사이드 · 파울/카드 · 프리킥/PK · 교체 · 세트피스 · 심판 3명 · **추가시간** · **백패스 룰** | ✅ |
-| 5 | 카드·스쿼드 (급여 상한 252 · 팀컬러 · 강화 예산 · **별점 표시** · **JSON 저장/불러오기**) | ✅ |
-| 6 | Trystero 로비·방 · 2인 락스텝 · 해시/리싱크 · 대기실 | ✅ 로컬 두 탭까지 |
-| 7 | 밸런스 계측 (`verify` · `asym` · `balance` · `oneone` · `clubs`) | ✅ |
-| — | 소리 · 테스트 모드(`?test=1`) | ✅ |
+| 3 | Three.js 방송 카메라 · 찰흙 선수 · 표준 키보드 · 폰 차단 · **세트피스 키커 뒤 카메라** · **골 리플레이** | ✅ |
+| 4 | 오프사이드 · 파울/카드 · 프리킥/PK · 교체 · 세트피스(**A 홀드 롱볼**) · 심판 3명 · 추가시간 · 백패스 룰 · **골 세레모니 9초(Enter 건너뛰기)** | ✅ |
+| 5 | 카드·스쿼드 (급여 상한 252 · **타 구단 영입 선발 5·후보 2 · 웃돈 ×1.5** · **팀워크(뭉침+약체 가산)** · 강화 예산 · 별점 · JSON) | ✅ |
+| 6 | Trystero 로비·방 · 2인 락스텝 · 해시/리싱크 · 대기실 · 홈/원정 동전 던지기 | ✅ 로컬 두 탭까지 |
+| 7 | 밸런스 계측 (`verify` · `asym` · `balance` · `oneone` · `clubs` · **`attrcheck` · `tactics` · `economy` · `power`**) | ✅ |
+| — | 소리 · 테스트 모드(`?test=1`) · 입력 키 표시(설정) · 공지 사진·GIF 파이프(DEV) | ✅ |
 
-**흐름**: 로비 → (스쿼드 수정 | 구단 바꾸기) → (혼자 하기 | 방 만들기/참가 → 대기실) → 경기 → 결과.
+**흐름**: 로비 → (스쿼드 수정 | 구단 바꾸기) → (혼자 하기 | 방 만들기/참가 → 대기실) → 코인토스 → 경기 → 결과.
+
+**능력치 A/B (200경기, 대조군 50%)** — 수비 83.0 · 드리블 78.8 · 슈팅 72.8 · 속도 72.3 · 골키퍼 64.3 · 패스 ~58. 처음엔 속도 89.8 · 태클/마크/패스/GK 49~51(안 닿음) 이었다. 표는 DESIGN 4.5a.
 
 ---
 
-## 이번 세션에서 한 것
+## 이번 세션에서 한 것 (7~13차)
 
-정본은 **DECISIONS 9장(F-1~F-11) · 10장(G-1~G-13)** 이다. 여기엔 다음 사람이 알아야 할 구조만 적는다.
+정본은 **DECISIONS 10장 G-14 ~ G-34** 와 DESIGN 의 해당 절이다. 여기엔 다음 사람이 알아야 할 구조와 함정만 적는다.
 
-### 엔진 (9/10)
-
-| 무엇 | 핵심 |
-|---|---|
-| **GK 잡기 모델** | 잡기는 **손 거리**(서서 0.8 · 날면서 1.0 m)에서만. 경로가 손 밖이면 반응 뒤 `ACT_DIVE` + 속도로 **실제로 날아간다**(앞 12틱 비행 — `sim.ts` 가 다이브 앞부분은 감속하지 않는다). 못 닿으면 골. `tests/feedback.test.ts` 가 "자유 공 한 틱 이동 0.6 m 이하"로 순간이동을 막는다 |
-| **슛 보조** | `doShoot` 의 사람 분기에 "빗나감" 경로가 없다 — **언제나 골문을 겨눈다.** 방향키 y 성분이 코너, 없으면 GK 가 비운 코너. 뒤로 밀고 차면 σ×1.6 만 |
-| **킥오프** | `performRestartKick` 맨 앞 `kickoffTarget` — 자기 진영 아군에게 땅볼만. `whistle` 사건 + `callText`. AI 킥오프 분기는 삭제 |
-| **추가시간** | `advanceClock`: `stoppage`(데드볼 초) → 정규 종료 때 `added`(1~5분, `ADDED_MAX_MIN`) 발표 → `halfSec + added×4초` 뒤 **공이 죽었을 때** 종료. 공격 중이면 `END_GRACE_SEC`(20초) 유예. `switchSides` 가 둘 다 리셋. 시계 `45'+2` 는 `addedMinute` |
-| **수비 키** | `sim.ts` step — 조작 선수가 `press`/`tackleT` 면 **공 쪽으로 자동 이동**(방향키 45% 블렌드). `handleInput` — A 는 방향키 없으면 공 쪽 슬라이딩, **W = `team.gkRush`**, C = `faceBall` |
-| **수비 강화** | `tryControl` 가로채기 반경 `+0.28·posn` · 성공 `+0.15·mark`; `doShoot` **블록**(`block` 사건); `aiDecide` 마크 거리·압박 예측 |
-| **백패스 룰** | 아군이 발로 준 공(스로인 포함)은 GK 가 손으로 못 잡는다 |
-
-### 🪙 홈·원정 동전 던지기 (9/11 — 가장 최근)
-
-| 무엇 | 핵심 |
-|---|---|
-| **홈이 방장 고정이 아니다** | `game/toss.ts tossHostHome(seed)` — 결과를 **시드에서 유도**한다(그 자리에서 난수를 뽑으면 두 브라우저가 다른 홈을 본다). `waitroom.begin` 이 `(role==='host')===hostHome ? 0 : 1` 로 `me` 와 스쿼드 순서를 함께 뒤집어 저절로 일치 |
-| **혼자 하기도 원정 가능** | `session.newState` 가 `squads`·`human`·`bots` 를 함께 뒤집는다. **`this.meTeam`** 이 내 팀 — 예전의 `this.cfg.net ? net.me : 0` 을 전부 이걸로 바꿨다 |
-| **코인토스 연출** | `session.showToss()` — 3초 오버레이. **렌더 전용**이라 온라인 락스텝을 멈추지 않는다(혼자 하기만 `paused`). `tossing` 플래그가 Esc 메뉴를 막고, `clearTossTimers()` 가 dispose·restart 에서 타이머를 정리 |
-| **경기장 홈 컬러** | `pitch3d.setHomeColor(hex)` — 관중 절반을 홈 색으로 다시 그리고 스탠드 옆면도 어둡게. `renderer.setMatch` 가 `kits[0].shirt` 로 부른다. **clone 텍스처는 각자 `needsUpdate`** 를 켜야 반영된다 |
-| 검증 | `tests/toss.test.ts` 4개 — 같은 시드 = 같은 결과 · 방장/게스트가 서로 다른 팀 · 2,000판 40~60% · 구단(`seed % CLUBS.length`)과 상관없음 |
-
-### ⚙ 설정 분리 (9/11 — 가장 최근)
-
-사용자 요청: "철FPS 처럼 경기 중에 로비로 버튼과 설정을 나누고, 설정을 대기실에서 한 것처럼 편하게".
-
-| 무엇 | 핵심 |
-|---|---|
-| **설정 패널을 로비와 공유** | `ui/settings.ts` 에 `settingsPanelHtml(s, muted)` + `bindSettingsPanel(root, s, hooks)` + `SettingsHooks`. 로비 팝업과 경기 중 창이 **같은 함수**를 부르므로 한 곳만 고치면 둘 다 바뀐다. 항목은 소리 · 그림자 · 렌더 해상도 · 조작 안내 띠 |
-| **오른쪽 위 세 버튼** | `session.ts` 상단이 `btn-lobby`(로비로) · `btn-settings`(⚙ 설정) · `btn-menu`(메뉴 Esc). 예전엔 Esc 메뉴 안에 다 섞여 있었다 |
-| **Esc 메뉴는 행동만** | 계속 · 🔁 교체 · ⚙ 설정 · 로비로. 소리/조작 안내 토글은 설정 창으로 옮겼다. `showSettings(fromMenu)` 가 `settingsFromMenu` 를 기억해 닫을 때 메뉴로 돌아간다 |
-| **로비로는 한 번 묻는다** | `confirmQuit()` — 경기가 끝났으면(`state.done`) 바로 나간다. 온라인이면 "상대 화면에서도 그 시점 스코어로 종료" 라고 알린다 |
-| **경기 중 그림자·해상도 변경** | `renderer3d.setShadows(on)` — `gl.shadowMap.enabled` 와 `sun.castShadow` 를 바꾼 뒤 **`scene.traverse` 로 모든 재질에 `needsUpdate`**. 안 하면 셰이더가 다시 컴파일되지 않아 화면이 그대로다. `setResScale(v)` 는 `resize()` |
-| 버그 정정 | Esc 가 **온라인에서 메뉴를 닫지 못했다** — `toggleMenu` 가 `paused` 로 판단했는데 온라인은 락스텝이라 언제나 `false`. `!this.overlay.hidden` 으로 바꿨다 |
-| 확인 | 브라우저에서 로비 팝업 · 경기 중 창 · 그림자/조작 안내 즉시 반영 · 메뉴 → 설정 → 닫기 → 메뉴 복귀 · 로비로 확인창 → 나가기까지 **눈으로 확인**. `npm test` 94개 통과 |
-
-### 🎯 세트피스: 키커 뒤 시점 · A 홀드 롱볼 (9/11 — 가장 최근)
-
-| 무엇 | 핵심 |
-|---|---|
-| **롱볼** | `handleInput` 리스타트 분기에서 **A 도 홀드**(`holdShoot` 공유, 떼는 순간 'A'). `performRestartKick` 프리킥·골킥 A → `doPass('lob', -1, …, aim = 방향키 쪽 18+32·power m)`. 예전엔 `pickPassTarget` 이 가까운 동료를 골라 짧았다 |
-| **키커 뒤 카메라** | `renderer3d.ts` — `spAnchor{kx,ky,gx,pk}` · `spBlend`(0.25 초) · `spHold` 1.4 초. 직접 프리킥 = 골문 36 m 안·\|y\|<26, PK 는 늘. 키커 뒤 7.5(PK 6) m · 높이 3.4(2.8) · 가운데 쪽 2.2(1.6) m 비켜. 찬 뒤엔 공을 본다. 렌더 전용 |
-| **배너** | 프리킥에 `골문 N m`, 골킥·프리킥 키 안내(S 짧게 / A 홀드 롱볼 / D 홀드 슛·펀트) |
-| **PK 골키퍼** | `gkDecide` 가 페널티 단계엔 골라인 가운데를 지킨다(전엔 5 m 앞으로 나왔다) · `enforceRestartPositions` 가 0.6 m 안으로 붙잡는다 |
-| 확인 | `tests/setpiece.test.ts` 4개(프리킥 A 꽉 30 m+ 공중 · A 툭 30 m 미만 · 골킥 A/D · PK 골키퍼 골라인). `npm test` **121개**. 브라우저에서 프리킥·PK 사진 |
-
-### 🎯 결정력 vs 골키퍼 · 속도의 대가 (9/11)
-
-사용자 지적("실제 축구에서 속도가 슈팅보다 센 게 맞나")에 장치 여섯을 옮겼다. 표는 DESIGN 4.3b.
-
-| 무엇 | 핵심 |
-|---|---|
-| `ball.shotQ` | `doShoot` 이 찬 선수의 `fin` 을 남기고 `gkCatch` 가 잡기(−0.45·(q−0.5))·쳐내기(−0.4·…)에 쓴다. 슛 속도 ×(0.9+0.2·sho) |
-| 전력 질주 중 슛 | `rush = clamp((spd/vmax−0.55)/0.45)·(1−0.4·fin)` → 오차 ×(1+1.2·rush) · 힘 −15% · vz +0.9·rush |
-| 전력 드리블 | `contestBall` 태클 확률 ×(1+2·loose) |
-| 퍼스트 터치 | `tryControl` intended 에 −0.18·rushK |
-| 경합 반응 | `interceptPoint` 도달 `vmax·max(0, t−react)`, `react = 0.35−0.25·posn` → 수비 묶음이 83% 로 가장 세졌다 (백로그: 과하면 0.25 → 0.18) |
-| 결과 | 200경기 수비 83.0 · 드리블 78.8 · 슈팅 72.8 · **속도 72.3** · GK 64.3. `tests/finishing.test.ts` 2개 · `npm test` **117개** |
-
-### 🏃 속도 완화 · ⚽ 세레모니 · 🔁 리플레이 (9/11)
-
-| 무엇 | 핵심 |
-|---|---|
-| **속도 지배 완화** | A/B 89.8% → **77.0%** (수비 74.8 · 드리블 71.5). `vmax 6.8+2.0·PAC` · `accel 5.5+3.0·acc` · **공 몰고 뛰는 상한 6.6+0.9·drib** · 체력 0.5 아래 연속 감속(`0.78+0.44·sta`) · 전력 질주 소모 0.04 · 전력 드리블 터치 +0.3 m. 폭만 줄였을 땐 81% 라 상한·체력까지. DESIGN 4.3a |
-| **세레모니** | `GOAL_TICKS` 540 · `GOAL_SKIP_TICKS` 30 · `ai.celebrate` · `Team.skipCele` · `GameState.goalScorer/goalTeam` · `BTN_SKIP = 1<<13`(Enter). `tickPhase` 가 사람 팀 전원 동의면 꼬리만. 세레모니 중 사람 선수도 AI 이동(`ctl && phase !== 'goal'`) |
-| **리플레이** | 세션 `poseBuf`(480 틱 링) → 골 + 24 틱 뒤 `startReplay()` 가 직전 270+24 틱을 베껴 `drawReplay()` 로 0.9 배속. `ViewInfo.replay` 로 FOV 20 · HUD 문구. **렌더 전용** — 시뮬 결과·해시 무관. Enter 면 내 화면만 즉시 취소 |
-| 확인 | `tests/celebration.test.ts` 4개(세레모니 길이·모임·혼자 건너뛰기·온라인 양쪽 동의·방향키 무시). `npm test` **115개** |
-
-### 🔬 능력치·전술 검증 + 조작·표시 (9/11)
-
-사용자 질문 "능력치가 실제 매치엔진에 반영되나 (특히 슈팅·수비)" · "전술이 영향이 있나" 에 **재서 답했고**, 안 닿던 것을 고쳤다.
-
-| 무엇 | 핵심 |
-|---|---|
-| **능력치 A/B** | `tools/attrcheck.ts` — 같은 두 스쿼드에서 한 묶음만 HI 92/LO 38, 홈원정 교대, 대조군 = 정확히 50%. **슈팅 74% 닿음 · 태클 49 · 마크 49 · 패스 49 · 골키퍼 51 = 안 닿음.** 손질 뒤 56·53·55·68. 표는 DESIGN 4.5a. **속도 90% 가 가장 세다**(백로그) |
-| **왜 안 닿았나** | 패스: 각도 오차만 있어 성공률 43% 고정 → **세기 오차** 추가. GK: 잡기 확률이 곱(0.88~1.11)이라 폭이 없었음 → 바탕값으로. 태클: 판에 5번뿐이라 성공식만으론 무의미 → **닿는 거리**에 tck. 마크: 계수 0.15 → 0.4 |
-| **전술** | `tools/tactics.ts` — 라인 높이 수비 44.1 m · 균형 50.4 · 공격 53.1, 지문 전부 다름. "전술 균형" 라벨은 잔재가 아님 → `전술 균형 · [ ] 로 바꿈` |
-| **패스 받기** | 조작이 찬 선수에 머물러 방향키가 끌고 갔다. `handleInput` 이 `controlled === b.lastTouch` 일 때 **받을 선수로 한 번** 넘기고, 이동 블록이 요격 지점으로 자동 달리기(방향키 35%). S 로 바꾸면 존중. `tests/receiver.test.ts` 3개 |
-| **공 가진 선수 표시** | `renderer3d.ownerRing/ownerName` — 조작 선수가 아닐 때 흰(아군)/붉은(상대) 링 + 이름 |
-| **입력 키 표시** | `KeyView` 를 일반 기능으로 — 설정 `keyView`(기본 켜짐), 왼쪽 아래(`bottom: 150px`), 방향키 칸 없음 |
-| **공지 사진·GIF** | bedorage-duck 방식. `vite.config.ts` `snapPlugin`(`POST /__snap` → `docs/img/`, `apply: 'serve'`) + `src/debug/shot.ts`(SVG foreignObject PNG · GIF89a LZW). **패널이 숨겨지면 rAF 0회 → 캡처 안 됨** → `captureTick` 이 틱에서 직접 `frame()` 을 부른다. `server.watch.ignored` 에 `docs/img/` (파일이 떨어질 때 새로고침 방지) |
-| 확인 | 브라우저에서 입력 키 상자·전술 라벨·공 가진 선수 링 **눈으로 확인**. `docs/img/` 에 사진 5장 + GIF 2개. `npm test` **111개** |
+| 차수 | 무엇 | 구조 (파일) | 정본 |
+|---|---|---|---|
+| 7 | 경기 중 **로비로 · ⚙ 설정 · 메뉴** 분리, 설정 패널을 로비와 공유 | `ui/settings.ts settingsPanelHtml/bindSettingsPanel` · `session.ts showSettings/confirmQuit` · `renderer3d.setShadows/setResScale` | DESIGN 7.2 · G-14/15 |
+| 7 | 공지글 재작성 — 문안은 코드 블록에 (줄바꿈 보존) | `docs/공지글-모음.md` | — |
+| 8 | **원정이면 선수가 안 움직이던 버그** — 입력이 0번 칸에 고정돼 있었다 | `core/input.ts soloInputs` · `tests/away_control.test.ts` | G-16 |
+| 8 | 스쿼드 경제 — 영입 선발 5·후보 2, 웃돈 ×1.5, 주력 구단은 **선발 최다로 센다**(선언값 불신) | `cards/squad.ts OUT_XI_MAX/OUT_BENCH_MAX/TRANSFER_PREMIUM/homeClubOf/countOutside/payOf` · `SquadCheck.hard`(고칠 수 있는 오류는 저장 스쿼드를 안 버린다) | DESIGN 5.6a · G-17 |
+| 8 | 팀컬러 → **팀워크** = 뭉침(5·7·9·11 → +1~4) + 약체 가산(전력 구간 → +0~3, 뭉쳤을 때만) | `cards/squad.ts teamworkBonus/clubHandicap` · `SquadCheck.teamwork` | DESIGN 5.6 · G-18 |
+| 8 | 구단 이름 KM26 가상 이름(29개) · 구단 고르기 1부/2부 · 교체·영입 뒤 선택 해제 | `tools/build_cards.py CLUB_NAME` · `src/data/cards.json` · `ui/squad.ts drawClubs` | G-19/20/21 |
+| 9 | **능력치 A/B 도구**로 검증 — 태클·마크·패스·GK 가 안 닿았다 → 넷 다 손질. 안 읽히던 wor·vis·aer·pun 도 이었다 | `tools/attrcheck.ts` · `core/ball.ts` · `core/skills.ts` · `core/ai.ts` | DESIGN 4.5a · G-22 |
+| 9 | 전술 실측(라인 44→53 m) · "전술 균형" 라벨 뜻 보이게 | `tools/tactics.ts` · `render/hud.ts` | G-23 |
+| 9 | 패스 받을 선수는 잡을 때까지 공 쪽으로(조작도 그 선수로, S 로 풀림) | `core/sim.ts handleInput/step` · `tests/receiver.test.ts` | DESIGN 4.8a · G-24 |
+| 9 | 공 가진 선수 링+이름 · 입력 키 표시(설정 `keyView`) | `render3d/renderer3d.ts ownerRing` · `render/keyview.ts` | G-25/26 |
+| 9 | 공지 사진·GIF 파이프 — DEV 서버 `/__snap` → `docs/img/`(저장소 밖). **패널이 숨겨지면 rAF 0회** → 틱에서 직접 그린다 · **paused(코인토스) 중에도** 뜬다 | `vite.config.ts snapPlugin` · `src/debug/shot.ts` · `session.ts captureTick/captureAfterDraw` | G-27 · 아래 "스크린샷 다시 뜨기" |
+| 10 | **속도 지배 완화** — 폭 축소 · 드리블 속도 상한 · 체력 연속 감속 · 전력 드리블 터치 | `core/skills.ts` · `core/sim.ts` · `core/physics.ts` · `core/ball.ts` | DESIGN 4.3a · G-28 |
+| 10 | **골 세레모니** 9초(`GOAL_TICKS 540`) · Enter=`BTN_SKIP`(비트 13) · 온라인은 양쪽 동의 · 세레모니 중 사람도 AI 이동 | `core/rules.ts tickPhase` · `core/ai.ts celebrate` · `Team.skipCele` · `GameState.goalScorer/goalTeam` · `tests/celebration.test.ts` | DESIGN 4.8b · G-29 |
+| 10 | **골 리플레이** — 렌더 전용 링 버퍼(8초) → 직전 4.5초 0.9배속 · FOV 20. 세레모니 카메라는 **득점자**를 따라간다 | `session.ts poseBuf/recordFrame/startReplay/drawReplay` · `ViewInfo.replay` | DESIGN 4.8b · G-30 |
+| 11 | **결정력이 GK 를 이기고 속도는 값을 치른다** — `ball.shotQ` · 전력 질주 슛 `rush` · 전력 드리블 뺏김 · 퍼스트 터치 · 경합 반응 시간(posn) | `core/ball.ts doShoot/gkCatch/contestBall/tryControl/interceptPoint` · `tests/finishing.test.ts` | DESIGN 4.3b · G-31 |
+| 12 | **세트피스** — 직접 프리킥(골문 36 m 안)·PK 키커 뒤 카메라 · 프리킥·골킥 **A 홀드 롱볼**(18~50 m) · 배너에 골문 거리 | `renderer3d.ts spAnchor/spBlend/spHold` · `core/sim.ts`(A 홀드) · `core/rules.ts performRestartKick` · `tests/setpiece.test.ts` | DESIGN 4.8c · G-32/33 |
+| 12 | PK 골키퍼는 킥 순간까지 **골라인 가운데** | `core/ai.ts gkDecide` · `core/rules.ts enforceRestartPositions` | G-34 |
 
 ### 스크린샷·GIF 다시 뜨기
 
@@ -138,41 +77,13 @@
 | 경기 한 장 (HUD 포함) | 경기 중 `__klo.snap('shot_match.png')` |
 | 경기 GIF (캔버스만 · 빠름) | `__klo.gif('gif_play.gif', 6, 10, 560)` 뒤 6초 동안 조작 |
 | 코인토스처럼 DOM 이 든 GIF | 경기 시작 직후 `__klo.gifDom('gif_toss.gif', 4, 4, 640)` |
+| 세트피스·골 장면을 억지로 | 콘솔에서 `const R = await import('/KLO26/src/core/rules.ts')` 뒤 `R.setupFreeKick(__klo.state(), 팀, x, y)` · `R.setupPenalty(__klo.state(), 팀)` — 개발 서버는 같은 모듈 인스턴스를 준다 |
 
-- 파일은 `docs/img/` 에 떨어진다(저장소엔 안 넣는다). 완료는 콘솔 `[snap]`/`[gif]` 또는 `window.__snapLog`.
-- 브라우저 패널이 숨겨져 있어도 된다 — 틱 루프가 직접 그린다. **일시정지(코인토스 연출) 중에도 뜬다** — `captureTick` 이 `paused` 이른 반환 **앞**에 있다(뒤에 두면 연출이 끝난 뒤에야 찍힌다). GIF 간격은 틱이 아니라 실시간(ms).
+- 파일은 `docs/img/` 에 떨어진다(저장소엔 안 넣는다 — `.gitignore`). 완료는 콘솔 `[snap]`/`[gif]` 또는 `window.__snapLog`.
+- 브라우저 패널이 숨겨져 있어도 된다 — 틱 루프가 직접 그린다. **일시정지(코인토스) 중에도 뜬다**(`captureTick` 이 `paused` 이른 반환 **앞**). GIF 간격은 실시간(ms).
+- 숨겨진 패널에선 `setTimeout` 이 1초로 늦어진다 — 캡처 모듈을 미리 `import` 해 두고, 짧은 연출은 **한 번의 콘솔 호출 안에서** 찍는다.
 - 글꼴은 시스템 글꼴로 떨어진다(외부 글꼴 CDN 은 캔버스를 더럽혀 뺀다). 이모지는 그대로.
-
-### 🤝 스쿼드 경제 다시 짜기 (9/11)
-
-사용자 요청 6건. **모든 수치는 `npm run economy` 로 다시 잴 수 있다.**
-
-| 무엇 | 핵심 |
-|---|---|
-| **문제 확인** | "급여가 예산에 비해 싼 것 아니냐" — **맞았다.** 제한이 없을 때 29개 구단 **전부** 최강 선발 OVR 92~94 로 수렴(격차 8.1). 상한 252 는 5.4 조건 2(자기 선수 18명은 들어간다) 때문에 못 내리는데 그 값이 곧 올스타 값이라 **상한 하나로는 못 푼다** |
-| **영입 인원 제한** | `OUT_XI_MAX 5` · `OUT_BENCH_MAX 2`. 주력 구단은 **선발 최다로 센다**(`homeClubOf`) — 선언값 `sq.club` 을 믿으면 P2P 에서 거짓말할 수 있다. 한 구단에서 몰아 데려오면 **그 구단이 되어 버려** 우회가 안 된다 |
-| **영입 웃돈** | `TRANSFER_PREMIUM 1.5` — 타 구단 선수만. 자기 구단엔 안 붙어 조건 2 가 유지된다. 상한 사용 평균 186 → **224/252**. 센 구단 2명 · 약한 구단 5명 |
-| **팀컬러 → 팀워크** | 이름이 어렵다는 지적. `bonus = tier + handicap` 으로 나누고 화면에도 뭉침/약체 가산/무엇이 오르는지를 따로 적었다 |
-| **약체 가산** | `clubHandicap(clubId)` — 전력(그 구단 최고 18명 급여 합, 64~252) 구간 → +0~3. **뭉쳤을 때만**(tier > 0). 최저 구단 62.8 → **77.6** · 격차 16.5 → **11.4** |
-| **구단 이름** | KM26 `index.html` 구단표를 그대로(29개, id 1:1). `build_cards.py CLUB_NAME` + `cards.json` 둘 다 고쳤다. **`POOL_HASH` 는 선수 id·능력치만 쓰므로 저장 스쿼드가 산다** |
-| **1부/2부 나열** | `drawClubs` 가 `div` 로 묶고 약체 가산 태그를 붙인다 |
-| **선택 해제** | 맞바꾸기 4경로 + 영입 전부 `sel = -1` |
-| **저장 스쿼드 보호** | `SquadCheck.hard` 를 나눴다 — 급여·영입 초과는 화면에서 고칠 수 있으므로 `loadSquad` 가 **버리지 않는다** |
-| 확인 | 브라우저에서 1부/2부 나열 · 약체 가산 태그 · 팀워크 +7(뭉침 4 + 가산 3) · 영입 5/5 에서 197줄 잠김 · 선택 해제 **눈으로 확인**. `npm test` **108개** |
-
-### 화면 (9/10~11)
-
-| 무엇 | 핵심 |
-|---|---|
-| **방향 표시** | `renderer3d.ts` 의 `chev` — `team.inX/inY` 를 읽는 **렌더 전용**(sim 무관). 공격 노랑 · 슛 파워 붉음 · 수비 흰색 |
-| **별점** | `cards.ts ovrStars/statStars` + `ui/stars.ts starHtml/pipsHtml`. **숫자로 보이는 것은 급여·능숙도뿐** |
-| **세로 전술판** | `.pitch.vertical` — 내 골문 아래, 공격 위. 칩은 이름·별·자리 세 줄(86px), 가운데 자리(CM·ST·CB·CAM·DM)는 **7% 아래로 어긋남**(4% 는 18px 겹쳤다) |
-| **명단 한 통** (KM26 `fmSquadTable`) | `rosterHead()` + `slotRow(i)` 로 **선발 11(자리순) → 후보 7**, 그 아래 `cardRow()` 로 **그 외 명단**. 셋 다 `.rrow` 로 같은 열. **전술판 아래 벤치 칩은 없앴다** |
-| **그 외 명단** | `filtered()` 가 스쿼드 18명을 빼므로 진짜 나머지. 내 구단/전 구단 · **구단 셀렉트**(전 구단일 때만) · 이름 · 포지션 · 정렬 |
-| **자동 채우기** | `autoFill('xi'|'bench')` + 기준 `autoBy`('fam' = `fam×2+ovr` / 'ovr' = `ovr×2+fam×0.3`, localStorage) |
-| **JSON 저장/불러오기** | 파일 `klo26-구단-포메이션.json`(지문 포함). 코드 UI 는 제거 — `squadcode` 는 **P2P 대기실 내부용**으로만 산다 |
-| **저장 안 하고 돌아가기** | `original` 스냅샷 → `cancel()`. "이 스쿼드로 (저장)"과 짝 |
-| **유니폼** | `kits.ts` — 홈 `col` **단색**, 원정 **전신 흰색**(GK 제외). 홈이 거의 흰색일 때만 원정이 자기 색. `col2` 는 데이터에만 남고 안 쓴다 |
+- 지금 `docs/img/` 에 사진 9장 + GIF 2개 (공지글 0장에 목록). 다른 PC 에서는 위 절차로 다시 뜬다.
 
 ---
 
@@ -180,18 +91,23 @@
 
 ### 통한 접근
 
-- **버그를 재현 테스트로 못 박았다.** GK 순간이동은 "자유 공은 한 틱에 0.6 m 넘게 못 움직인다"로, 슛 보조는 "아래 키를 눌러도 낙하점 |y| < 7 m"로 잡았다 (`tests/feedback.test.ts` 7개). 계수를 만지다 되돌아가는 일이 없다.
-- **원인을 숫자로 찾았다.** 홈/원정 42.5% 가 편향인지 잡음인지 가르려고 `tools/asym.ts`(하프별 분해)를 만들었다 — 전·후반 점유 50.0/49.8% 로 갈리지 않아 **잡음**으로 판정했다. 눈으로 봤으면 계수를 잘못 만졌을 것이다.
-- **KM26 원본을 실제로 읽고 옮겼다.** 명단 배치는 `fmSquadTable` 을 grep 해서 "한 표에 구분선으로 선발→교체→그 외" 구조를 확인한 뒤 옮겼다. 문서(06장)의 줄 번호는 우리 `index.html` 과 다르니 **함수 이름으로 grep** 해야 한다.
+- **"반영되나"는 코드가 아니라 A/B 로 답했다.** `tools/attrcheck.ts` — 같은 두 스쿼드에서 한 묶음만 92/38, 홈원정 교대, 대조군 정확히 50%. 계수가 코드에 있어도 승률 50% 면 안 닿는 것(태클·마크·패스·GK 가 그랬다). 200경기면 3%p 를 가른다.
+- **버그를 재현 테스트로 못 박았다.** 원정 정지(0.00 m → 4.38 m) · 받을 선수 도망 · 세레모니 동의 · 결정력 vs GK · 롱볼 거리 · PK 골키퍼 골라인 — 전부 `tests/` 에 있다. 계수를 만지다 되돌아가는 일이 없다.
+- **연출은 시뮬에, 카메라는 렌더에.** 세레모니(모임·동의)는 두 브라우저가 같아야 하니 시뮬, 리플레이·세트피스 카메라는 화면마다 달라도 되니 렌더. 락스텝·해시를 안 건드린다.
+- **실제 축구의 제동 장치를 옮겼다.** 속도는 폭을 좁혀도 81% 였고, 드리블 속도 상한·체력·전력 드리블 뺏김·불안한 슛까지 넣어야 72% 로 내려왔다.
 
 ### 실패했거나 되돌린 것
 
 | 시도 | 왜 실패했나 | 교훈 |
 |---|---|---|
-| 별점을 그리드 칸(1fr)에 그대로 넣기 | 덮개(`width: %`)가 늘어난 span 폭 기준이라 **별 다섯을 다 덮어 전부 만점**으로 보였다 | `width: max-content` 를 별 자체에 건다 |
-| 목록 능력치 막대에 `.mini` 클래스 재사용 | 로비 급여 게이지가 같은 이름을 쓰고 있어 **24px 격자에 갇혀 5%처럼** 보였다 | 짧은 CSS 이름은 짓기 전에 grep |
-| 세로 전술판에서 가운데 자리 4% 어긋남 | 여전히 13×18px 겹쳤다 | 7% — 겹침 0건을 브라우저에서 실측해 확인 |
-| 킥오프에서 D 홀드 = 길게 차기 | 사용자가 "상대 진영으로 차는 건 규칙 위반" 이라 지적 | 킥오프는 아군 짧은 패스만. `restart.test.ts` 의 옛 기대값도 함께 바꿨다 |
+| 캡처를 `frame()`(rAF) 뒤에 붙임 | 브라우저 패널이 숨겨지면 rAF 가 0회라 영영 안 불렸다 | 워커 틱에서 직접 `frame()` (교훈 61) |
+| 캡처를 틱 루프 안, `paused` 검사 뒤에 둠 | 혼자 하기 코인토스는 `paused` 라 연출이 끝난 뒤에야 찍혔다 | `paused` 이른 반환 **앞**에 (교훈 66) |
+| 결정력 테스트를 GK 코앞 1.6 m 로 차는 14 m 슛으로 | 누가 차도 거의 다 막혀 결과가 거꾸로 났다 | 코너를 노리는 16 m 슛 (교훈 65) |
+| 속도 폭만 현실 수준으로 축소 | 81% — 아직 지배적 | 어디서 이기는지를 막아야 (교훈 63) |
+| 세레모니 카메라가 공을 따라감 | 공은 골망 속, 모임은 20 m 밖이라 화면 밖 | 득점자를 따라간다 |
+| 브라우저 도구의 `key` 액션으로 Esc/방향키 | 페이지에 안 닿았다 | `window.dispatchEvent(new KeyboardEvent)` (교훈 62) |
+| bash heredoc 으로 큰 python 패치 | 따옴표 파싱이 깨졌다 | 스크립트는 **Write 도구로 파일에** 쓰고 실행 |
+| 골 강제 재현 (공만 골라인 앞에 놓기) | 골키퍼가 잡았다 | 골키퍼를 14 m 치우고 22 m/s 로 |
 
 ---
 
@@ -199,30 +115,33 @@
 
 | 결정 | 반영 위치 |
 |---|---|
-| GK 는 손 거리에서만 잡고, 그 밖은 몸을 날린다 | `ball.ts gkCatch` · `sim.ts`(다이브 비행) · `DESIGN 4.7` · `tests/feedback.test.ts` |
+| GK 는 손 거리에서만 잡고, 그 밖은 몸을 날린다 | `ball.ts gkCatch` · `sim.ts` · `DESIGN 4.7` · `tests/feedback.test.ts` |
 | 슛은 언제나 골문을 겨눈다 | `ball.ts doShoot` · `DESIGN 3.3` |
 | 킥오프는 아군 짧은 패스만 | `rules.ts kickoffTarget` · `DESIGN 2장` · `tests/restart.test.ts` |
-| 추가시간 1~5분 · 공이 죽었을 때 종료 | `rules.ts advanceClock` · `state.ts ADDED_MAX_MIN/END_GRACE_SEC` · `DESIGN 2장` · `hud.ts` |
-| 능력치는 별점만 (급여·능숙도는 숫자) | `cards.ts` · `ui/stars.ts` · `squad.ts` · `waitroom.ts` · `DESIGN 7.2` · 플레이 가이드 |
-| 스쿼드는 JSON 파일로 주고받고, 코드는 P2P 전용 | `squad.ts` · **`DESIGN 5.10`(이번에 정정)** · `DECISIONS G-4` |
-| 유니폼 단색 · 원정 전신 흰색 | `kits.ts` · `DESIGN 7.1` · **`DECISIONS N-4`(이번에 정정)** · `player3d.ts` 주석 |
-| 명단은 KM26 배치(선발→후보→그 외 한 통), 전술판 아래 벤치 제거 | `squad.ts` · `style.css .rrow` · **`DESIGN 7.2`(이번에 정정)** · `DECISIONS G-11` |
-| 저장 슬롯 5 (10 에서) | `squad.ts SLOT_COUNT` · **`DESIGN 5.10`(이번에 정정)** |
-| 경기 중 로비로/설정 분리 · 설정 패널을 로비와 공유 | `ui/settings.ts` · `session.ts showSettings/confirmQuit` · `renderer3d.ts setShadows/setResScale` · `lobby.ts` · `DESIGN 7.2` · `DECISIONS G-14` · 플레이 가이드 |
-| Esc 는 `overlay.hidden` 으로 판단 (`paused` 아님) | `session.ts toggleMenu` · `DECISIONS G-15` |
-| 공지글은 코드 블록 안에 둔다 (줄바꿈 보존) | `docs/공지글-모음.md` — 문안 · 짧은 문안 · 댓글 상투구 · 2차 틀 · "고치기 전 확인" 표 |
-| 태클·마크·패스·GK 능력치가 경기에 닿게 (계수 손질) | `core/ball.ts` · `core/skills.ts` · `core/ai.ts` · `DESIGN 4.5a` · `DECISIONS G-22` |
-| 패스 받을 선수는 잡을 때까지 공 쪽으로 (조작도 그 선수로) | `core/sim.ts` · `DESIGN 4.8a` · `DECISIONS G-24` · 플레이 가이드 |
-| 공지 사진·GIF 는 개발 서버 `/__snap` 로 `docs/img/` 에 (저장소엔 안 넣는다) | `vite.config.ts` · `src/debug/shot.ts` · `DECISIONS G-27` · 공지글 0장 |
-| 영입은 선발 5 · 후보 2 · 웃돈 ×1.5 | `cards/squad.ts` · `ui/squad.ts` · `DESIGN 5.6a` · `DECISIONS G-17` · README · 플레이 가이드 · 공지글 |
-| 팀컬러 → **팀워크** + 약체 가산 | `cards/squad.ts teamworkBonus/clubHandicap` · `DESIGN 5.6` · `DECISIONS G-18` · 전 문서 용어 통일 |
-| 구단 이름은 KM26 것을 쓴다 | `tools/build_cards.py CLUB_NAME` · `src/data/cards.json` · `DECISIONS G-19` |
-| 게임패드 개발 안 함 (백로그에도 없음) | `DESIGN 1.3 · 3.2 · 13장` · README · 첫 화면 · 공지글 — **전 문서 일관 확인** |
+| 추가시간 1~5분 · 공이 죽었을 때 종료 | `rules.ts advanceClock` · `state.ts` · `DESIGN 2장` · `hud.ts` |
+| 능력치는 별점만 (급여·능숙도는 숫자) | `cards.ts` · `ui/stars.ts` · `squad.ts` · `DESIGN 7.2` |
+| 스쿼드는 JSON 파일, 코드는 P2P 전용 · 저장 슬롯 5 | `squad.ts` · `DESIGN 5.10` · `DECISIONS G-4` |
+| 유니폼 단색 · 원정 전신 흰색 | `kits.ts` · `DESIGN 7.1` · `DECISIONS N-4` |
+| 홈/원정은 시드에서 유도한 동전 던지기 · 경기장 홈 색 | `game/toss.ts` · `session.ts` · `waitroom.ts` · `pitch3d.ts` · `DESIGN 2·7` · `G-13` |
+| 경기 중 로비로/설정 분리 · 설정 패널 공유 · Esc 는 `overlay.hidden` | `ui/settings.ts` · `session.ts` · `DESIGN 7.2` · `G-14/15` |
+| 내 입력은 내 팀 칸에 (`soloInputs`) | `core/input.ts` · `session.ts` · `G-16` · `tests/away_control.test.ts` |
+| 영입 선발 5·후보 2 · 웃돈 ×1.5 · 주력 구단은 선발 최다 · 고칠 수 있는 오류는 스쿼드를 안 버림 | `cards/squad.ts` · `ui/squad.ts` · `DESIGN 5.6a` · `G-17` · README · 가이드 · 공지글 |
+| 팀컬러 → 팀워크(뭉침 + 약체 가산) | `cards/squad.ts` · `DESIGN 5.6` · `G-18` · 전 문서 |
+| 구단 이름은 KM26 가상 이름 | `tools/build_cards.py CLUB_NAME` · `cards.json` · `G-19` · **README(13차 정정)** |
+| 태클·마크·패스·GK 계수 손질 · wor/vis/aer/pun 연결 | `core/ball.ts` · `core/skills.ts` · `core/ai.ts` · `DESIGN 4.5a` · `G-22` |
+| 패스 받을 선수는 공 쪽으로, S 로 풀림 | `core/sim.ts` · `DESIGN 4.8a` · `G-24` · 가이드 |
+| 공지 사진·GIF 는 DEV 서버 `/__snap` → `docs/img/` (저장소 밖) | `vite.config.ts` · `src/debug/shot.ts` · `G-27` · 공지글 0장 |
+| 속도 폭 +14%/+25% · 드리블 상한 6.4+0.9·drib · 체력 연속 감속 | `core/skills.ts` · `core/sim.ts` · `core/physics.ts` · **`DESIGN 4.3 표(13차 정정)` · 4.3a** · `G-28` |
+| 세레모니 9초 · Enter 건너뛰기 · 온라인 양쪽 동의 | `core/rules.ts` · `core/ai.ts` · `core/state.ts` · `DESIGN 4.8b` · `G-29` · 가이드 · 공지글 |
+| 리플레이는 렌더 전용 | `session.ts` · `renderer3d.ts` · `DESIGN 4.8b` · `G-30` |
+| 결정력이 GK 를 이기고 속도는 값을 치른다 (`shotQ`·`rush`·반응 시간) | `core/ball.ts` · `core/state.ts` · `DESIGN 4.3b` · `G-31` · `tests/finishing.test.ts` |
+| 프리킥·골킥 A 홀드 롱볼 · 직접 프리킥/PK 키커 뒤 카메라 | `core/sim.ts` · `core/rules.ts` · `renderer3d.ts` · `hud.ts` · `DESIGN 4.8c` · **`DESIGN 3장 세트피스 줄(13차 정정)`** · `G-32/33` · 가이드 |
+| PK 골키퍼는 골라인 가운데 | `core/ai.ts` · `core/rules.ts` · `G-34` |
+| 게임패드 개발 안 함 (백로그에도 없음) · 폰 지원 안 함 | `DESIGN 1.3 · 3.2 · 13장` · README · 첫 화면 · 공지글 |
 
-> **결정 전파 검증 (2026-09-11)** — 위 항목을 grep 으로 전 범위 검색했다.
-> 잔재 4건(`DESIGN 5.10` 슬롯 10·코드 복사 / `DECISIONS N-4` col2 / `DESIGN 7.2` 옛 배치 / `player3d.ts` 주석)과
-> 용어 2건(사용자 문서의 "벤치 7" → "후보 7")을 **모두 이번 커밋에서 정정**했다.
-> `CHANGELOG` 의 옛 차수 기록(슬롯 10, 테스트 81개 등)은 **과거 기록이므로 그대로 둔다** (KLD26 에서 정한 규칙).
+> **결정 전파 검증 (13차 · 2026-09-11)** — 위 항목의 수치·이름을 grep 으로 전 범위 검색했다.
+> 잔재 4건을 이 커밋에서 정정했다: `DESIGN 4.3 표`(옛 속도·가속 공식) · `DESIGN 3장 세트피스 줄`(A 홀드 롱볼·키커 뒤 시점 누락) · `README`(구단명 "지역명만" → 가상 이름) · `플레이 가이드 키 표`(Enter 누락). `DECISIONS N-3` 에는 G-19 로 대체됐다는 표시만 달았다(결정 기록은 과거 그대로).
+> `CHANGELOG` 의 옛 차수 숫자(1,024 · 슬롯 10 · 테스트 94 등)는 **과거 기록이므로 그대로 둔다**.
 
 ---
 
@@ -230,31 +149,23 @@
 
 ### [미반영] — 없음
 
-2026-09-11 검증에서 나온 잔재는 전부 정정해 커밋했다(`17ea693`). 그 뒤 코인토스(G-13)도 DESIGN 2·6.1·6.3·7.1·7.2 · DECISIONS · CHANGELOG · 플레이 가이드에 함께 넣었다.
-
-**7차 검증에서 새로 찾아 고친 잔재 2건** (공지글을 다시 쓰며 공개 문구를 전부 훑다가 나왔다):
-
-| 잔재 | 정본 | 고침 |
-|---|---|---|
-| `index.html` `<meta name="description">` 이 **선수 1,024명** (2026-09-09 명단 갱신 전 숫자) | `src/data/cards.json` = **1,056명 · 29구단** (`dataHash b53cd9ed65ffe691`) | 1,056 으로 |
-| `README.md` 의 "선발↔**벤치**" | 사용자 문서 용어는 **후보** (6차에서 통일) | 후보로 |
-
-`CHANGELOG` 의 옛 차수에 남은 1,024 는 **과거 기록이라 그대로 둔다**. 그 밖에 남은 구버전 표기 없음.
+13차 검증에서 나온 잔재 4건은 이 커밋에서 정정했다. 남은 구버전 표기 없음.
 
 ### 사용자가 먼저
 
-1. **다시 한 판** — 24건이 손에 맞는지: GK 다이브 · `›` 방향 표시 · D 홀드 자동 추격 · 슛 코너 고르기 · 추가시간 자막/휘슬 · 세로 전술판 · 명단 표 · **코인토스와 홈 컬러 관중석**.
-2. **B-1 다른 회선 두 대로 대전** — 로컬 두 탭은 통과. NAT 는 같은 PC 로 못 잡는다. (PREP B-1)
-3. **공개 채널 정하기** — `docs/공지글-모음.md` 1차 문안 준비됨. 스크린샷 셋(스쿼드 · 골 · 방향 표시).
+1. **다시 한 판** — 이번 세션 34건이 손에 맞는지. 특히 **속도·결정력 균형(공을 몰고 전력 질주하면 뺏기는가 · 잘 찬 슛이 들어가는가)** · 세레모니/리플레이 흐름 · 세트피스 시점 · A 홀드 롱볼 · **수비가 너무 단단한가**(A/B 83%).
+2. **B-1 다른 회선 두 대로 대전** — 로컬 두 탭은 통과. NAT 는 같은 PC 로 못 잡는다. (PREP B-1) 온라인에서 세레모니 양쪽 동의 흐름도 이때 본다.
+3. **공개 채널 정하기** — `docs/공지글-모음.md` 문안·첨부(사진 9·GIF 2) 준비됨.
 
 ### 다음 세션
 
 | 순위 | 작업 | 끝났다의 기준 |
 |---|---|---|
 | 1 | 2차 피드백 반영 | 사용자가 "됐다" |
-| 2 | **강화가 값을 하게** — 지금 수비 +2.7%p · 공격 +2.0%p (목표 8~15). 강화 +1 = 능력치 40종 +1 인데 경기 스킬 곱셈 안에서 묻힌다. **강화분을 스킬에 직접 얹는 방법**(예: 레벨당 ×1.02)을 재 볼 것 | `npm run verify 200` 에서 +8%p 이상 |
-| 3 | 파울 빈도 — 합성 40판에서 17.5/판(많다). Space 돌진 태클이 늘렸을 수 있다 | `npm run balance -- 120` 에서 10~13 |
-| 4 | 단계 8 공개 — 공지 올리기 · README 배포 상태 갱신 | 공지 게시 |
+| 2 | **강화가 값을 하게** — 수비 +2.7%p · 공격 +2.0%p (목표 8~15). 강화 +1 = 능력치 40종 +1 인데 스킬 곱셈에 묻힌다. 강화분을 스킬에 직접 얹는 안(레벨당 ×1.02)을 `attrcheck` 방식으로 재 볼 것 | `npm run verify 200` 또는 attrcheck 류에서 +8%p 이상 |
+| 3 | 파울 빈도 — 40판 17.5/판(많다). Space 돌진 태클·전력 드리블 뺏김 계수가 늘렸을 수 있다 | `npm run balance -- 120` 에서 10~13 |
+| 4 | 수비 묶음 83% 가 과한지 — 경합 반응 시간 폭 `0.35−0.25·posn` 을 `0.30−0.18·posn` 으로 줄여 재 본다 | `npm run attrcheck 100 def,pace,shoot` 에서 수비 ≤ 78 · 속도 ≤ 슈팅 유지 |
+| 5 | 단계 8 공개 — 공지 올리기 · README 배포 상태 갱신 | 공지 게시 |
 
 ---
 
@@ -262,45 +173,48 @@
 
 | 항목 | 보류 사유 + 재개 조건 |
 |---|---|
-| **홈/원정 42.5%** (verify 200, 시드 5000+) | `npm run asym 100`(시드 7000+)에서 51.7% · 하프별 기울기 없음 → **잡음으로 판단**. `npm run asym 200` 이 47~53% 면 닫는다. 원정 슛이 두 하프 모두 +10% 인 것만 지켜볼 것 |
-| `verify 200` 이 20분 넘게 걸린다 | 효과 크기만 따로 재는 옵션이 있으면 강화 튜닝이 빨라진다. 강화 작업을 시작할 때 |
-| 감아차기(Z+D) · 개인기(C) · 강슈팅(F+D+D) | 스핀·개인기 애니메이션이 없다. v1 은 강슛으로 대체. 스핀이 들어오면 |
-| 게임패드 | **하지 않는다** — 백로그가 아니라 계획 제외 (사용자 결정) |
-| 폰 지원 | **하지 않는다** — PC 전용 (사용자 결정) |
+| **홈/원정 42.5%** (verify 200) | `asym 100` 에서 51.7% · 하프별 기울기 없음 → 잡음으로 판단. `asym 200` 이 47~53% 면 닫는다 |
+| `verify 200` 이 20분 넘게 걸린다 | `attrcheck` 가 묶음별 효과를 4~5분에 잰다 — 강화 튜닝은 그쪽으로. `verify` 는 공개 전 한 번 |
+| 수비 묶음 A/B 83% | 반응 시간을 posn 에 걸어 올라갔다. "조직된 수비가 이긴다"로 두었다 — 사용자가 수비가 너무 단단하다고 하면 다음 단계 4 |
+| 감아차기(Z+D) · 개인기(C) · 강슈팅(F+D+D) | 스핀·개인기 애니메이션이 없다. v1 은 강슛으로 대체 |
+| 게임패드 · 폰 | **하지 않는다** — 계획 제외 (사용자 결정) |
 | 감독 모드 · 2v2 · 재접속/난입 · 연장·승부차기 · 로컬 전적 | DESIGN 13장 그대로 |
-| Nostr 릴레이 2곳이 늘 실패 | `relay.agorist.space` · `relay.oldenburg.cool` 이 로컬 개발 내내 WebSocket 실패(콘솔 오류 대부분이 이것). 다른 릴레이로 방은 잡히므로 급하지 않다. **B-1 다른 회선 대전에서 방이 안 잡히면** 목록에서 빼고 살아 있는 릴레이로 교체 |
-| `.bench` / `.bchip` CSS | 2026-09-11 부터 아무도 안 쓴다(전술판 아래 벤치 제거). 지워도 되지만 위험 없어 남겨 뒀다 — CSS 정리할 때 함께 |
+| Nostr 릴레이 2곳이 늘 실패 | `relay.agorist.space` · `relay.oldenburg.cool`. 다른 릴레이로 방은 잡힌다. **B-1 에서 방이 안 잡히면** 목록에서 빼고 교체 |
+| `.bench` / `.bchip` CSS | 아무도 안 쓴다. CSS 정리할 때 함께 |
+| 리플레이 각도 하나뿐 | 방송 카메라를 바짝 당긴 것. 골 뒤 카메라 등은 렌더 전용이라 언제든 더할 수 있다 — 사용자가 원하면 |
+| 세레모니 동작 | 모이기만 한다(팔 들기 등 애니메이션 없음). 리그 애니메이션이 생기면 |
 
 ---
 
 ## 주의사항 & 교훈
 
-앞 세션 것(1~41)은 그대로 유효하다. 이번에 더한 것:
+앞 세션 것(1~41)은 그대로 유효하다. 이번 세션에 더한 것 (42~66):
 
-42. **짧은 CSS 클래스 이름은 반드시 `grep` 하고 짓는다.** `.mini` 를 로비 급여 게이지에 쓴 다음 날 선수 목록 막대에도 붙여 게이지가 24px 로 쪼그라들었다(2026-09-11 제보). KMD26 의 `slot` 과 같은 실수 — 화면 접두어(`sq-`·`lobby-`)를 붙이는 편이 안전하다.
+42. **짧은 CSS 클래스 이름은 반드시 `grep` 하고 짓는다.** `.mini` 를 로비 급여 게이지에 쓴 다음 날 선수 목록 막대에도 붙여 게이지가 24px 로 쪼그라들었다. 화면 접두어(`sq-`·`lobby-`)를 붙이는 편이 안전하다.
 43. **`width: %` 로 덮는 별점은 span 폭이 글자 폭이어야 한다.** 그리드/플렉스 칸에서 늘어나면 덮개가 별 다섯을 다 덮어 전부 만점처럼 보인다. `.stars { width: max-content }`.
-44. **"닿을 수 있는 거리"와 "손이 닿는 거리"는 다르다.** 도달 가능 반경 안이면 그 자리에서 잡게 하면 공이 순간이동한다. 몸을 **먼저 옮기고** 손 거리에서만 잡아야 한다 — 같은 함정이 태클·압박에도 있다.
-45. **사람 조작 보조는 "절대 골문 밖을 조준하지 않는다"가 기본값**이어야 한다. 방향키는 코너 선택으로만 쓴다. "빗나가기"로 해석되면 사용자는 버그로 느낀다.
-46. **하프 종료는 시계가 아니라 데드볼로 끝낸다.** 시계만 보면 슛 직전에 끊긴다. 유예(20초)를 두되 무한히 기다리지 않는다.
-47. **KM26 문서(`../km/docs`)의 줄 번호는 우리 `index.html` 과 다르다.** 문서는 33,407줄 기준, 우리 사본은 92,030줄 — **함수 이름으로 grep** 할 것.
-48. **Read 도구가 "unchanged since last Read" 라고 잘못 볼 때가 있다** (다른 PC 커밋을 pull 한 직후). `cat -n` 으로 읽으면 된다 — Edit 는 디스크 기준이라 그대로 동작한다.
-49. **PowerShell 에서 python heredoc 은 한글·이모지에서 깨진다** (`cp949`). 스크립트를 **파일로 써서** 실행할 것 (메모리의 "heredoc 금지"와 같은 이유).
-50. 입력을 화면에 보여 주는 것(방향 표시)은 **렌더가 `team.inX/inY` 를 읽으면 된다** — sim 에 아무것도 더하지 않는다(결정론 무관).
-65. **"검증 장면"은 능력치가 갈릴 자리에 놓는다.** 골키퍼 코앞 1.6 m 로 차는 14 m 슛은 결정력 92 여도 거의 다 막혀 테스트가 거꾸로 났다. 코너를 노리는 16 m 슛으로 바꾸니 결정력 차이가 그대로 드러났다 — 실제 축구도 그렇다.
-63. **"너무 세다"는 폭을 줄이는 것만으로 안 끝난다.** 속도 폭을 현실 수준으로 좁혀도 81% 였다 — 속도가 **어디서** 이기는지(공 몰고 달리기·지치지 않음) 를 막아야 77% 로 내려왔다. 실제 축구의 제동 장치(드리블 속도 상한·체력)를 옮겨 오는 게 답이었다.
-64. **연출은 시뮬에, 카메라는 렌더에.** 세레모니(선수가 모임·건너뛰기 동의)는 두 브라우저가 같아야 하니 시뮬에 넣고, 리플레이는 화면마다 달라도 되니 렌더 전용 링 버퍼로 했다. 이렇게 나누면 락스텝·해시를 건드리지 않는다.
-59. **"능력치가 반영되나" 는 코드를 읽어서 답하지 말고 A/B 로 잰다.** 계수가 코드에 있어도 승률이 50% 면 안 닿는 것이다(태클·마크·패스·GK 가 그랬다). 같은 스쿼드·홈원정 교대·대조군이면 200경기로 3%p 를 가른다.
-60. **"닿는다" 를 만들려면 빈도부터 본다.** 태클 성공식을 아무리 키워도 판에 5번이면 승률이 안 움직인다 — 기회(닿는 거리)를 늘려야 한다. 패스도 각도가 아니라 세기가 죽는 이유였다.
-61. **브라우저 패널이 숨겨지면 rAF 가 0회다.** 그리기 뒤에 붙인 캡처·계측은 영영 안 불린다(시뮬은 워커 타이머라 계속 돈다). 워커 틱에서 직접 `frame()` 을 부르면 된다 — bedorage-duck 이 겪은 그 함정.
-62. **키를 물리적으로 보낼 수 없는 자동화 환경에서는 `window.dispatchEvent(new KeyboardEvent)` 로 게임 키를 넣는다.** 앱의 window 리스너에는 닿는다 (브라우저 도구의 `key` 액션은 페이지에 안 닿았다).
-56. **"상한 하나로 두 가지 일을 시킬 수 없다."** 급여 상한은 (가) 약한 구단도 자기 팀을 짤 수 있게 **낮으면 안 되고** (나) 올스타 팀을 못 사게 **높으면 안 된다**. 둘이 부딪히면 상한이 아니라 **다른 축**(인원 제한·웃돈)을 만들어야 한다.
-57. **P2P 에서 상대가 보낸 값으로 규칙을 재지 않는다.** 주력 구단을 `sq.club` 선언값으로 세면 영입 제한을 우회할 수 있다. **세어서 정하면**(선발 최다) 거짓말이 이득이 되지 않는다.
-58. **규칙을 새로 넣을 때 저장된 데이터를 말없이 버리지 않는다.** `loadSquad` 가 `checkSquad(...).ok` 를 보면 새 규칙 하나로 사용자의 스쿼드가 증발한다. **고칠 수 있는 문제(soft)와 못 고치는 문제(hard)를 나눈다.**
-55. **팀이 뒤집힐 수 있게 만들었으면 "팀 번호를 박아 둔 곳"을 전부 grep 한다.** 코인토스(G-13)에서 `meTeam` 을 도입하고도 `inputs = [inp, EMPTY_INPUT]` 한 줄이 0번 칸에 고정돼 있어 원정이면 선수가 얼어붙었다(G-16). **배선은 순수 함수로 빼면 테스트가 잡는다** (`soloInputs`).
-51. **온라인에서는 `paused` 로 "창이 떠 있나"를 판단하면 안 된다.** 락스텝이라 온라인은 언제나 `paused === false` 다. 창 상태는 `overlay.hidden` 처럼 **화면 자체**에서 읽는다.
-52. **Three.js 에서 `shadowMap.enabled` 를 껐다 켜면 재질을 전부 `needsUpdate` 해야 한다.** 셰이더가 컴파일된 채로 남아 화면이 안 바뀐다 — 텍스처 `clone` 때와 같은 함정(교훈 6차).
-53. **로비와 경기 중처럼 같은 설정을 두 곳에서 보여 줄 때는 HTML 생성 함수를 공유한다.** 따로 쓰면 한쪽만 고쳐진다. 반영은 `hooks` 로 주입해 로비(렌더러 없음)와 경기(렌더러 있음)가 같은 코드를 쓰게 했다.
-54. **마크다운 문서에 붙여 넣을 문안을 쓸 때는 코드 블록에 넣는다.** 줄바꿈 하나는 렌더링에서 공백이 되어 문단이 한 덩어리로 뭉친다 — 사용자가 "줄바꿈 제대로" 라고 지적한 원인.
+44. **"닿을 수 있는 거리"와 "손이 닿는 거리"는 다르다.** 도달 가능 반경 안이면 그 자리에서 잡게 하면 공이 순간이동한다. 몸을 **먼저 옮기고** 손 거리에서만 잡아야 한다.
+45. **사람 조작 보조는 "절대 골문 밖을 조준하지 않는다"가 기본값**이어야 한다. 방향키는 코너 선택으로만 쓴다.
+46. **하프 종료는 시계가 아니라 데드볼로 끝낸다.** 유예(20초)를 두되 무한히 기다리지 않는다.
+47. **KM26 문서(`../km/docs`)의 줄 번호는 우리 `index.html` 과 다르다.** **함수 이름으로 grep** 할 것.
+48. **Read 도구가 "unchanged since last Read" 라고 잘못 볼 때가 있다** (다른 PC 커밋을 pull 한 직후). `cat -n` 으로 읽으면 된다.
+49. **PowerShell 에서 python heredoc 은 한글·이모지에서 깨진다** (`cp949`). 스크립트를 **파일로 써서** 실행할 것. bash heredoc 도 큰 스크립트는 따옴표 파싱이 깨진다 — **Write 도구로 파일에 쓰고 실행**.
+50. 입력을 화면에 보여 주는 것(방향 표시)은 **렌더가 `team.inX/inY` 를 읽으면 된다** — sim 에 아무것도 더하지 않는다.
+51. **온라인에서는 `paused` 로 "창이 떠 있나"를 판단하면 안 된다.** 락스텝이라 온라인은 언제나 `paused === false`. 창 상태는 `overlay.hidden` 처럼 화면 자체에서 읽는다.
+52. **Three.js 에서 `shadowMap.enabled` 를 껐다 켜면 재질을 전부 `needsUpdate` 해야 한다.**
+53. **같은 설정을 두 곳에서 보여 줄 때는 HTML 생성 함수를 공유하고, 반영은 `hooks` 로 주입한다.**
+54. **마크다운 문서에 붙여 넣을 문안은 코드 블록에 넣는다.** 줄바꿈 하나는 렌더링에서 공백이 된다.
+55. **팀이 뒤집힐 수 있게 만들었으면 "팀 번호를 박아 둔 곳"을 전부 grep 한다.** `meTeam` 을 도입하고도 `inputs = [inp, EMPTY_INPUT]` 한 줄이 남아 원정이면 선수가 얼어붙었다. **배선은 순수 함수로 빼면 테스트가 잡는다**.
+56. **"상한 하나로 두 가지 일을 시킬 수 없다."** 급여 상한은 약한 구단도 자기 팀을 짤 수 있게 낮으면 안 되고, 올스타 팀을 못 사게 높으면 안 된다. 부딪히면 **다른 축**(인원 제한·웃돈)을 만든다.
+57. **P2P 에서 상대가 보낸 값으로 규칙을 재지 않는다.** 주력 구단은 선언값이 아니라 **세어서**(선발 최다) 정한다.
+58. **규칙을 새로 넣을 때 저장된 데이터를 말없이 버리지 않는다.** 고칠 수 있는 문제(soft)와 못 고치는 문제(hard)를 나눈다.
+59. **"능력치가 반영되나"는 코드를 읽어서 답하지 말고 A/B 로 잰다.** 같은 스쿼드·홈원정 교대·대조군이면 200경기로 3%p 를 가른다.
+60. **"닿는다"를 만들려면 빈도부터 본다.** 태클 성공식을 키워도 판에 5번이면 승률이 안 움직인다 — 기회(닿는 거리)를 늘린다. 패스는 각도가 아니라 세기가 죽는 이유였다.
+61. **브라우저 패널이 숨겨지면 rAF 가 0회다.** 그리기 뒤에 붙인 캡처·계측은 영영 안 불린다(시뮬은 워커 타이머라 계속 돈다). 워커 틱에서 직접 `frame()` 을 부른다.
+62. **자동화 환경에서 게임 키는 `window.dispatchEvent(new KeyboardEvent)` 로 넣는다.** 브라우저 도구의 `key` 액션은 페이지에 안 닿았다.
+63. **"너무 세다"는 폭을 줄이는 것만으로 안 끝난다.** 속도가 **어디서** 이기는지(공 몰고 달리기·지치지 않음)를 막아야 했다. 실제 축구의 제동 장치를 옮겨 오는 게 답이었다.
+64. **연출은 시뮬에, 카메라는 렌더에.** 두 브라우저가 같아야 하는 것(세레모니·동의)만 시뮬에, 화면마다 달라도 되는 것(리플레이·세트피스 카메라)은 렌더에.
+65. **"검증 장면"은 능력치가 갈릴 자리에 놓는다.** 골키퍼 코앞 1.6 m 로 차는 슛은 누가 차도 막힌다. 코너를 노리는 16 m 슛으로 바꾸니 결정력 차이가 그대로 드러났다.
+66. **숨겨진 패널에서는 `setTimeout` 이 1초 단위로 늦어진다.** 짧은 연출(코인토스 3초)은 툴 호출 사이에 지나가 버린다 — 캡처 모듈을 미리 불러 두고 **한 번의 콘솔 호출 안에서** 시작부터 찍기까지 끝낸다. 캡처는 `paused` 이른 반환 **앞**에.
 
 ---
 
@@ -308,34 +222,30 @@
 
 | 경로 | 역할 |
 |---|---|
-| `docs/DESIGN.md` | **설계서 정본** (2·3.1·3.3·4.7·4.8·5.10·7.1·7.2 가 이번에 바뀜) |
-| `docs/DECISIONS.md` | **9장 F-1~F-11**(엔진 제보) · **10장 G-1~G-21**(스쿼드 화면·유니폼·코인토스·설정 분리·영입 경제·팀워크·구단명) |
+| `docs/DESIGN.md` | **설계서 정본** — 이번 세션에 4.3a/4.3b(속도·결정력) · 4.5a(능력치 A/B 표) · 4.8a/b/c(패스 받기·세레모니/리플레이·세트피스) · 5.6/5.6a(팀워크·영입) · 7.2 가 바뀜 |
+| `docs/DECISIONS.md` | **9장 F-1~F-11**(엔진 제보) · **10장 G-1~G-34**(스쿼드 화면·유니폼·코인토스·설정·영입·팀워크·구단명·검증·세레모니·리플레이·속도·결정력·세트피스) |
 | `docs/PREP.md` | 사용자가 직접 할 것 — **B-1 다른 회선 대전**만 남음 |
-| `docs/플레이-가이드.md` | 처음 하는 사람용 (조작·명단·JSON·구단 필터) |
-| `docs/공지글-모음.md` | 공개 문안 — 1차 긴 문안 · 짧은 문안 · 댓글 상투구 · 2차 틀 · **고치기 전 확인 표**(문안의 숫자마다 정본 경로) |
-| `src/core/ball.ts` | 소유·태클·파울·패스·스로인·슛(**블록**)·**GK 세이브/펀트**·오프사이드 |
-| `src/core/rules.ts` | 킥오프(**kickoffTarget**)·아웃·프리킥·PK·카드·교체·**advanceClock(추가시간)** |
-| `src/core/sim.ts` | createState / step / hashState · **사람 입력 해석**(수비 자동 추격·다이브 비행) |
-| `src/core/ai.ts` | 팀 AI · 압박 슬라이더 · 라인 지키기 · **gkRush** |
-| `src/core/state.ts` | 상수·타입 (`ADDED_MAX_MIN 5` · `END_GRACE_SEC 20` · `gkRush` · `stoppage`/`added`) |
-| `src/ui/squad.ts` | **스쿼드 화면 전부** — 세로 전술판 · 명단 표(`rosterHead`/`slotRow`/`cardRow`) · `autoFill` · `pinToBench` · JSON · `cancel` |
-| `src/ui/settings.ts` | 설정 값(localStorage) + **로비·경기 공용 패널** `settingsPanelHtml`/`bindSettingsPanel` |
-| `src/game/session.ts` | 경기 진행 · 오버레이 전부 (`showMenu`/`showSettings`/`confirmQuit`/`showSubs`/`showToss`) |
-| `src/ui/stars.ts` | 별점 `starHtml` · 능력치 눈금 `pipsHtml` (숫자를 안 보여 준다) |
-| `src/cards/cards.ts` | 6스탯 · OVR · 급여 · **ovrStars/statStars** · `SIX_FIELD`/`SIX_GK` |
-| `src/render3d/kits.ts` | 유니폼 — **홈 단색 · 원정 전신 흰색**(GK 제외) |
-| `src/render3d/player3d.ts` | 찰흙 선수 (`SLIM 0.8` — 몸통·팔다리 굵기) |
-| `src/render3d/renderer3d.ts` | 방송 카메라 · **방향 표시 `chev`** |
-| `src/render/hud.ts` | 전광판(`45'+2`) · 배너(킥오프·추가시간 자막) |
-| `tests/feedback.test.ts` | **2026-09-10 제보 회귀 테스트** (GK 순간이동 · 백패스 · 슛 보조 · 추가시간 · 수비 키) |
-| `tools/asym.ts` | 홈/원정 비대칭 진단 (같은 스쿼드 · 하프별) |
-| `tools/attrcheck.ts` | **능력치 묶음별 A/B** (HI/LO · 홈원정 교대 · 대조군 50%) — 능력치가 경기에 닿는지 (`npm run attrcheck [N]`) |
-| `tools/tactics.ts` | 전술 프리셋별 라인 높이·퍼짐·결과·지문 (`npm run tactics`) |
-| `src/debug/shot.ts` | 공지 사진·GIF — DOM+캔버스 PNG · GIF89a 인코더 (DEV 전용 동적 import) |
-| `tests/receiver.test.ts` | 패스 받을 선수가 공 쪽으로 가는지 · S 로 풀리는지 (3개) |
-| `tools/economy.ts` | **급여·영입 경제 진단** — 구단별 최강 선발 OVR·급여·영입 인원, 제한 있음/없음 비교 (`npm run economy`) |
-| `tools/power.ts` | 구단 전력(최고 18명 급여 합) — 약체 가산 구간을 정할 때 (`npm run power`) |
-| `tests/signings.test.ts` | 영입 제한·웃돈·주력 구단 판정·hard/soft 오류 (10개) |
+| `docs/플레이-가이드.md` | 처음 하는 사람용 (키 표 · 세트피스 키 · 세레모니 · 스쿼드 · 온라인) |
+| `docs/공지글-모음.md` | 공개 문안 — 0장 첨부(사진 9·GIF 2) · 긴 문안 · 짧은 문안 · 댓글 상투구 · 2차 틀 · **고치기 전 확인 표** |
+| `src/core/skills.ts` | 능력치 → 경기 스킬. **속도 `6.8+2.0·PAC` · 가속 `5.5+3.0·acc`** · GK 반응/도달 폭 · `gkPunch` |
+| `src/core/ball.ts` | 소유·태클(`loose`)·패스(세기 오차)·슛(`rush`·`shotQ`)·GK(`shotQ` 반영)·요격(반응 시간) |
+| `src/core/rules.ts` | 킥오프·아웃·프리킥·PK(골키퍼 골라인)·리스타트 킥(**A 홀드 롱볼**)·`tickPhase`(세레모니 동의)·추가시간 |
+| `src/core/sim.ts` | createState / step / hashState · 사람 입력(받을 선수 자동 달리기 · 드리블 속도 상한 · A/D 홀드 · `BTN_SKIP`) |
+| `src/core/ai.ts` | 팀 AI · `celebrate` · `gkDecide`(PK 골라인) · 시야(vis) 패스 상대 고르기 |
+| `src/core/state.ts` | 상수·타입 (`GOAL_TICKS 540` · `GOAL_SKIP_TICKS 30` · `Ball.shotQ` · `Team.skipCele` · `goalScorer/goalTeam`) |
+| `src/core/input.ts` | 입력 비트(`BTN_SKIP = 1<<13`) · `soloInputs` |
+| `src/cards/squad.ts` | 급여 상한 · **영입 제한·웃돈·주력 구단** · **팀워크·약체 가산** · `SquadCheck.hard` |
+| `src/ui/squad.ts` | 스쿼드 화면 전부 (게이지 4개 · 명단 표 · 자동 채우기 · JSON · 구단 고르기 1부/2부) |
+| `src/ui/settings.ts` | 설정 값 + 로비·경기 공용 패널 (`keyView` 포함) |
+| `src/game/session.ts` | 경기 진행 · 오버레이 · **리플레이 링 버퍼** · **캡처 훅**(`__klo.snap/gif/gifDom/frameNow`) |
+| `src/render3d/renderer3d.ts` | 방송 카메라 · 방향 표시 · 공 가진 선수 링 · **세레모니 카메라(득점자)** · **세트피스 카메라** · 리플레이 FOV |
+| `src/render/hud.ts` | 전광판 · 배너(골 세레모니/리플레이/상대 대기 · 프리킥 골문 거리) · 전술 라벨 |
+| `src/render/keyview.ts` | 입력 키 표시 (설정으로 켜고 끔 · Enter 포함) |
+| `src/debug/shot.ts` | 공지 사진·GIF — DOM+캔버스 PNG · GIF89a 인코더 (DEV 전용, 배포 번들 없음) |
+| `vite.config.ts` | `snapPlugin`(`POST /__snap` → `docs/img/`) · `watch.ignored docs/img` |
+| `tools/attrcheck.ts` | **능력치 묶음별 A/B** (`npm run attrcheck [N] [묶음,…]`) |
+| `tools/tactics.ts` · `tools/economy.ts` · `tools/power.ts` | 전술 실측 · 급여/영입 경제 · 구단 전력 |
+| `tests/*.test.ts` | 18 파일 121개 — 이번 세션: `away_control` · `signings` · `receiver` · `celebration` · `finishing` · `setpiece` |
 
 ### 재현 명령
 
@@ -344,18 +254,22 @@ npm install
 npm test               # 18 파일 · 121개
 npm run build
 npm run dev            # http://localhost:5175/KLO26/
+npm run attrcheck 100 pace,shoot,def,drib,gk   # 능력치 묶음별 A/B (묶음 생략 = 전부, 약 10분)
+npm run tactics        # 전술 프리셋별 라인 높이
+npm run economy        # 구단별 최강 선발·영입 경제
+npm run power          # 구단 전력 (약체 가산 구간)
 npm run verify 200     # 단계 7 검증 (20분 이상 — 표본을 줄이지 말 것)
 npm run asym 100       # 홈/원정 비대칭 진단
 npm run balance -- 120
 npm run oneone 400 14  # 1대1 전환율
 npm run cards          # 카드 OVR 보정 · 급여 상한
 npm run clubs 90       # 실제 구단끼리 계측
-npm run build:cards    # 원본 명단 → src/data/cards.json (원본은 저장소 밖)
+npm run build:cards    # 원본 명단 → src/data/cards.json (원본은 저장소 밖 · CLUB_NAME 표가 구단명)
 ```
 
 원본 명단 갱신 절차(KM26 → KMD26 도구 → `build_cards.py`)와 그때 걸리는 함정 둘은 **CHANGELOG 2026-09-09 항목**에 그대로 있다.
 
-브라우저 콘솔에서 `__klo.state()` · `__klo.hashes()` · `__klo.net()` · `__klo.snd()`.
+브라우저 콘솔에서 `__klo.state()` · `__klo.hashes()` · `__klo.net()` · `__klo.snd()` · `__klo.frameNow()`(숨겨진 패널에서 한 장 그리기) · 캡처는 위 "스크린샷·GIF 다시 뜨기".
 **테스트 모드**: `http://localhost:5175/KLO26/?test=1` (AI 대 AI 관전 · 키 입력 표시).
 
 ---

@@ -9,6 +9,7 @@
     "test": "vitest run",
     "balance": "vite-node tools/balance.ts",
     "probe": "vite-node tools/probe.ts",
+    "asym": "vite-node tools/asym.ts",
     "verify": "vite-node tools/verify.ts",
     "oneone": "vite-node tools/oneone.ts",
     "cards": "vite-node tools/cards.ts",

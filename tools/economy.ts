@@ -1,97 +1,79 @@
-// 급여 경제 진단 — 상한이 헐거운지, 타 구단 영입이 몇 명까지 되는지 잰다.
+// 급여·영입 경제 진단 — 상한이 헐거운지, 타 구단 영입 제한이 값을 하는지 잰다.
 // npm run economy
 
-import { CLUBS, POOL, cardById } from '../src/data/pool'
-import { SQUAD_SIZE, START_SIZE, cardOvr, cardSalary, clubSquad, computeCap, teamColorBonus } from '../src/cards/squad'
+import { CLUBS, POOL } from '../src/data/pool'
+import { START_SIZE, cardOvr, cardSalary, clubHandicap, clubSquad, computeCap, payOf } from '../src/cards/squad'
+import { cardById } from '../src/data/pool'
 import type { Card } from '../src/cards/cards'
 
 const { cap, best18, clubMax, clubWorst } = computeCap()
-const cond1 = Math.round(best18 * 0.7)
+console.log(`상한 ${cap}  (조건1 올스타18×0.70 = ${Math.round(best18 * 0.7)} · 조건2 최고구단18 = ${clubMax} [${clubWorst}])\n`)
 
-console.log('==== 급여 상한 ====')
-console.log(`상한 ${cap}  (조건1 올스타18×0.70 = ${cond1} · 조건2 최고구단18 = ${clubMax} [${clubWorst}])`)
-console.log(`올스타 18명(포지션 맞춤) 급여 = ${best18}`)
-
-// ---- 급여 구간 분포
-const tiers = new Map<number, number>()
-for (const c of POOL) tiers.set(cardSalary(c), (tiers.get(cardSalary(c)) ?? 0) + 1)
-console.log('\n==== 급여 구간별 인원 (1,056명) ====')
-for (const s of [...tiers.keys()].sort((a, b) => b - a)) {
-  const n = tiers.get(s)!
-  console.log(`  급여 ${String(s).padStart(2)} : ${String(n).padStart(4)}명 (${((n / POOL.length) * 100).toFixed(1)}%)`)
+/** 뭉침 단계 + 약체 가산 (실제 규칙과 같게) */
+function bonusOf(ownInXi: number, clubId: number): number {
+  const tier = ownInXi >= 11 ? 4 : ownInXi >= 9 ? 3 : ownInXi >= 7 ? 2 : ownInXi >= 5 ? 1 : 0
+  return tier + (tier > 0 ? clubHandicap(clubId) : 0)
 }
 
-// ---- 구단별 자동 스쿼드 급여 · 여유
-console.log('\n==== 구단별 자기 선수 18명 (팀컬러 +4) ====')
-const rows: { name: string; div: number; sal: number; ovr: number }[] = []
-for (const cl of CLUBS) {
-  try {
-    const sq = clubSquad(cl.id)
-    const sal = sq.ids.reduce((t, id) => t + cardSalary(cardById(id)!), 0)
-    const ovr = sq.ids.slice(0, START_SIZE).reduce((t, id) => t + cardOvr(cardById(id)!, 4), 0) / START_SIZE
-    rows.push({ name: cl.name, div: cl.div, sal, ovr })
-  } catch { /* 18명 미만 구단 */ }
-}
-rows.sort((a, b) => b.sal - a.sal)
-for (const r of rows) {
-  console.log(`  ${r.name.padEnd(10)} ${r.div}부  급여 ${String(r.sal).padStart(3)}/${cap}  여유 ${String(cap - r.sal).padStart(3)}  선발평균OVR(+4) ${r.ovr.toFixed(1)}`)
-}
-const sals = rows.map((r) => r.sal)
-const avg = sals.reduce((a, b) => a + b, 0) / sals.length
-console.log(`  ── 평균 ${avg.toFixed(1)} · 최소 ${Math.min(...sals)} · 최대 ${Math.max(...sals)} · 평균 여유 ${(cap - avg).toFixed(1)} (상한의 ${(((cap - avg) / cap) * 100).toFixed(0)}%)`)
+/**
+ * 그 구단이 짤 수 있는 **가장 센 선발 11** 을 찾는다.
+ * outMax = 타 구단에서 데려올 수 있는 인원. 급여 상한을 지킨다.
+ * 벤치 7명은 자기 구단에서 가장 싼 선수로 채운 값을 급여에 더한다 (상한을 정직하게 쓰기 위해).
+ */
+function bestXI(clubId: number, outMax: number, benchOutMax: number): { ovr: number; sal: number; out: number } {
+  const own = POOL.filter((c) => c.club === clubId)
+  const out = POOL.filter((c) => c.club !== clubId)
+  const byOvr = (a: Card, b: Card): number => cardOvr(b, 0) - cardOvr(a, 0)
+  const ownGk = own.filter((c) => c.pos === 'GK').sort(byOvr)
+  const ownOut = own.filter((c) => c.pos !== 'GK').sort(byOvr)
+  const outGk = out.filter((c) => c.pos === 'GK').sort(byOvr)
+  const outFld = out.filter((c) => c.pos !== 'GK').sort(byOvr)
 
-// ---- 상한 안에서 짤 수 있는 최강 스쿼드 (포지션 맞춤 탐욕)
-function bestUnderCap(pool: Card[], budget: number): { ids: number[]; sal: number; ovr: number } {
-  const need: [string, number][] = [['GK', 2], ['DF', 6], ['MF', 6], ['FW', 4]]
-  const ids: number[] = []
-  let sal = 0
-  let ovrSum = 0
-  for (const [pos, n] of need) {
-    const list = pool.filter((c) => c.pos === pos).sort((a, b) => cardOvr(b, 0) - cardOvr(a, 0))
-    for (let i = 0; i < n && i < list.length; i++) {
-      ids.push(list[i].id)
-      sal += cardSalary(list[i])
-      ovrSum += cardOvr(list[i], 0)
-    }
+  let best = { ovr: 0, sal: 0, out: 0 }
+  for (let nOut = 0; nOut <= outMax; nOut++) {
+    // 외부는 필드 선수로만 데려온다 (GK 는 자기 구단)
+    const xi: Card[] = [ownGk[0]]
+    const nOwnFld = START_SIZE - 1 - nOut
+    for (let i = 0; i < nOwnFld && i < ownOut.length; i++) xi.push(ownOut[i])
+    for (let i = 0; i < nOut && i < outFld.length; i++) xi.push(outFld[i])
+    if (xi.length < START_SIZE || xi.some((c) => !c)) continue
+    // 벤치 — 자기 구단에서 가장 싼 7명 (급여만 쓴다)
+    const usedIds = new Set(xi.map((c) => c.id))
+    const benchPool = own.filter((c) => !usedIds.has(c.id)).sort((a, b) => cardSalary(a) - cardSalary(b))
+    if (benchPool.length < 7) continue
+    const benchSal = benchPool.slice(0, 7).reduce((t, c) => t + payOf(c, clubId), 0)
+    const sal = xi.reduce((t, c) => t + payOf(c, clubId), 0) + benchSal
+    if (sal > cap) continue
+    const ownInXi = xi.filter((c) => c.club === clubId).length
+    const bonus = bonusOf(ownInXi, clubId)
+    const ovr = xi.reduce((t, c) => t + cardOvr(c, bonus), 0) / START_SIZE
+    if (ovr > best.ovr) best = { ovr, sal, out: nOut }
   }
-  return { ids, sal, ovr: ovrSum / ids.length }
+  return best
 }
-const allstar = bestUnderCap(POOL, cap)
-console.log('\n==== 상한을 무시한 최강 18 (포지션 맞춤) ====')
-console.log(`  급여 ${allstar.sal} (상한 ${cap} 의 ${((allstar.sal / cap) * 100).toFixed(0)}%) · 평균 OVR ${allstar.ovr.toFixed(1)}`)
 
-// ---- 타 구단 영입을 N명 섞었을 때 급여
-console.log('\n==== 자기 구단 + 타 구단 영입 N명 (가장 비싼 선수로) ====')
-const topOutside = (clubId: number, n: number): Card[] =>
-  POOL.filter((c) => c.club !== clubId).sort((a, b) => cardOvr(b, 0) - cardOvr(a, 0)).slice(0, n)
-
-for (const n of [0, 3, 5, 7, 9, 11, 18]) {
-  let overCount = 0
-  let salSum = 0
+function report(label: string, outMax: number, benchOutMax: number): { spread: number; rows: { name: string; div: number; ovr: number; sal: number; out: number }[] } {
+  const rows: { name: string; div: number; ovr: number; sal: number; out: number }[] = []
   for (const cl of CLUBS) {
-    let sq
-    try { sq = clubSquad(cl.id) } catch { continue }
-    const own = sq.ids.map((id) => cardById(id)!)
-    // 가장 싼 n명을 최고 외부 선수로 교체
-    const idx = own.map((c, i) => [i, cardSalary(c)] as const).sort((a, b) => a[1] - b[1]).slice(0, n).map(([i]) => i)
-    const outs = topOutside(cl.id, n)
-    const mixed = own.slice()
-    idx.forEach((i, k) => { mixed[i] = outs[k] })
-    const sal = mixed.reduce((t, c) => t + cardSalary(c), 0)
-    salSum += sal
-    if (sal > cap) overCount++
+    try { clubSquad(cl.id) } catch { continue }
+    const b = bestXI(cl.id, outMax, benchOutMax)
+    rows.push({ name: cl.name, div: cl.div, ovr: b.ovr, sal: b.sal, out: b.out })
   }
-  const m = salSum / rows.length
-  console.log(`  영입 ${String(n).padStart(2)}명 → 평균 급여 ${m.toFixed(1)}/${cap}  상한초과 구단 ${overCount}/${rows.length}`)
+  rows.sort((a, b) => b.ovr - a.ovr)
+  const spread = rows[0].ovr - rows[rows.length - 1].ovr
+  console.log(`==== ${label} ====`)
+  for (const r of rows) {
+    console.log(`  ${r.name.padEnd(11)} ${r.div}부  최강선발 OVR ${r.ovr.toFixed(1)}  급여 ${String(r.sal).padStart(3)}/${cap}  영입 ${r.out}명`)
+  }
+  console.log(`  ── 최고 ${rows[0].ovr.toFixed(1)} (${rows[0].name}) · 최저 ${rows[rows.length - 1].ovr.toFixed(1)} (${rows[rows.length - 1].name}) · 격차 ${spread.toFixed(1)}\n`)
+  return { spread, rows }
 }
 
-// ---- 팀컬러가 유지되는 영입 한도
-console.log('\n==== 팀컬러 (선발 11명 중 최다 구단 인원) ====')
-for (const outXI of [0, 2, 4, 5, 6, 7]) {
-  const ids = clubSquad(CLUBS[0].id).ids.slice(0, START_SIZE)
-  const outs = topOutside(CLUBS[0].id, outXI)
-  const mixed = ids.slice()
-  for (let k = 0; k < outXI; k++) mixed[START_SIZE - 1 - k] = outs[k].id
-  const tc = teamColorBonus(mixed)
-  console.log(`  선발 외부영입 ${outXI}명 → 자기구단 ${START_SIZE - outXI}명 · 팀컬러 +${tc.bonus}`)
-}
+const a = report('지금 (영입 제한 없음 · 상한만)', 11, 7)
+const b = report('제안 (선발 영입 5명 · 후보 2명)', 5, 2)
+const c = report('자기 구단만 (영입 0명 · 팀컬러 +4)', 0, 0)
+
+console.log('==== 요약 ====')
+console.log(`  영입 무제한 : 격차 ${a.spread.toFixed(1)}  · 1위 ${a.rows[0].name} ${a.rows[0].ovr.toFixed(1)}`)
+console.log(`  영입 5+2    : 격차 ${b.spread.toFixed(1)}  · 1위 ${b.rows[0].name} ${b.rows[0].ovr.toFixed(1)}`)
+console.log(`  영입 0      : 격차 ${c.spread.toFixed(1)}  · 1위 ${c.rows[0].name} ${c.rows[0].ovr.toFixed(1)}`)

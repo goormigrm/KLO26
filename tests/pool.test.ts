@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { CLUBS, POOL, POOL_HASH, POOL_SIZE, cardById, clubOf } from '../src/data/pool'
 import { sixGKOf, sixOf } from '../src/cards/cards'
-import { clubSquad, cardOvr, checkSquad, computeCap, starterSquad, squadClub, teamColorBonus } from '../src/cards/squad'
+import { clubSquad, cardOvr, checkSquad, computeCap, starterSquad, squadClub, teamworkBonus } from '../src/cards/squad'
 import { encodeSquad, decodeSquad } from '../src/cards/squadcode'
 import { skillsOf } from '../src/core/skills'
 
@@ -127,8 +127,8 @@ describe('구단 스쿼드', () => {
       const sq = clubSquad(club.id, '4-3-3')
       const chk = checkSquad(sq, CAP)
       expect(chk.errors, `${club.name}: ${chk.errors.join(' / ')}`).toEqual([])
-      // 자기 선수만 썼으니 팀컬러 최대치
-      expect(teamColorBonus(sq.ids.slice(0, 11)).bonus).toBe(4)
+      // 자기 선수만 썼으니 뭉침 단계는 최대치 (총 보너스에는 약체 가산이 더 붙는다)
+      expect(teamworkBonus(sq.ids.slice(0, 11)).tier).toBe(4)
       expect(squadClub(sq)?.id).toBe(club.id)
     }
   })

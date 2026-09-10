@@ -4,7 +4,7 @@
 import { FORMATION_LIST } from '../core/formation'
 import type { Difficulty } from '../core/state'
 import type { SoloConfig, TestConfig } from '../game/session'
-import { START_SIZE, cardSalary, checkSquad, clubById, computeCap, teamColorBonus } from '../cards/squad'
+import { START_SIZE, cardSalary, checkSquad, clubById, computeCap, teamworkBonus } from '../cards/squad'
 import { CLUBS, POOL_SIZE, cardById } from '../data/pool'
 import { sfx } from '../audio/sfx'
 import type { LobbyLink, RoomInfo } from '../net/room'
@@ -42,10 +42,10 @@ export class Lobby {
     const sq = loadSquadOrDefault()
     const cap = computeCap().cap
     const chk = checkSquad(sq, cap)
-    const color = teamColorBonus(sq.ids.slice(0, START_SIZE))
-    const myClub = color.club >= 0 ? clubById(color.club) : undefined
+    const tw = teamworkBonus(sq.ids.slice(0, START_SIZE))
+    const myClub = tw.club >= 0 ? clubById(tw.club) : undefined
     const squadLine = chk.ok
-      ? `${myClub ? `${myClub.name} · ` : ''}${sq.formation} · 급여 ${chk.salary}/${cap} · 강화 ${chk.enhTotal}/24${color.bonus ? ` · 팀컬러 +${color.bonus}` : ''}`
+      ? `${myClub ? `${myClub.name} · ` : ''}${sq.formation} · 급여 ${chk.salary}/${cap} · 강화 ${chk.enhTotal}/24${tw.bonus ? ` · 팀워크 +${tw.bonus}` : ''}`
       : `⚠ 규칙 위반 — ${chk.errors[0]}`
     const best = sq.ids
       .slice(0, START_SIZE)

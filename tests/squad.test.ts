@@ -5,8 +5,8 @@ import { makeRng, rand } from '../src/core/rng'
 import { CLUBS, POOL, POOL_SIZE, cardById } from '../src/data/pool'
 import { calibrateOvr, ovrOf, rawOvr, salaryOf, sixGKOf, sixOf } from '../src/cards/cards'
 import {
-  ENH_BUDGET, ENH_MAX, OVR_FIT, SQUAD_SIZE, cardOvr, cardSalary, checkSquad, computeCap, starterSquad,
-  teamColorBonus, toSquadConfig, type Squad,
+  ENH_BUDGET, ENH_MAX, OVR_FIT, SQUAD_SIZE, cardOvr, cardSalary, checkSquad, clubHandicap, clubSquad, computeCap, starterSquad,
+  teamworkBonus, toSquadConfig, type Squad,
 } from '../src/cards/squad'
 import { CODE_PREFIX, decodeSquad, encodeSquad } from '../src/cards/squadcode'
 import { createState } from '../src/core/sim'
@@ -148,21 +148,43 @@ describe('스쿼드 규칙 — 위반은 전부 거절된다 (DESIGN 5.8)', () =
   })
 })
 
-describe('팀컬러 (DESIGN 5.6)', () => {
-  it('같은 구단 5·7·9·11명 → +1·2·3·4', () => {
+describe('팀워크 (DESIGN 5.6)', () => {
+  it('뭉침 단계 — 같은 구단 5·7·9·11명 → +1·2·3·4', () => {
     const club = CLUBS[0]
     const own = POOL.filter((c) => c.club === club.id)
     // 나머지는 **서로 다른 구단**에서 한 명씩 — 안 그러면 그쪽이 최다 구단이 된다
     const others = CLUBS.slice(1).map((cl) => POOL.find((c) => c.club === cl.id)!)
     const mk = (n: number): number[] => [...own.slice(0, n).map((c) => c.id), ...others.slice(0, 11 - n).map((c) => c.id)]
-    expect(teamColorBonus(mk(4)).bonus).toBe(0)
-    expect(teamColorBonus(mk(5)).bonus).toBe(1)
-    expect(teamColorBonus(mk(7)).bonus).toBe(2)
-    expect(teamColorBonus(mk(9)).bonus).toBe(3)
-    expect(teamColorBonus(mk(11)).bonus).toBe(4)
+    // `tier` 가 뭉침 단계다. `bonus` 에는 약체 가산이 더 얹힌다 (2026-09-11)
+    expect(teamworkBonus(mk(4)).tier).toBe(0)
+    expect(teamworkBonus(mk(5)).tier).toBe(1)
+    expect(teamworkBonus(mk(7)).tier).toBe(2)
+    expect(teamworkBonus(mk(9)).tier).toBe(3)
+    expect(teamworkBonus(mk(11)).tier).toBe(4)
+    // 뭉치지 않으면 약체 가산도 없다 — 남의 구단만 모아 놓고 가산만 받아 갈 수 없다
+    expect(teamworkBonus(mk(4)).handicap).toBe(0)
+    expect(teamworkBonus(mk(4)).bonus).toBe(0)
   })
 
-  it('팀컬러는 선발에게만 붙는다 (벤치 제외)', () => {
+  it('약체 가산 — 전력이 낮은 구단일수록 더 붙는다', () => {
+    const power = CLUBS.map((cl) => ({ cl, h: clubHandicap(cl.id) }))
+    // 가장 센 구단은 가산이 없고, 가장 약한 구단은 가산이 있다
+    expect(Math.min(...power.map((p) => p.h))).toBe(0)
+    expect(Math.max(...power.map((p) => p.h))).toBeGreaterThan(0)
+    for (const { cl, h } of power) {
+      expect(h, cl.name).toBeGreaterThanOrEqual(0)
+      expect(h, cl.name).toBeLessThanOrEqual(3)
+    }
+    // 순수 구단 팀이면 bonus = 4 + 그 구단 가산
+    for (const cl of CLUBS) {
+      const sq = clubSquad(cl.id, '4-3-3')
+      const tw = teamworkBonus(sq.ids.slice(0, 11))
+      expect(tw.tier, cl.name).toBe(4)
+      expect(tw.bonus, cl.name).toBe(4 + clubHandicap(cl.id))
+    }
+  })
+
+  it('팀워크는 선발에게만 붙는다 (후보 제외)', () => {
     const club = CLUBS[1]
     const own = POOL.filter((c) => c.club === club.id)
     const sq = starterSquad('4-3-3')
@@ -170,12 +192,13 @@ describe('팀컬러 (DESIGN 5.6)', () => {
     const gk = own.find((c) => c.pos === 'GK')!
     const rest = own.filter((c) => c.id !== gk.id).slice(0, 10)
     sq.ids = [gk.id, ...rest.map((c) => c.id), ...sq.ids.slice(11)]
-    const color = teamColorBonus(sq.ids.slice(0, 11))
-    expect(color.bonus).toBe(4)
+    const tw = teamworkBonus(sq.ids.slice(0, 11))
+    expect(tw.tier).toBe(4)
+    expect(tw.bonus).toBe(4 + clubHandicap(club.id))
     const cfg = toSquadConfig(sq, '테스트', '테')
     const startBoost = cfg.players[3].attr.pac - (cardById(sq.ids[3])!.attr.pac as number)
     const benchBoost = cfg.players[12].attr.pac - (cardById(sq.ids[12])!.attr.pac as number)
-    expect(startBoost).toBe(4)
+    expect(startBoost).toBe(tw.bonus)
     expect(benchBoost).toBe(0)
   })
 })

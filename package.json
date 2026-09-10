@@ -14,6 +14,8 @@
     "oneone": "vite-node tools/oneone.ts",
     "cards": "vite-node tools/cards.ts",
     "clubs": "vite-node tools/clubs_balance.ts",
+    "economy": "vite-node tools/economy.ts",
+    "power": "vite-node tools/power.ts",
     "build:cards": "python tools/build_cards.py"
   },
   "dependencies": {

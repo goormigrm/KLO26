@@ -150,7 +150,7 @@ export class WaitRoom {
     this.onStart({ link: this.link, lockstep, me, peerId: this.otherId, squads, names }, halfSec, seed)
   }
 
-  /** 한쪽 패널 — 구단 색 띠 · 포메이션 · 선발 평균 OVR · 급여 · 팀컬러 · 강화 (사용자 요청 2026-09-10) */
+  /** 한쪽 패널 — 구단 색 띠 · 포메이션 · 선발 평균 OVR · 급여 · 팀워크 · 강화 (사용자 요청 2026-09-10) */
   private sideHtml(label: string, name: string, sq: Squad | null, ready: boolean, note: string): string {
     if (!sq) {
       return `<div class="side"><div class="sub-h">${label}</div><b class="dimtext">${name}</b><small>${note}</small></div>`
@@ -159,7 +159,7 @@ export class WaitRoom {
     const chk = checkSquad(sq, CAP)
     const xi = sq.ids.slice(0, START_SIZE).map((id, i) => {
       const c = cardById(id)
-      return c ? cardOvr(c, (sq.enh[i] ?? 0) + chk.color.bonus) : 0
+      return c ? cardOvr(c, (sq.enh[i] ?? 0) + chk.teamwork.bonus) : 0
     })
     const avg = xi.reduce((a, b) => a + b, 0) / Math.max(1, xi.length)
     const hex = (n: number): string => '#' + n.toString(16).padStart(6, '0')
@@ -170,7 +170,7 @@ export class WaitRoom {
       <div class="cl">${club?.name ?? '혼합 스쿼드'}</div>
       <div class="facts">
         <span>${sq.formation}</span><span>선발 ${starHtml(ovrStars(avg), true)}</span><span>급여 <b>${chk.salary}</b>/${CAP}</span>
-        <span>팀컬러 ${chk.color.bonus ? `<b>+${chk.color.bonus}</b>` : '없음'}</span><span>강화 ${chk.enhTotal}/24</span>
+        <span>팀워크 ${chk.teamwork.bonus ? `<b>+${chk.teamwork.bonus}</b>` : '없음'}</span><span>강화 ${chk.enhTotal}/24</span>
       </div>
       ${note ? `<small>${note}</small>` : ''}
       <div class="rd ${ready ? 'on' : ''}">${ready ? '✓ 준비 완료' : '준비 안 됨'}</div>

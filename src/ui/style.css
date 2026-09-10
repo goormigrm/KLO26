@@ -389,9 +389,19 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
 .slotcard .acts .btn { padding: 3px 6px; font-size: 11px; flex: 1; white-space: nowrap; }
 .slotcard.empty { border-style: dashed; }
 .slotcard.empty b { color: var(--ink-3); font-weight: 500; }
-.gauges.v2 { grid-template-columns: 1.5fr 1fr auto; align-items: stretch; }
-.gauges.v2 .g.color { align-self: center; }
-.gauges.v2 .g.color small { color: var(--ink-3); font-size: 11px; }
+.gauges.v2 { grid-template-columns: repeat(auto-fit, minmax(232px, 1fr)); align-items: stretch; }
+/* 팀워크 (예전 이름 팀컬러 — 2026-09-11 사용자 요청으로 바꿈) */
+.gauges.v2 .g.work small { color: var(--ink-3); font-size: 11px; }
+.gauges .g.work .workrow { display: flex; align-items: baseline; gap: 8px; margin: 3px 0; }
+.gauges .g.work .workrow > span { font: 700 11.5px 'IBM Plex Mono', monospace; color: var(--ink-2); white-space: nowrap; }
+.gauges .g.work .workrow > span b { color: var(--gold); font-size: 13px; }
+.gauges .g.work .workrow > small { color: var(--ink-3); font-size: 11px; min-width: 0; }
+
+/* 구단 고르기 — 1부/2부 나누기 */
+.divhead { margin: 18px 0 0; font-size: 15px; color: var(--ink-2); border-bottom: 1px solid var(--line-2); padding-bottom: 6px; }
+.divhead small { color: var(--ink-3); font-size: 11.5px; font-weight: 500; margin-left: 6px; }
+.clubcard .hctag { position: absolute; right: 8px; top: 8px; font-size: 10px; padding: 1px 6px; border-radius: 999px;
+  background: rgba(63,185,80,.14); color: var(--ok); border: 1px solid rgba(63,185,80,.3); }
 .g.salary { background: linear-gradient(180deg, #16211a, var(--bg-2)); border: 1px solid #2ea04366; border-radius: 12px; padding: 10px 14px; }
 .g.salary.warn { border-color: #e3b34188; background: linear-gradient(180deg, #221f14, var(--bg-2)); }
 .g.salary.over { border-color: var(--risk); background: linear-gradient(180deg, #2a1616, var(--bg-2)); }
@@ -402,7 +412,11 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
 .g.salary .big span { color: var(--ink-3); font: 600 14px 'IBM Plex Mono', monospace; }
 .g.salary .left { font-size: 12px; color: var(--ink-2); margin-top: 6px; }
 .g.salary .left b { color: var(--ink); font-size: 13px; }
-.g.enh { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 14px; }
+.g.enh, .g.signs, .g.work { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 14px; }
+.g.signs .help, .g.work .help { font-size: 11px; color: var(--ink-3); margin-top: 6px; line-height: 1.45; }
+.g.work .big { display: flex; align-items: baseline; gap: 6px; margin: 2px 0 6px; }
+.g.work .big b { font: 900 26px 'IBM Plex Mono', monospace; color: var(--gold); line-height: 1; }
+.g.work .big span { color: var(--ink-3); font-size: 11.5px; }
 .g.enh .help { font-size: 11px; color: var(--ink-3); margin-top: 6px; line-height: 1.45; }
 .crow .sal { font: 700 10.5px 'IBM Plex Mono', monospace; color: var(--ink-2); background: #1b2330; border-radius: 6px; padding: 1px 6px; white-space: nowrap; margin-left: 4px; }
 .crow .sal.up { color: #ffb4ae; }
@@ -568,3 +582,12 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
 .sctl .seg button { padding: 6px 14px; }
 .sctl small { color: var(--ink-3); font-size: 11.5px; }
 .game-ui .top-right .btn { white-space: nowrap; }
+
+/* ---- 2026-09-11: 타 구단 영입 (G-17) ---- */
+.gauges .g.signs .signrow { display: flex; align-items: baseline; gap: 5px; margin: 2px 0 4px; font-family: 'IBM Plex Mono', monospace; }
+.gauges .g.signs .signrow b { font-size: 20px; color: var(--ink); }
+.gauges .g.signs .signrow span { font-size: 12px; color: var(--ink-3); }
+.gauges .g.signs .signrow .gap { margin-left: 12px; }
+.gauges .g.signs.over .signrow b { color: var(--risk); }
+.gauges .g.signs.over { border-color: var(--risk); }
+em.outtag { font-style: normal; font-size: 10px; padding: 0 4px; border-radius: 3px; background: rgba(224,195,65,.16); color: #e0c341; white-space: nowrap; }

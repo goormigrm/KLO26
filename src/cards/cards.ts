@@ -7,7 +7,7 @@ import type { PlayerSpec, PosGroup } from '../core/state'
 
 /** 카드 = 선수 데이터 + 소속 구단 */
 export interface Card extends PlayerSpec {
-  /** 구단 id (팀컬러 계산용) */
+  /** 구단 id (팀워크·영입 계산용) */
   club: number
 }
 
@@ -129,7 +129,7 @@ export function salaryOf(ovr: number): number {
 }
 
 /**
- * 강화 · 팀컬러를 능력치에 얹는다 (DESIGN 5.5 · 5.6).
+ * 강화 · 팀워크를 능력치에 얹는다 (DESIGN 5.5 · 5.6).
  * **+1 = 능력치 40종(GK 11종) 전부 +1**, 상한 99. 원본을 건드리지 않고 새 spec 을 만든다.
  */
 export function boostSpec(c: Card, plus: number): Card {

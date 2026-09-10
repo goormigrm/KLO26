@@ -188,7 +188,7 @@ export class Session {
       return createState({ seed, halfSec: c.halfSec, squads: [home, away], human: [true, true] })
     }
     const mySquad = c.squad
-    // 혼자 하기 상대는 **실제 구단** 하나다 (자기 선수만 쓰니 팀컬러 +4 가 붙는다).
+    // 혼자 하기 상대는 **실제 구단** 하나다 (자기 선수만 쓰니 팀워크가 가득 붙는다).
     // 내 스쿼드의 주력 구단과 겹치면 다음 구단으로 민다.
     const myClub = mySquad ? squadClub(mySquad) : undefined
     let oppIdx = c.oppClub ?? (seed % CLUBS.length)

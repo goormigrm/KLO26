@@ -10,8 +10,9 @@
 import { FORMATIONS, FORMATION_LIST, SLOT_FAM, SLOT_XY } from '../core/formation'
 import { SIX_FIELD, SIX_GK, famColor, ovrStars, sixGKOf, sixOf, statStars } from '../cards/cards'
 import {
-  ENH_BUDGET, ENH_MAX, SQUAD_SIZE, START_SIZE, cardOvr, cardSalary, checkSquad, clubById, clubSquad, computeCap,
-  teamColorBonus, type Squad,
+  ENH_BUDGET, ENH_MAX, OUT_BENCH_MAX, OUT_XI_MAX, SQUAD_SIZE, START_SIZE, cardOvr, cardSalary, checkSquad, clubHandicap,
+  clubById, clubSquad, computeCap, countOutside, homeClubOf, payOf,
+  teamworkBonus, type Squad,
 } from '../cards/squad'
 import { CLUBS, POOL, POOL_HASH, POOL_SIZE, cardById } from '../data/pool'
 import type { Card } from '../cards/cards'
@@ -40,7 +41,9 @@ export function loadSquad(): Squad | null {
     const s = JSON.parse(raw) as Squad
     if (!s || !Array.isArray(s.ids) || s.ids.length !== SQUAD_SIZE || !FORMATIONS[s.formation]) return null
     if (s.hash !== POOL_HASH) return null
-    if (!checkSquad(s, CAP).ok) return null
+    // 규칙이 바뀌어 급여·영입 인원이 어긋난 스쿼드는 **버리지 않는다** — 화면에서 고칠 수 있다.
+    // 못 고치는 문제(선수 수·골키퍼·중복·지문)만 버린다.
+    if (checkSquad(s, CAP).hard.length > 0) return null
     return s
   } catch {
     return null
@@ -100,6 +103,8 @@ export class SquadScreen {
   private root: HTMLElement
   /** 고른 자리 (0~17). −1 = 없음 */
   private sel = -1
+  /** 주력 구단 (선발 최다) — 영입 인원·웃돈을 여기 기준으로 센다. `draw()` 에서 갱신 */
+  private home = -1
   private filterPos = ''
   /** 목록을 내 구단으로 좁힐지 */
   private ownOnly = true
@@ -160,23 +165,32 @@ export class SquadScreen {
 
   private myClub(): number {
     if (this.sq.club !== undefined) return this.sq.club
-    return teamColorBonus(this.sq.ids.slice(0, START_SIZE)).club
+    return teamworkBonus(this.sq.ids.slice(0, START_SIZE)).club
   }
 
   // ---------------------------------------------------------------- 구단 고르기
 
   private drawClubs(): void {
-    const rows = CLUBS.map((c) => {
+    // 1부·2부를 나눠 세운다 (사용자 요청 2026-09-11) — 섞여 있으면 어디 소속인지 알기 어렵다
+    const card = (c: (typeof CLUBS)[number]): string => {
       const own = POOL.filter((p) => p.club === c.id)
       const avg = own.reduce((a, p) => a + cardOvr(p, 0), 0) / own.length
       const best = own.slice().sort((a, b) => cardOvr(b, 0) - cardOvr(a, 0))[0]
+      const hc = clubHandicap(c.id)
       return `<button class="clubcard" data-club="${c.id}" style="--c:${hex(c.col)}">
         <span class="cbar"></span>
         <b>${c.name}</b>
-        <small>${c.div === 1 ? 'K리그1' : 'K리그2'} · 선수 ${own.length}명 · 평균 ${starHtml(ovrStars(avg), true)}</small>
+        <small>선수 ${own.length}명 · 평균 ${starHtml(ovrStars(avg), true)}</small>
         <em>최고 ${best.name} ${starHtml(ovrStars(cardOvr(best, 0)), true)}</em>
+        ${hc > 0 ? `<span class="hctag" title="전력이 낮은 구단이라 팀워크가 더 붙습니다">약체 가산 +${hc}</span>` : ''}
       </button>`
-    }).join('')
+    }
+    const group = (div: 1 | 2): string => {
+      const list = CLUBS.filter((c) => c.div === div)
+      return `<h2 class="divhead">${div === 1 ? '1부' : '2부'} <small>${list.length}개 구단</small></h2>
+        <div class="clubgrid">${list.map(card).join('')}</div>`
+    }
+    const rows = group(1) + group(2)
     this.root.innerHTML = `
       <div class="sq-top">
         <h1>구단 고르기</h1>
@@ -185,10 +199,11 @@ export class SquadScreen {
           <button class="btn secondary" id="sq-back">저장 안 하고 로비로</button>
         </div>
       </div>
-      <p class="hintline">구단을 고르면 <b>그 구단 선수로 선발 11명과 벤치 7명을 자동으로 채웁니다.</b>
-      그 뒤 전술판에서 자리를 옮기거나 다른 선수로 바꿀 수 있습니다. 한 구단으로만 채우면 <b>팀컬러 +4</b> 가 붙습니다.</p>
+      <p class="hintline">구단을 고르면 <b>그 구단 선수로 선발 11명과 후보 7명을 자동으로 채웁니다.</b>
+      그 뒤 전술판에서 자리를 옮기거나 다른 선수로 바꿀 수 있습니다.
+      한 구단으로만 채우면 <b>팀워크</b>가 가장 높게 붙고, 전력이 낮은 구단은 <b>약체 가산</b>이 더 얹힙니다.</p>
       ${this.msg ? `<div class="okmsg">${this.msg}</div>` : ''}
-      <div class="clubgrid">${rows}</div>`
+      ${rows}`
     this.root.querySelectorAll<HTMLButtonElement>('[data-club]').forEach((b) => {
       b.onclick = () => {
         const id = Number(b.dataset.club)
@@ -197,7 +212,10 @@ export class SquadScreen {
         this.sel = -1
         this.mode = 'board'
         this.hasSquad = true
-        this.msg = `${clubById(id)?.name ?? ''} 선수로 채웠습니다 — 팀컬러 +4`
+        const tw = teamworkBonus(this.sq.ids.slice(0, START_SIZE))
+        this.msg = `${clubById(id)?.name ?? ''} 선수로 채웠습니다 — 팀워크 +${tw.bonus}${
+          tw.handicap ? ` (뭉침 +${tw.tier} · 약체 가산 +${tw.handicap})` : ''
+        }`
         this.snd.ui('ok')
         saveSquad(this.sq)
         this.draw()
@@ -224,8 +242,9 @@ export class SquadScreen {
     }
     const sq = this.sq
     const check = checkSquad(sq, CAP)
-    const color = check.color
-    const club = color.club >= 0 ? clubById(color.club) : undefined
+    this.home = check.homeClub
+    const tw = check.teamwork
+    const club = tw.club >= 0 ? clubById(tw.club) : undefined
     const salPct = Math.min(100, (check.salary / CAP) * 100)
     const enhPct = (check.enhTotal / ENH_BUDGET) * 100
     const shape = FORMATIONS[sq.formation]
@@ -245,7 +264,7 @@ export class SquadScreen {
       const enh = sq.enh[i] ?? 0
       return `<button class="chip${on}" data-slot="${i}" draggable="true" style="${style};--fam:${famColor(fam)}">
         <b>${c.name}</b>
-        <span class="ov">${starHtml(ovrStars(cardOvr(c, enh + color.bonus)), true)}</span>
+        <span class="ov">${starHtml(ovrStars(cardOvr(c, enh + tw.bonus)), true)}</span>
         <small>${slot} · ${c.no}번${enh ? ` · +${enh}` : ''}</small>
       </button>`
     }
@@ -282,7 +301,27 @@ export class SquadScreen {
           <div class="bar"><i class="${check.enhTotal > ENH_BUDGET ? 'over' : ''}" style="width:${enhPct}%"></i></div>
           <div class="help">+1 = 그 선수 능력치 전부 +1 (OVR 은 1~2 오릅니다). 카드당 +${ENH_MAX} 까지, 급여는 안 오릅니다. 자리를 고르면 아래에서 줍니다.</div>
         </div>
-        <div class="g color">${color.bonus > 0 ? `팀컬러 <b>${club?.name ?? ''} ${color.count}명 → 전원 +${color.bonus}</b>` : `팀컬러 없음 (최다 ${club?.name ?? '-'} ${color.count}명 · 5명부터)`}<br><small>선발 11명 중 같은 구단 5·7·9·11명 → +1·2·3·4</small></div>
+        <div class="g signs${check.outside.xi > OUT_XI_MAX || check.outside.bench > OUT_BENCH_MAX ? ' over' : ''}">
+          <label>타 구단 영입</label>
+          <div class="signrow"><span>선발</span><b>${check.outside.xi}</b><span>/ ${OUT_XI_MAX}</span>
+            <span class="gap">후보</span><b>${check.outside.bench}</b><span>/ ${OUT_BENCH_MAX}</span></div>
+          <div class="help">다른 구단 선수는 <b>급여가 1.5배</b> 듭니다. 선발은 ${OUT_XI_MAX}명, 후보는 ${OUT_BENCH_MAX}명까지 — 나머지는 내 구단 선수로 채웁니다.</div>
+        </div>
+        <div class="g work">
+          <label>팀워크 — 손발이 맞는 정도</label>
+          <div class="big"><b>${tw.bonus > 0 ? `+${tw.bonus}` : '없음'}</b><span>${
+            tw.bonus > 0 ? '선발 11명 전원 능력치' : '같은 구단 5명부터'
+          }</span></div>
+          <div class="workrow">
+            <span>뭉침 <b>+${tw.tier}</b></span><small>${club?.name ?? '-'} ${tw.count}명 · 5·7·9·11명 → +1·2·3·4</small>
+          </div>
+          <div class="workrow">
+            <span>약체 가산 <b>+${tw.handicap}</b></span><small>${
+              tw.handicap > 0 ? '전력이 낮은 구단이라 더 붙습니다' : '전력이 높은 구단이라 가산이 없습니다'
+            }</small>
+          </div>
+          <div class="help">같은 구단 선수끼리 오래 맞춰 왔다는 뜻입니다. 붙은 만큼 <b>선발 전원의 모든 능력치</b>가 올라갑니다 (후보는 빼고). 약체 가산은 뭉쳤을 때만 얹힙니다.</div>
+        </div>
       </div>
       ${check.errors.length ? `<div class="errs">${check.errors.map((e) => `<span>${e}</span>`).join('')}</div>` : ''}
       ${this.msg ? `<div class="okmsg">${this.msg}</div>` : ''}
@@ -343,7 +382,7 @@ export class SquadScreen {
             <select class="sel narrow" id="f-sort"><option value="ovr"${this.sort === 'ovr' ? ' selected' : ''}>종합 순</option><option value="sal"${this.sort === 'sal' ? ' selected' : ''}>급여 순</option><option value="name"${this.sort === 'name' ? ' selected' : ''}>이름 순</option></select>
           </div>
           <div class="crow-list">${list.slice(0, 200).map((c) => this.cardRow(c)).join('')}</div>
-          <p class="hintline">${list.length}명${list.length > 200 ? ' (앞 200명)' : ''}${this.ownOnly ? '' : ' · 다른 구단을 섞으면 팀컬러가 깨집니다'}</p>
+          <p class="hintline">${list.length}명${list.length > 200 ? ' (앞 200명)' : ''}${this.ownOnly ? '' : ' · 다른 구단 선수를 넣으면 팀워크가 내려가고 급여가 1.5배 듭니다'}</p>
         </div>
       </div>`
     this.bind()
@@ -375,14 +414,14 @@ export class SquadScreen {
     const enh = this.sq.enh[i] ?? 0
     const s = c.pos === 'GK' ? sixGKOf(c) : sixOf(c)
     const labels = c.pos === 'GK' ? SIX_GK : SIX_FIELD
-    const bonus = teamColorBonus(this.sq.ids.slice(0, START_SIZE)).bonus
+    const bonus = teamworkBonus(this.sq.ids.slice(0, START_SIZE)).bonus
     const partner = this.bestPartner(i)
     const act = partner < 0 ? '' : `<button class="mini" data-swap="${i}" title="${starter ? '후보와 맞바꿉니다' : '선발과 맞바꿉니다'}">${starter ? '⬇ 후보로' : '⬆ 선발로'}</button>`
     return `<div class="rrow${on}" data-slot="${i}" role="button" tabindex="0" draggable="true"${starter ? ` style="--fam:${famColor(fam)}"` : ''}>
       <span class="rslot"${starter ? ` style="color:${famColor(fam)}"` : ''}>${label}</span>
       <b><span class="no">${c.no}</span>${c.name}${enh ? ` <em class="enhtag">+${enh}</em>` : ''}</b>
       <span class="rov">${starHtml(ovrStars(cardOvr(c, enh + (starter ? bonus : 0))), true)}</span>
-      <small>${c.pos} · 급여 ${cardSalary(c)}${starter ? ` · 능숙도 <span style="color:${famColor(fam)}">${fam}</span>` : ''}</small>
+      <small>${c.pos} · 급여 ${payOf(c, this.home)}${c.club !== this.home ? ' <em class="outtag">영입</em>' : ''}${starter ? ` · 능숙도 <span style="color:${famColor(fam)}">${fam}</span>` : ''}</small>
       ${pipsHtml(Object.values(s).map(statStars), labels)}
       <span class="ract">${act}</span>
     </div>`
@@ -392,6 +431,14 @@ export class SquadScreen {
   private pinToBench(id: number): void {
     const c = cardById(id)
     if (!c) return
+    if (c.club !== this.home) {
+      const n = countOutside(this.sq, this.home)
+      if (n.bench >= OUT_BENCH_MAX) {
+        this.msg = `후보 영입은 ${OUT_BENCH_MAX}명까지입니다. 먼저 영입한 후보를 내 구단 선수로 바꾸세요.`
+        this.snd.ui('no')
+        return
+      }
+    }
     let target = -1
     let worst = 1e9
     for (let i = START_SIZE; i < SQUAD_SIZE; i++) {
@@ -424,18 +471,23 @@ export class SquadScreen {
     const showFam = this.sel >= 0 && this.sel < START_SIZE
     const fam = showFam ? this.famAt(c, this.sel) : 100
     // 급여 강조 (사용자 요청 2026-09-10): 자리를 골랐으면 "바꾸면 얼마나 늘/주나"와 상한 초과를 바로 보여 준다
-    const sal = cardSalary(c)
-    let salHtml = `<span class="sal">급여 ${sal}</span>`
+    const outsider = c.club !== this.home
+    const sal = payOf(c, this.home)
+    let salHtml = `<span class="sal">급여 ${sal}${outsider ? ' <em class="outtag">영입 ×1.5</em>' : ''}</span>`
     let over = false
+    let full = false
     if (this.sel >= 0 && !used) {
       const cur = cardById(this.sq.ids[this.sel])
-      const delta = sal - (cur ? cardSalary(cur) : 0)
+      const delta = sal - (cur ? payOf(cur, this.home) : 0)
       const after = checkSquad(this.sq, CAP).salary + delta
       over = after > CAP
+      full = this.signFull(this.sel, c)
       const sign = delta > 0 ? `+${delta}` : `${delta}`
-      salHtml = `<span class="sal${delta > 0 ? ' up' : delta < 0 ? ' down' : ''}">급여 ${sal} (${sign})</span>${over ? '<span class="sal over">상한 초과</span>' : ''}`
+      salHtml = `<span class="sal${delta > 0 ? ' up' : delta < 0 ? ' down' : ''}">급여 ${sal} (${sign})${outsider ? ' <em class="outtag">영입 ×1.5</em>' : ''}</span>${
+        over ? '<span class="sal over">상한 초과</span>' : ''
+      }${full ? '<span class="sal over">영입 한도</span>' : ''}`
     }
-    const dis = used || over
+    const dis = used || over || full
     const labels = c.pos === 'GK' ? SIX_GK : SIX_FIELD
     return `<div class="rrow crow${used ? ' used' : ''}${over ? ' over' : ''}${dis ? ' off' : ''}" data-card="${c.id}" role="button" tabindex="0">
       <span class="rslot pos-${c.pos}"${showFam ? ` style="color:${famColor(fam)}"` : ''}>${c.pos}</span>
@@ -456,7 +508,7 @@ export class SquadScreen {
           return `<div class="slotcard empty"><span class="n">SLOT ${i + 1}</span><b>비어 있음</b><small>지금 스쿼드를 여기에</small>
             <div class="acts"><button class="btn secondary" data-save="${i}">저장</button></div></div>`
         }
-        const cl = clubById(teamColorBonus(s.ids.slice(0, START_SIZE)).club)
+        const cl = clubById(teamworkBonus(s.ids.slice(0, START_SIZE)).club)
         const chk = checkSquad(s, CAP)
         return `<div class="slotcard"><span class="n">SLOT ${i + 1}</span><b>${cl?.name ?? s.name}</b><small>${s.formation} · 급여 ${chk.salary}/${CAP}${chk.enhTotal ? ` · 강화 ${chk.enhTotal}` : ''}</small>
           <div class="acts"><button class="btn secondary" data-load="${i}">불러오기</button><button class="btn secondary" data-save="${i}">덮어쓰기</button><button class="btn secondary" data-del="${i}">지우기</button></div></div>`
@@ -715,6 +767,18 @@ export class SquadScreen {
    * **선발 GK 자리(0)에는 골키퍼만**, 필드 자리(1~10)에는 골키퍼를 놓지 않는다 —
    * 안 막으면 골키퍼 자리에 공격수가 앉는다 (2026-09-09 제보). 벤치는 자유롭다.
    */
+  /**
+   * `slot` 에 `c` 를 넣으면 **타 구단 영입 한도**를 넘는가.
+   * 지금 그 자리에 있는 선수를 빼고 새 선수를 넣은 상태로 다시 센다.
+   */
+  private signFull(slot: number, c: Card): boolean {
+    if (c.club === this.home) return false
+    const cur = cardById(this.sq.ids[slot])
+    if (cur && cur.club !== this.home) return false // 영입 자리를 영입으로 갈아 끼우는 것은 인원이 그대로다
+    const n = countOutside(this.sq, this.home)
+    return slot < START_SIZE ? n.xi >= OUT_XI_MAX : n.bench >= OUT_BENCH_MAX
+  }
+
   private canPlace(slot: number, c: Card | undefined): boolean {
     if (!c) return true
     if (slot === 0) return c.pos === 'GK'
@@ -798,7 +862,8 @@ export class SquadScreen {
       el.onclick = () => {
         if (this.sel >= 0 && this.sel !== i) {
           this.msg = ''
-          if (this.swap(this.sel, i)) this.sel = i
+          // 맞바꾼 뒤에는 **선택을 푼다** (사용자 요청 2026-09-11)
+          if (this.swap(this.sel, i)) this.sel = -1
         } else {
           this.sel = this.sel === i ? -1 : i
           this.msg = ''
@@ -816,7 +881,7 @@ export class SquadScreen {
         const from = Number((e as DragEvent).dataTransfer?.getData('text/plain'))
         if (Number.isInteger(from)) {
           this.msg = ''
-          if (this.swap(from, i)) this.sel = i
+          if (this.swap(from, i)) this.sel = -1
           this.draw()
         }
       }
@@ -833,7 +898,7 @@ export class SquadScreen {
           this.snd.ui('no')
         } else if (this.swap(i, partner)) {
           this.msg = ''
-          this.sel = partner
+          this.sel = -1
         }
         this.draw()
       }
@@ -885,7 +950,7 @@ export class SquadScreen {
           this.snd.ui('no')
         } else if (this.swap(this.sel, partner)) {
           this.msg = ''
-          this.sel = partner
+          this.sel = -1
         }
         this.draw()
       }
@@ -1013,11 +1078,14 @@ export class SquadScreen {
         const h = obj.hash ?? s.hash
         if (h !== POOL_HASH) throw new Error('선수 명단이 달라(지문 불일치) 불러올 수 없습니다 — 명단이 갱신되면 저장된 스쿼드는 버려집니다')
         const c = checkSquad(s, CAP)
-        if (!c.ok) throw new Error(`규칙 위반: ${c.errors[0]}`)
-        this.sq = { ...s, hash: POOL_HASH, club: teamColorBonus(s.ids.slice(0, START_SIZE)).club }
+        // 못 고치는 문제만 막는다. 급여·영입 인원은 불러와서 고칠 수 있게 둔다
+        if (c.hard.length > 0) throw new Error(`규칙 위반: ${c.hard[0]}`)
+        this.sq = { ...s, hash: POOL_HASH, club: teamworkBonus(s.ids.slice(0, START_SIZE)).club }
         this.sel = -1
         saveSquad(this.sq)
-        this.msg = `${f.name} 을 불러왔습니다.`
+        this.msg = c.ok
+          ? `${f.name} 을 불러왔습니다.`
+          : `${f.name} 을 불러왔습니다 — ${c.errors[0]}. 고쳐야 경기를 시작할 수 있습니다.`
         this.snd.ui('ok')
       } catch (e) {
         this.msg = `❌ ${(e as Error).message}`
@@ -1058,9 +1126,20 @@ export class SquadScreen {
           this.draw()
           return
         }
+        if (this.signFull(this.sel, c!)) {
+          this.msg =
+            this.sel < START_SIZE
+              ? `선발 영입은 ${OUT_XI_MAX}명까지입니다. 나머지 자리는 내 구단 선수로 채웁니다.`
+              : `후보 영입은 ${OUT_BENCH_MAX}명까지입니다.`
+          this.snd.ui('no')
+          this.draw()
+          return
+        }
         this.sq.ids[this.sel] = Number(b.dataset.card)
         this.sq.enh[this.sel] = 0
-        this.msg = ''
+        this.msg = `${c!.name} 을 ${this.slotName(this.sel)} 자리에 넣었습니다.`
+        // 넣고 나면 **선택을 푼다** (사용자 요청 2026-09-11) — 다음 클릭이 실수로 교체되지 않게
+        this.sel = -1
         this.snd.ui('click')
         saveSquad(this.sq)
         this.draw()
@@ -1072,6 +1151,7 @@ export class SquadScreen {
   private drawListOnly(): void {
     const holder = this.root.querySelector('.crow-list')
     if (!holder) return
+    this.home = homeClubOf(this.sq)
     holder.innerHTML = this.filtered().slice(0, 200).map((c) => this.cardRow(c)).join('')
     this.bindList()
   }

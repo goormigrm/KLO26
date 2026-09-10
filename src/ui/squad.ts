@@ -20,7 +20,8 @@ import { sfx } from '../audio/sfx'
 
 const SLOTS_KEY = 'klo26.squads'
 const CUR_KEY = 'klo26.squad'
-const SLOT_COUNT = 10
+/** 저장 슬롯 — 10 → 5 (사용자 요청 2026-09-10). 위에 띠로 늘 보인다 */
+const SLOT_COUNT = 5
 const CAP = computeCap().cap
 
 /**
@@ -244,24 +245,35 @@ export class SquadScreen {
 
     const list = this.filtered()
     const detail = this.detailHtml(check.enhTotal)
+    const left = CAP - check.salary
+    const salCls = check.salary > CAP ? ' over' : check.salary > CAP * 0.92 ? ' warn' : ''
 
     this.root.innerHTML = `
       <div class="sq-top">
         <h1>${club ? club.name : '스쿼드'} <small class="subtitle">스쿼드 수정</small></h1>
         <div class="row">
           <select class="sel" id="sq-form">${FORMATION_LIST.map((f) => `<option${f === sq.formation ? ' selected' : ''}>${f}</option>`).join('')}</select>
-          <button class="btn secondary" id="sq-club">구단 바꾸기</button>
+          <button class="btn secondary" id="sq-club">🏟 구단 바꾸기</button>
           <button class="btn secondary" id="sq-auto">자동 채우기</button>
           <button class="btn secondary" id="sq-code">코드 복사</button>
           <button class="btn secondary" id="sq-paste">붙여넣기</button>
-          <button class="btn secondary" id="sq-slots">저장 슬롯</button>
           <button class="btn main" id="sq-done"${check.ok ? '' : ' disabled'}>이 스쿼드로</button>
         </div>
       </div>
-      <div class="gauges">
-        <div class="g"><label>급여 <b>${check.salary}</b> / ${CAP}</label><div class="bar"><i class="${check.salary > CAP ? 'over' : ''}" style="width:${salPct}%"></i></div></div>
-        <div class="g"><label>강화 <b>${check.enhTotal}</b> / ${ENH_BUDGET}</label><div class="bar"><i class="${check.enhTotal > ENH_BUDGET ? 'over' : ''}" style="width:${enhPct}%"></i></div></div>
-        <div class="g color">${color.bonus > 0 ? `팀컬러 <b>${club?.name ?? ''} ${color.count}명 → 전원 +${color.bonus}</b>` : `팀컬러 없음 (최다 ${club?.name ?? '-'} ${color.count}명 · 5명부터)`}</div>
+      ${this.slotsStrip()}
+      <div class="gauges v2">
+        <div class="g salary${salCls}">
+          <label>급여 — 구단이 쓸 수 있는 자산</label>
+          <div class="big"><b>${check.salary}</b><span>/ ${CAP}</span></div>
+          <div class="bar"><i class="${check.salary > CAP ? 'over' : ''}" style="width:${salPct}%"></i></div>
+          <div class="left">${left >= 0 ? `남은 급여 <b>${left}</b> — 이 안에서 선수를 바꿉니다` : `상한을 <b>${-left}</b> 넘었습니다 — 비싼 선수를 내려야 시작할 수 있습니다`}</div>
+        </div>
+        <div class="g enh">
+          <label>강화 예산 <b>${check.enhTotal}</b> / ${ENH_BUDGET}</label>
+          <div class="bar"><i class="${check.enhTotal > ENH_BUDGET ? 'over' : ''}" style="width:${enhPct}%"></i></div>
+          <div class="help">+1 = 그 선수 능력치 전부 +1 (OVR 은 1~2 오릅니다). 카드당 +${ENH_MAX} 까지, 급여는 안 오릅니다. 자리를 고르면 아래에서 줍니다.</div>
+        </div>
+        <div class="g color">${color.bonus > 0 ? `팀컬러 <b>${club?.name ?? ''} ${color.count}명 → 전원 +${color.bonus}</b>` : `팀컬러 없음 (최다 ${club?.name ?? '-'} ${color.count}명 · 5명부터)`}<br><small>선발 11명 중 같은 구단 5·7·9·11명 → +1·2·3·4</small></div>
       </div>
       ${check.errors.length ? `<div class="errs">${check.errors.map((e) => `<span>${e}</span>`).join('')}</div>` : ''}
       ${this.msg ? `<div class="okmsg">${this.msg}</div>` : ''}
@@ -312,12 +324,42 @@ export class SquadScreen {
     // 자리를 골랐으면 그 자리 능숙도를 색으로 (포지션에 맞는 선수를 눈으로 고른다)
     const showFam = this.sel >= 0 && this.sel < START_SIZE
     const fam = showFam ? this.famAt(c, this.sel) : 100
-    return `<button class="crow${used ? ' used' : ''}" data-card="${c.id}"${used ? ' disabled' : ''}>
+    // 급여 강조 (사용자 요청 2026-09-10): 자리를 골랐으면 "바꾸면 얼마나 늘/주나"와 상한 초과를 바로 보여 준다
+    const sal = cardSalary(c)
+    let salHtml = `<span class="sal">급여 ${sal}</span>`
+    let over = false
+    if (this.sel >= 0 && !used) {
+      const cur = cardById(this.sq.ids[this.sel])
+      const delta = sal - (cur ? cardSalary(cur) : 0)
+      const after = checkSquad(this.sq, CAP).salary + delta
+      over = after > CAP
+      const sign = delta > 0 ? `+${delta}` : `${delta}`
+      salHtml = `<span class="sal${delta > 0 ? ' up' : delta < 0 ? ' down' : ''}">급여 ${sal} (${sign})</span>${over ? '<span class="sal over">상한 초과</span>' : ''}`
+    }
+    const dis = used || over
+    return `<button class="crow${used ? ' used' : ''}${over ? ' over' : ''}" data-card="${c.id}"${dis ? ' disabled' : ''}>
       <span class="ov">${cardOvr(c, 0)}</span>
       <b>${c.name}</b>
-      <small${showFam ? ` style="color:${famColor(fam)}"` : ''}>${cl?.short ?? ''} · ${c.pos} · 급여 ${cardSalary(c)}${showFam ? ` · 능숙도 ${fam}` : ''}</small>
+      <small${showFam ? ` style="color:${famColor(fam)}"` : ''}>${cl?.short ?? ''} · ${c.pos}${showFam ? ` · 능숙도 ${fam}` : ''} ${salHtml}</small>
       <em>${Object.values(s).join(' ')}</em>
     </button>`
+  }
+
+  /** 저장 슬롯 띠 — 전술판 위에 늘 보인다 (5칸, 사용자 요청 2026-09-10) */
+  private slotsStrip(): string {
+    const slots = loadSlots()
+    return `<div class="slots-strip">${slots
+      .map((s, i) => {
+        if (!s) {
+          return `<div class="slotcard empty"><span class="n">SLOT ${i + 1}</span><b>비어 있음</b><small>지금 스쿼드를 여기에</small>
+            <div class="acts"><button class="btn secondary" data-save="${i}">저장</button></div></div>`
+        }
+        const cl = clubById(teamColorBonus(s.ids.slice(0, START_SIZE)).club)
+        const chk = checkSquad(s, CAP)
+        return `<div class="slotcard"><span class="n">SLOT ${i + 1}</span><b>${cl?.name ?? s.name}</b><small>${s.formation} · 급여 ${chk.salary}/${CAP}${chk.enhTotal ? ` · 강화 ${chk.enhTotal}` : ''}</small>
+          <div class="acts"><button class="btn secondary" data-load="${i}">불러오기</button><button class="btn secondary" data-save="${i}">덮어쓰기</button><button class="btn secondary" data-del="${i}">지우기</button></div></div>`
+      })
+      .join('')}</div>`
   }
 
   private detailHtml(enhTotal: number): string {
@@ -334,10 +376,14 @@ export class SquadScreen {
     const starter = this.sel < START_SIZE
     const partner = this.bestPartner(this.sel)
     const partnerName = partner >= 0 ? cardById(this.sq.ids[partner])?.name ?? '' : ''
+    const base = cardOvr(c, 0)
+    const now = cardOvr(c, enh)
+    const next = enh < ENH_MAX ? cardOvr(c, enh + 1) : now
+    const budgetLeft = ENH_BUDGET - enhTotal
     return `
       <div class="dtl">
-        <div class="dhead"><b>${c.name}</b> <span class="ov">${cardOvr(c, enh)}</span></div>
-        <small>${clubById(c.club)?.name ?? ''} · ${c.pos} · ${c.h}cm ${c.w}kg · ${c.foot === 'R' ? '오른발' : c.foot === 'L' ? '왼발' : '양발'}</small>
+        <div class="dhead"><b>${c.name}</b> <span class="ov">${now}</span></div>
+        <small>${clubById(c.club)?.name ?? ''} · ${c.pos} · ${c.h}cm ${c.w}kg · ${c.foot === 'R' ? '오른발' : c.foot === 'L' ? '왼발' : '양발'} · 급여 ${cardSalary(c)}</small>
         <div class="fam" style="color:${famColor(fam)}">${this.slotName(this.sel)} 능숙도 ${fam}</div>
         ${bars}
         <div class="row swaprow">
@@ -345,13 +391,62 @@ export class SquadScreen {
             ${starter ? '벤치로 내리기' : '선발로 올리기'}${partnerName ? ` <em>↔ ${partnerName}</em>` : ''}
           </button>
         </div>
-        <div class="row enh">
-          <label>강화 (예산 ${enhTotal}/${ENH_BUDGET})</label>
-          <button class="btn secondary" id="enh-minus">−</button>
-          <span class="enhv">+${enh}</span>
-          <button class="btn secondary" id="enh-plus">+</button>
+        <div class="enh-box">
+          <div class="t">강화 — 남은 예산 ${budgetLeft} / ${ENH_BUDGET}</div>
+          <div class="exp">+1 마다 이 선수의 <b>능력치 40종 전부 +1</b> — OVR 은 ${base} → 지금 <b>${now}</b>${enh < ENH_MAX ? ` → 한 번 더 주면 ${next}` : ' · 최대'}.
+            카드당 +${ENH_MAX} 까지, 18명이 예산 ${ENH_BUDGET} 을 나눠 씁니다. <b>급여는 오르지 않습니다.</b></div>
+          <div class="ctl">
+            <button class="btn secondary" id="enh-minus"${enh <= 0 ? ' disabled' : ''}>−</button>
+            <span class="enhv">+${enh}</span>
+            <button class="btn secondary" id="enh-plus"${enh >= ENH_MAX || budgetLeft <= 0 ? ' disabled' : ''}>+</button>
+            <span class="delta">OVR <b>${now}</b>${enh > 0 ? ` (+${now - base})` : ''}</span>
+          </div>
+          <div class="auto">
+            <button class="btn secondary" id="enh-even" title="선발 11명에게 +2 씩, 남는 2 는 OVR 이 높은 두 명에게">선발 고르게</button>
+            <button class="btn secondary" id="enh-attack" title="공격수·공격형 미드필더부터 +5 씩">공격에 몰기</button>
+            <button class="btn secondary" id="enh-reset">전부 0</button>
+          </div>
         </div>
       </div>`
+  }
+
+  /** 강화 자동 배분 — 'even': 선발 +2 씩 (+ 남는 2 는 최고 OVR 둘) · 'attack': FW→AM→MF 순으로 +5 씩 */
+  private autoEnh(mode: 'even' | 'attack' | 'reset'): void {
+    const enh = new Array(SQUAD_SIZE).fill(0) as number[]
+    if (mode === 'even') {
+      let left = ENH_BUDGET
+      for (let i = 0; i < START_SIZE && left >= 2; i++) {
+        enh[i] = 2
+        left -= 2
+      }
+      const order = Array.from({ length: START_SIZE }, (_, i) => i)
+        .filter((i) => cardById(this.sq.ids[i]))
+        .sort((a, b) => cardOvr(cardById(this.sq.ids[b])!, 0) - cardOvr(cardById(this.sq.ids[a])!, 0))
+      for (const i of order) {
+        if (left <= 0) break
+        enh[i] = Math.min(ENH_MAX, enh[i] + 1)
+        left--
+      }
+    } else if (mode === 'attack') {
+      const shape = FORMATIONS[this.sq.formation]
+      const rank = (i: number): number => {
+        if (i === 0) return 9
+        const band = shape[i - 1][0]
+        return band === 'FW' ? 0 : band === 'AM' ? 1 : band === 'MF' ? 2 : band === 'DM' ? 3 : band === 'WB' ? 4 : 5
+      }
+      const order = Array.from({ length: START_SIZE }, (_, i) => i).sort((a, b) => rank(a) - rank(b) || a - b)
+      let left = ENH_BUDGET
+      for (const i of order) {
+        if (left <= 0) break
+        const give = Math.min(ENH_MAX, left)
+        enh[i] = give
+        left -= give
+      }
+    }
+    this.sq.enh = enh
+    this.msg = mode === 'reset' ? '강화를 전부 0 으로 되돌렸습니다.' : mode === 'even' ? '선발 11명에게 고르게 나눴습니다.' : '공격수부터 +5 씩 몰아 줬습니다.'
+    this.snd.ui('ok')
+    saveSquad(this.sq)
   }
 
   private filtered(): Card[] {
@@ -559,6 +654,48 @@ export class SquadScreen {
         this.draw()
       }
     }
+    for (const [id, mode] of [['#enh-even', 'even'], ['#enh-attack', 'attack'], ['#enh-reset', 'reset']] as const) {
+      const b = this.root.querySelector<HTMLButtonElement>(id)
+      if (b) {
+        b.onclick = () => {
+          this.autoEnh(mode)
+          this.draw()
+        }
+      }
+    }
+    // ---- 저장 슬롯 띠 ----
+    const slots = loadSlots()
+    this.root.querySelectorAll<HTMLButtonElement>('[data-save]').forEach((b) => {
+      b.onclick = () => {
+        slots[Number(b.dataset.save)] = JSON.parse(JSON.stringify({ ...this.sq, hash: POOL_HASH })) as Squad
+        saveSlots(slots)
+        this.msg = `슬롯 ${Number(b.dataset.save) + 1} 에 저장했습니다.`
+        this.snd.ui('ok')
+        this.draw()
+      }
+    })
+    this.root.querySelectorAll<HTMLButtonElement>('[data-load]').forEach((b) => {
+      b.onclick = () => {
+        const s = slots[Number(b.dataset.load)]
+        if (s) {
+          this.sq = JSON.parse(JSON.stringify(s)) as Squad
+          this.sel = -1
+          saveSquad(this.sq)
+          this.msg = `슬롯 ${Number(b.dataset.load) + 1} 을 불러왔습니다.`
+          this.snd.ui('ok')
+        }
+        this.draw()
+      }
+    })
+    this.root.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((b) => {
+      b.onclick = () => {
+        slots[Number(b.dataset.del)] = null
+        saveSlots(slots)
+        this.msg = ''
+        this.snd.ui('click')
+        this.draw()
+      }
+    })
 
     $<HTMLButtonElement>('#sq-club').onclick = () => {
       this.mode = 'club'
@@ -606,7 +743,6 @@ export class SquadScreen {
       }
       this.draw()
     }
-    $<HTMLButtonElement>('#sq-slots').onclick = () => this.drawSlots()
     $<HTMLButtonElement>('#sq-done').onclick = () => this.finish()
   }
 
@@ -645,54 +781,6 @@ export class SquadScreen {
     if (!holder) return
     holder.innerHTML = this.filtered().slice(0, 200).map((c) => this.cardRow(c)).join('')
     this.bindList()
-  }
-
-  private drawSlots(): void {
-    const slots = loadSlots()
-    const body = this.root.querySelector('.sq-body') as HTMLElement
-    body.innerHTML = `
-      <div class="slot-page">
-        <div class="sub-h">저장 슬롯 10 — 브라우저에만 남습니다</div>
-        <div class="slot-grid wide">
-          ${slots
-            .map((s, i) => {
-              const cl = s ? clubById(teamColorBonus(s.ids.slice(0, START_SIZE)).club) : undefined
-              const label = s ? `${cl?.name ?? s.name} · ${s.formation}` : '비어 있음'
-              return `<div class="save-row"><b>${i + 1}</b><span>${label}</span>
-                <button class="btn secondary" data-save="${i}">저장</button>
-                <button class="btn secondary" data-load="${i}"${s ? '' : ' disabled'}>불러오기</button>
-                <button class="btn secondary" data-del="${i}"${s ? '' : ' disabled'}>지우기</button></div>`
-            })
-            .join('')}
-        </div>
-        <div class="row"><button class="btn secondary" id="slot-back">돌아가기</button></div>
-      </div>`
-    body.querySelectorAll<HTMLButtonElement>('[data-save]').forEach((b) => {
-      b.onclick = () => {
-        slots[Number(b.dataset.save)] = JSON.parse(JSON.stringify({ ...this.sq, hash: POOL_HASH })) as Squad
-        saveSlots(slots)
-        this.drawSlots()
-      }
-    })
-    body.querySelectorAll<HTMLButtonElement>('[data-load]').forEach((b) => {
-      b.onclick = () => {
-        const s = slots[Number(b.dataset.load)]
-        if (s) {
-          this.sq = s
-          saveSquad(s)
-          this.msg = '슬롯에서 불러왔습니다.'
-        }
-        this.draw()
-      }
-    })
-    body.querySelectorAll<HTMLButtonElement>('[data-del]').forEach((b) => {
-      b.onclick = () => {
-        slots[Number(b.dataset.del)] = null
-        saveSlots(slots)
-        this.drawSlots()
-      }
-    })
-    ;(body.querySelector('#slot-back') as HTMLButtonElement).onclick = () => this.draw()
   }
 
   private finish(): void {

@@ -33,7 +33,7 @@ describe('리스타트 킥 (사람)', () => {
     expect(st.ball.vx).toBeLessThan(0)
   })
 
-  it('킥오프 — D 는 홀드해서 놓는 순간 길게 찬다 (슛이 아니다)', () => {
+  it('킥오프 — D 를 홀드해도 상대 진영으로 길게 차지 않는다 · 아군에게 짧은 패스 (사용자 결정 2026-09-10)', () => {
     const st = humanMatch(7)
     // 20틱 홀드
     run(st, new Array(20).fill(0).map(() => ({ mx: 127, my: 0, buttons: BTN_D, a: 0, b: 0 })))
@@ -41,8 +41,12 @@ describe('리스타트 킥 (사람)', () => {
     // 놓는다
     run(st, [{ mx: 127, my: 0, buttons: 0, a: 0, b: 0 }])
     expect(st.phase).toBe('play')
-    expect(st.ball.vx).toBeGreaterThan(8)
     expect(st.stats[0].shots).toBe(0)
+    // 받을 사람은 자기 진영 아군이고, 공은 땅볼 패스 속도다
+    expect(st.ball.passTo).toBeGreaterThanOrEqual(0)
+    expect(st.players[st.ball.passTo].x * st.teams[0].dir).toBeLessThanOrEqual(0.5)
+    expect(Math.hypot(st.ball.vx, st.ball.vy)).toBeLessThan(19)
+    expect(st.events.some((e) => e.type === 'whistle')).toBe(true)
   })
 
   it('사람 킥커는 기다려 준다 — 키를 안 누르면 phaseT 가 −300 이 될 때까지 kickoff 로 남는다', () => {

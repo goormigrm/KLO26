@@ -13,8 +13,8 @@ import { clearOffside, dist, doPass, doShoot, doThrow, gkPunt, nearestOppDist, p
 import { crossedGoalLine } from './physics'
 import { skillsOf } from './skills'
 import {
-  ACT_RUN, BALL_R, BOX_HALF_W, BOX_L, CIRCLE_R, DT, FOUL_TICKS, GOAL_TICKS, HALFTIME_TICKS, HALF_L, HALF_W,
-  KICKOFF_TICKS, PENALTY_TICKS, PEN_SPOT, RESTART_TICKS, THROWIN_CLEAR,
+  ACT_RUN, ADDED_MAX_MIN, BALL_R, BOX_HALF_W, BOX_L, CIRCLE_R, CLOCK_SCALE, DT, END_GRACE_SEC, FOUL_TICKS, GOAL_TICKS,
+  HALFTIME_TICKS, HALF_L, HALF_W, KICKOFF_TICKS, PENALTY_TICKS, PEN_SPOT, RESTART_TICKS, THROWIN_CLEAR,
   goalX, ownGoalX, type GameState, type PendingCall, type Phase, type Player, type Team,
 } from './state'
 
@@ -394,6 +394,17 @@ export function performRestartKick(st: GameState, aim: RestartAim | null = null)
     return
   }
 
+  // ---- 킥오프: 아군에게 짧은 패스로만 시작한다 (사용자 결정 2026-09-10 — 상대 진영으로 바로 차 넣지 않는다) ----
+  if (phase === 'kickoff') {
+    const target = kickoffTarget(st, k, aim)
+    doPass(st, k, 'ground', target, -dir, 0, 0.2)
+    st.ball.restartBy = k.idx
+    st.callText = st.clock < 0.5 ? (st.half === 1 ? '전반 킥오프' : '후반 킥오프') : '킥오프'
+    st.callTick = st.tick
+    st.events.push({ tick: st.tick, type: 'whistle', team: r.team, player: k.idx, x: 0, y: 0 })
+    return
+  }
+
   const noOff = r.noOffside
   // ---- 사람이 고른 킥 ----
   if (aim && (aim.dx !== 0 || aim.dy !== 0)) {
@@ -411,19 +422,7 @@ export function performRestartKick(st: GameState, aim: RestartAim | null = null)
   }
 
   // ---- AI ----
-  if (phase === 'kickoff') {
-    let target = -1
-    let td = 999
-    for (const q of st.players) {
-      if (q.team !== r.team || q.idx === k.idx || q.sk.isGK || q.sentOff) continue
-      const d = dist(k.x, k.y, q.x, q.y) + ((q.x - k.x) * dir > 0.5 ? 10 : 0)
-      if (d < td) {
-        td = d
-        target = q.idx
-      }
-    }
-    doPass(st, k, 'ground', target, -dir, 0, 0.2)
-  } else if (phase === 'corner') {
+  if (phase === 'corner') {
     const gx = goalX(team)
     doPass(st, k, 'highcross', -1, dir, 0, 1, { x: gx - dir * (8 + rand(st.rng) * 4), y: (rand(st.rng) - 0.5) * 10 })
   } else if (phase === 'freekick') {
@@ -464,6 +463,34 @@ export function performRestartKick(st: GameState, aim: RestartAim | null = null)
   }
   st.ball.restartBy = k.idx
   if (noOff) clearOffside(st)
+}
+
+/**
+ * 킥오프 패스를 받을 아군 — **자기 진영에 있는** 필드 선수만. 방향키가 있으면 그 쪽 콘에서, 없으면 뒤쪽 가장 가까운 사람.
+ * 상대 진영으로 길게 차 넣는 킥오프는 없다 (사용자 결정 2026-09-10).
+ */
+function kickoffTarget(st: GameState, k: Player, aim: RestartAim | null): number {
+  const dir = st.teams[k.team].dir
+  const stick = aim !== null && (aim.dx !== 0 || aim.dy !== 0)
+  const ang = stick ? atan2A(aim.dy, aim.dx) : 0
+  let best = -1
+  let bestS = -1e9
+  for (const q of st.players) {
+    if (q.team !== k.team || q.idx === k.idx || q.sk.isGK || q.sentOff) continue
+    if (q.x * dir > 0.5) continue
+    const d = dist(k.x, k.y, q.x, q.y)
+    let s = -d * 0.05
+    if (stick) {
+      let dd = (atan2A(q.y - k.y, q.x - k.x) - ang) & 1023
+      if (dd > 512) dd = 1024 - dd
+      s = -dd / 512 - d * 0.02
+    } else if ((q.x - k.x) * dir > 0.5) s -= 0.5
+    if (s > bestS) {
+      bestS = s
+      best = q.idx
+    }
+  }
+  return best
 }
 
 // ---------------------------------------------------------------- 교체
@@ -512,6 +539,8 @@ function switchSides(st: GameState): void {
   }
   st.half = 2
   st.clock = 0
+  st.stoppage = 0
+  st.added = -1
 }
 
 /** 단계 타이머 — 골 세리머니 · 하프타임 · 리스타트 대기 */
@@ -590,13 +619,35 @@ export function checkOut(st: GameState): void {
   }
 }
 
-/** 시계 — 하프타임·종료 밖에서는 늘 흐른다 (데드볼 포함) */
+/**
+ * 시계 — 하프타임·종료 밖에서는 늘 흐른다 (데드볼 포함).
+ *
+ * 추가시간 (사용자 요청 2026-09-10): 공이 죽어 있던 시간(골 세리머니·세트피스 준비·반칙)을 `stoppage` 에 모아 두고,
+ * 정규 시간이 끝나는 순간 그만큼(경기 분으로 반올림, 1~5분)을 발표한다. 추가시간까지 지나면
+ * **공이 죽었을 때** 끝낸다 — 공격 중이면 그 흐름이 끝날 때까지 최대 20초 더 기다린다. PK·프리킥은 반드시 찬다.
+ */
 export function advanceClock(st: GameState): void {
   if (st.phase === 'halftime' || st.phase === 'end') return
   st.clock += DT
+  if (st.phase !== 'play') st.stoppage += DT
   if (st.clock < st.halfSec) return
-  // 세트피스를 기다리는 중이면 그것이 끝나고 끊는다 (PK 는 반드시 찬다)
+  if (st.added < 0) {
+    const mins = clamp(Math.round((st.stoppage * CLOCK_SCALE) / 60), 1, ADDED_MAX_MIN)
+    st.added = mins
+    st.callText = `추가시간 +${mins}분`
+    st.callTick = st.tick
+    st.events.push({ tick: st.tick, type: 'added', team: -1, player: -1, x: 0, y: 0, n: mins })
+  }
+  const endAt = st.halfSec + (st.added * 60) / CLOCK_SCALE
+  if (st.clock < endAt) return
   if (st.phase === 'penalty' || st.phase === 'freekick') return
+  if (st.clock - endAt < END_GRACE_SEC && st.phase === 'play') {
+    // 공격 흐름이 살아 있으면 기다린다 — 소유 팀이 상대 진영 1/3 안에 있거나, 자유 공이 그쪽으로 가고 있을 때
+    const b = st.ball
+    const o = b.owner >= 0 ? st.players[b.owner] : null
+    const atkDir = o ? st.teams[o.team].dir : b.lastTeam >= 0 ? st.teams[b.lastTeam].dir : 0
+    if (atkDir !== 0 && b.x * atkDir > HALF_L / 3) return
+  }
   if (st.half === 1) {
     st.phase = 'halftime'
     st.phaseT = HALFTIME_TICKS

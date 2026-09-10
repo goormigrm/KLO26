@@ -21,6 +21,8 @@ export function testEnabled(): boolean {
   }
 }
 
+const hex = (n: number): string => '#' + n.toString(16).padStart(6, '0')
+
 export class Lobby {
   private s: Settings
   private root: HTMLElement
@@ -68,14 +70,17 @@ export class Lobby {
           <span>PC 키보드 전용 · 게임패드 없음</span><span>카드 ${POOL_SIZE.toLocaleString('ko-KR')}장 전원 개방 · 급여 상한</span><span>방송 카메라 · 찰흙 선수</span><span>오프사이드·파울·카드·PK·교체</span><span>전후반 3분</span><span>광고·결제 없음</span>
         </div>
 
-        <div class="squad-bar">
-          <div>
+        <div class="squad-bar v2" style="--c:${myClub ? hex(myClub.col) : '#2c3644'};--c2:${myClub ? hex(myClub.col2) : '#2c3644'}">
+          <span class="cbar"></span>
+          <div class="sqinfo">
             <div class="sub-h">내 스쿼드</div>
+            <b class="club">${myClub ? myClub.name : '혼합 스쿼드'}</b>
             <span class="sqline">${squadLine}${best ? ` · 최고 ${best.name}` : ''}</span>
+            <div class="mini" title="급여 ${chk.salary} / ${cap}"><i class="${chk.salary > cap ? 'over' : ''}" style="width:${Math.min(100, (chk.salary / cap) * 100)}%"></i></div>
           </div>
-          <div class="row">
-            <button class="btn secondary" id="btn-squad">스쿼드 수정</button>
-            <button class="btn secondary" id="btn-club">구단 바꾸기</button>
+          <div class="row acts">
+            <button class="btn main" id="btn-squad">🃏 스쿼드 수정</button>
+            <button class="btn secondary" id="btn-club">🏟 구단 바꾸기</button>
           </div>
         </div>
 
@@ -102,19 +107,20 @@ export class Lobby {
           <tbody>
             <tr><td><b>방향키</b></td><td>이동 · 드리블 (화면 오른쪽 = 전반 공격 방향)</td><td>이동</td></tr>
             <tr><td><b>E</b> 홀드</td><td>전력질주</td><td>전력질주</td></tr>
-            <tr><td><b>S</b></td><td>그라운드 패스 (홀드 = 거리)</td><td>선수 변경</td></tr>
-            <tr><td><b>W</b></td><td>스루 패스</td><td>—</td></tr>
-            <tr><td><b>A</b></td><td>로빙 패스 · 크로스 (<b>A A</b> 로우 크로스 · <b>Q+A</b> 하이 크로스)</td><td>슬라이딩 태클</td></tr>
-            <tr><td><b>D</b></td><td>슛 (홀드 = 파워 · <b>Q+D</b> 칩슛)</td><td>압박 (홀드) · 루즈볼이면 걷어내기</td></tr>
-            <tr><td><b>Space</b></td><td>—</td><td>태클 / 밀치기</td></tr>
-            <tr><td><b>C</b> 홀드</td><td>—</td><td>견제 (마주 보며 천천히)</td></tr>
+            <tr><td><b>S</b></td><td>그라운드 패스 (홀드 = 거리)</td><td>선수 변경 (공에 가까운 다음 선수)</td></tr>
+            <tr><td><b>W</b></td><td>스루 패스</td><td>골키퍼 돌진 (1.5초)</td></tr>
+            <tr><td><b>A</b></td><td>로빙 패스 · 크로스 (<b>A A</b> 로우 크로스 · <b>Q+A</b> 하이 크로스)</td><td>슬라이딩 태클 (방향키 없으면 공 쪽으로)</td></tr>
+            <tr><td><b>D</b></td><td>슛 (홀드 = 파워 · 방향키 위/아래 = 코너 · <b>Q+D</b> 칩슛)</td><td>압박 (홀드) — 선수가 <b>공을 향해 스스로 달립니다</b> · 루즈볼이면 걷어내기</td></tr>
+            <tr><td><b>Space</b></td><td>—</td><td>스탠딩 태클 — 공 쪽으로 짧게 돌진해 뺏기</td></tr>
+            <tr><td><b>C</b> 홀드</td><td>—</td><td>견제 (마주 보며 천천히 · 들이받는 드리블을 잘 뺏습니다)</td></tr>
             <tr><td><b>Q</b> 홀드</td><td>조합키</td><td>팀 지원 요청 (두 번째 수비수 압박)</td></tr>
             <tr><td><b>Shift</b> 홀드</td><td>페이스 컨트롤 (천천히, 볼을 붙임)</td><td>—</td></tr>
             <tr><td><b>[</b> · <b>]</b></td><td colspan="2">전술 프리셋 이전 · 다음 (수비 → 균형 → 공격)</td></tr>
             <tr><td><b>Esc</b></td><td colspan="2">메뉴 (일시정지 · <b>교체</b> · 로비로)</td></tr>
           </tbody>
         </table>
-        <p class="hintline">세트피스 — 킥커일 때 방향키로 방향을 잡고 <b>S</b>(그라운드) · <b>W</b>(스루) · <b>A</b>(로빙·크로스) · <b>D</b>(슛). 방향키가 없으면 AI 가 대신 고릅니다.</p>
+        <p class="hintline">세트피스 — 킥커일 때 방향키로 방향을 잡고 <b>S</b>(그라운드) · <b>W</b>(스루) · <b>A</b>(로빙·크로스) · <b>D</b>(슛). 방향키가 없으면 AI 가 대신 고릅니다. <b>킥오프</b>는 아군에게 짧은 패스로만 시작합니다.</p>
+        <p class="hintline">경기 중 조작 선수 앞에 <b>›</b> 표시가 방향키 쪽을 가리킵니다 — 패스·슛이 그 방향으로 갑니다 (슛을 모으면 붉어집니다). 전후반 끝에는 <b>추가시간</b>이 붙고, 공이 죽었을 때 휘슬이 울립니다.</p>
         <p class="hintline">소리는 파일 없이 코드로 만듭니다 — 관중석·휘슬·킥·로비 배경음 전부 Web Audio 절차 생성입니다.</p>
         <p class="hintline">비상업 팬 게임 · 서버·DB 없음 · <a href="https://github.com/goormigrm/KLO26" target="_blank" rel="noopener">저장소</a></p>
       </div>

@@ -134,6 +134,11 @@ function gkDecide(st: GameState, gk: Player): void {
       for (const q of st.players) if (q.team === ti && !q.sk.isGK && !q.sentOff && dist(q.x, q.y, c.x, c.y) < 3) between++
       if (between === 0) d = clamp(dc * 0.5, 2, 7)
     }
+    // 골키퍼 돌진 (수비 W, 2026-09-10) — 1.5초 동안 볼 소유자에게 나간다
+    if (team.gkRush > st.tick && dc < 30) {
+      d = clamp(dc * 0.85, 2, 16)
+      gk.sprint = true
+    }
   }
   let ux = b.x - ownGoalX
   let uy = b.y
@@ -392,8 +397,10 @@ export function aiDecide(st: GameState, p: Player): void {
   const d = dist(p.x, p.y, c.x, c.y)
   if (rank === 0) {
     if (d < dPress) {
-      p.tx = c.x + c.vx * 0.3
-      p.ty = c.y + c.vy * 0.3
+      // 위치 선정(posn)이 좋을수록 소유자의 다음 자리를 앞서 읽는다 (수비 강화 2026-09-10)
+      const lead = 0.3 + 0.3 * p.sk.posn
+      p.tx = c.x + c.vx * lead
+      p.ty = c.y + c.vy * lead
       // 낮은 압박은 붙어도 덤비지 않는다 — 지연 수비 (태클 시도는 p.press 가 연다)
       p.press = sl >= 1 || d < 2.5
       p.sprint = d > 4 && p.stamina > 0.2 && sl >= 2
@@ -419,8 +426,9 @@ export function aiDecide(st: GameState, p: Player): void {
     p.sprint = d > 10 && p.stamina > 0.25
     return
   }
+  // 대인 마크 — 마크(mark)가 좋을수록 더 멀리서 찾아 더 바짝 붙는다 (수비 강화 2026-09-10)
   let mk = -1
-  let mkd = 8
+  let mkd = 8 + 4 * p.sk.mark
   for (const q of st.players) {
     if (q.team === ti || q.idx === b.owner || q.sk.isGK || q.sentOff) continue
     const dq = dist(p.x, p.y, q.x, q.y)
@@ -431,7 +439,7 @@ export function aiDecide(st: GameState, p: Player): void {
   }
   if (mk >= 0) {
     const q = st.players[mk]
-    p.tx = clamp(q.x - dir * 1.5, -HALF_L + 1, HALF_L - 1)
+    p.tx = clamp(q.x - dir * (1.8 - 0.8 * p.sk.mark), -HALF_L + 1, HALF_L - 1)
     p.ty = q.y
     return
   }

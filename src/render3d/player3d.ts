@@ -105,8 +105,11 @@ function hashId(id: number): number {
   return h
 }
 
+/** 몸통·팔다리 굵기 배율 — "조금 더 마르게" (사용자 요청 2026-09-10). 머리는 그대로 대두다 */
+const SLIM = 0.8
+
 export function buildPlayer(spec: PlayerSpec, kit: Kit): PlayerRig {
-  const thick = Math.sqrt(spec.w / 75)
+  const thick = Math.sqrt(spec.w / 75) * SLIM
   const scale = (spec.h / 180) * BASE_H
   const root = new THREE.Group()
   const body = new THREE.Group()
@@ -119,14 +122,14 @@ export function buildPlayer(spec: PlayerSpec, kit: Kit): PlayerRig {
 
   // ---- 다리: 허벅지(반바지) + 정강이(양말) + 신발 ----
   const legR0 = 0.055 * thick
-  const hipY = 0.30
+  const hipY = 0.31
   const mkLeg = (side: -1 | 1): THREE.Group => {
     const g = new THREE.Group()
-    g.position.set(side * 0.075 * thick, hipY, 0)
-    const thigh = track(capsuleDown(legR0 * 1.15, 0.15, toon(kit.shorts)))
-    const shin = track(capsuleDown(legR0, 0.17, toon(kit.socks)))
-    shin.position.y = -0.13
-    const shoe = track(sphere(legR0 * 1.35, toon(0x1d1a17), 0, -0.29, legR0 * 0.9, 12, 8))
+    g.position.set(side * 0.07 * thick, hipY, 0)
+    const thigh = track(capsuleDown(legR0 * 1.15, 0.155, toon(kit.shorts)))
+    const shin = track(capsuleDown(legR0, 0.175, toon(kit.socks)))
+    shin.position.y = -0.135
+    const shoe = track(sphere(legR0 * 1.45, toon(0x1d1a17), 0, -0.30, legR0 * 0.9, 12, 8))
     shoe.scale.set(1, 0.55, 1.6)
     g.add(thigh, shin, shoe)
     return g
@@ -137,8 +140,8 @@ export function buildPlayer(spec: PlayerSpec, kit: Kit): PlayerRig {
 
   // ---- 몸통 (유니폼 상의) ----
   const TR = 0.13 * thick
-  const torso = track(new THREE.Mesh(new THREE.CapsuleGeometry(TR, 0.22, 4, 14), toon(kit.shirt)))
-  torso.position.y = 0.50
+  const torso = track(new THREE.Mesh(new THREE.CapsuleGeometry(TR, 0.25, 4, 14), toon(kit.shirt)))
+  torso.position.y = 0.51
   torso.castShadow = true
   body.add(torso)
   // 등번호

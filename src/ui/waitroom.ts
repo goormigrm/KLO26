@@ -6,7 +6,8 @@
 //   3. 둘 다 준비되면 방장이 `start`(시드 · 지연 · 시간)를 보내고 동시에 경기를 연다.
 // 시드는 두 스쿼드 코드와 방 코드로 만든다 — 누구도 고를 수 없다 (DESIGN 4.11).
 
-import { checkSquad, computeCap, squadClub, type Squad } from '../cards/squad'
+import { START_SIZE, cardOvr, checkSquad, computeCap, squadClub, type Squad } from '../cards/squad'
+import { cardById } from '../data/pool'
 import { decodeSquad, encodeSquad } from '../cards/squadcode'
 import type { NetConfig } from '../game/session'
 import { Lockstep } from '../net/lockstep'
@@ -144,32 +145,46 @@ export class WaitRoom {
     this.onStart({ link: this.link, lockstep, me, peerId: this.otherId, squads, names }, halfSec, seed)
   }
 
+  /** 한쪽 패널 — 구단 색 띠 · 포메이션 · 선발 평균 OVR · 급여 · 팀컬러 · 강화 (사용자 요청 2026-09-10) */
+  private sideHtml(label: string, name: string, sq: Squad | null, ready: boolean, note: string): string {
+    if (!sq) {
+      return `<div class="side"><div class="sub-h">${label}</div><b class="dimtext">${name}</b><small>${note}</small></div>`
+    }
+    const club = squadClub(sq)
+    const chk = checkSquad(sq, CAP)
+    const xi = sq.ids.slice(0, START_SIZE).map((id, i) => {
+      const c = cardById(id)
+      return c ? cardOvr(c, (sq.enh[i] ?? 0) + chk.color.bonus) : 0
+    })
+    const avg = Math.round(xi.reduce((a, b) => a + b, 0) / Math.max(1, xi.length))
+    const hex = (n: number): string => '#' + n.toString(16).padStart(6, '0')
+    return `<div class="side club" style="--c:${club ? hex(club.col) : '#2c3644'};--c2:${club ? hex(club.col2) : '#2c3644'}">
+      <span class="cbar"></span>
+      <div class="sub-h">${label}</div>
+      <b>${name}</b>
+      <div class="cl">${club?.name ?? '혼합 스쿼드'}</div>
+      <div class="facts">
+        <span>${sq.formation}</span><span>선발 OVR <b>${avg}</b></span><span>급여 <b>${chk.salary}</b>/${CAP}</span>
+        <span>팀컬러 ${chk.color.bonus ? `<b>+${chk.color.bonus}</b>` : '없음'}</span><span>강화 ${chk.enhTotal}/24</span>
+      </div>
+      ${note ? `<small>${note}</small>` : ''}
+      <div class="rd ${ready ? 'on' : ''}">${ready ? '✓ 준비 완료' : '준비 안 됨'}</div>
+    </div>`
+  }
+
   private draw(): void {
     if (this.disposed || this.started) return
     const chk = this.other ? this.checkOther() : null
     const bothReady = this.me.ready && this.other?.ready
+    const mine = this.sideHtml(this.opts.role === 'host' ? '나 · 홈 (방장)' : '나 · 원정', this.me.name, this.opts.squad, this.me.ready, '')
+    const theirs = this.other
+      ? this.sideHtml(this.opts.role === 'host' ? '상대 · 원정' : '상대 · 홈 (방장)', this.other.name, chk?.ok ? chk.squad! : null, this.other.ready, chk?.ok ? '규칙 통과' : (chk?.why ?? ''))
+      : this.sideHtml('상대', '기다리는 중…', null, false, '상대가 이 방에 들어오면 보입니다')
     this.root.innerHTML = `
       <div class="wait-box">
         <div class="season">방 ${this.opts.code} · ${this.opts.role === 'host' ? '방장 (홈)' : '게스트 (원정)'}</div>
         <h1>대기실</h1>
-        <div class="wait-cols">
-          <div class="side">
-            <div class="sub-h">나</div>
-            <b>${this.me.name}</b>
-            <small>${squadClub(this.opts.squad)?.name ?? '혼합 스쿼드'} · ${this.opts.squad.formation}</small>
-            <div class="rd ${this.me.ready ? 'on' : ''}">${this.me.ready ? '준비 완료' : '준비 안 됨'}</div>
-          </div>
-          <div class="side">
-            <div class="sub-h">상대</div>
-            ${
-              this.other
-                ? `<b>${this.other.name}</b>
-                   <small>${chk?.ok ? `${squadClub(chk.squad!)?.name ?? '혼합 스쿼드'} · ${chk.squad!.formation} · 규칙 통과` : (chk?.why ?? '')}</small>
-                   <div class="rd ${this.other.ready ? 'on' : ''}">${this.other.ready ? '준비 완료' : '준비 안 됨'}</div>`
-                : '<b class="dimtext">기다리는 중…</b><small>상대가 이 방에 들어오면 보입니다</small>'
-            }
-          </div>
-        </div>
+        <div class="wait-cols">${mine}${theirs}</div>
         <p class="hintline">왕복 ${this.link.rtt} ms · 지연 ${delayForRtt(this.link.rtt)}틱 · 전후반 ${Math.round(this.opts.halfSec / 60)}분</p>
         ${this.msg ? `<div class="errs"><span>${this.msg}</span></div>` : ''}
         <div class="row">

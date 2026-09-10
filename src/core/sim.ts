@@ -53,6 +53,7 @@ function mkTeam(t: number, sq: SquadConfig, human: boolean, bot: number): Team {
     bench: sq.players.slice(11, 11 + BENCH_SIZE).map((s) => s),
     subsLeft: MAX_SUBS,
     pendingSub: null,
+    gkRush: -1,
   }
 }
 
@@ -88,6 +89,9 @@ export function createState(cfg: MatchConfig): GameState {
     done: false,
     pending: null,
     callText: '',
+    callTick: -1000,
+    stoppage: 0,
+    added: -1,
   }
   setupKickoff(st, 0)
   st.firstKickoff = 0
@@ -174,13 +178,21 @@ function handleInput(st: GameState, t: number, inp: Input): void {
   } else {
     team.holdPass = 0
     team.holdShoot = 0
+    // 수비 키 (2026-09-10 개정 — "태클·압박이 공 잡은 선수를 향해 동작하게"):
+    //  D 홀드 = 압박: 선수가 **공을 향해 스스로 달린다**(step 에서), 방향키는 옆으로 조금 튼다
+    //  Space = 스탠딩 태클: 공 쪽으로 짧게 돌진하며 12틱 동안 뺏을 확률 ×3
+    //  A = 슬라이딩: 방향키가 없으면 **공 쪽으로** 눕는다
+    //  W = 골키퍼 돌진: 1.5초 동안 우리 GK 가 볼 소유자에게 나간다
+    //  C 홀드 = 견제: 느리게 마주 보고, 들이받는 드리블을 잘 뺏는다 (contestBall)
     c.press = (held & BTN_D) !== 0
     if ((edge & BTN_A) && c.action === ACT_RUN) {
       c.action = ACT_SLIDE
       c.actT = 30
       if (dx !== 0 || dy !== 0) c.facing = atan2A(dy, dx)
+      else c.facing = atan2A(b.y - c.y, b.x - c.x)
     }
     if (edge & BTN_SPACE) c.tackleT = 12
+    if (edge & BTN_W) team.gkRush = st.tick + 90
     if ((edge & BTN_D) && b.owner < 0 && c.x * team.dir < -20) c.clearNext = true
   }
   team.prevButtons = held
@@ -211,8 +223,12 @@ export function step(st: GameState, inputs: [Input, Input]): void {
       continue
     }
     if (p.action === ACT_FALLEN || p.action === ACT_DIVE) {
-      p.vx *= 0.8
-      p.vy *= 0.8
+      // 다이브는 앞 12틱은 날아가고(속도 유지) 그 뒤에 미끄러진다 — 골키퍼가 공 경로까지 실제로 가야 잡는다
+      const flying = p.action === ACT_DIVE && p.actT > 12
+      if (!flying) {
+        p.vx *= 0.8
+        p.vy *= 0.8
+      }
       p.x += p.vx * DT
       p.y += p.vy * DT
       if (--p.actT <= 0) p.action = ACT_RUN
@@ -226,12 +242,29 @@ export function step(st: GameState, inputs: [Input, Input]): void {
     let sprint: boolean
     let speedK = 1
     const isKicker = st.restart !== null && st.restart.kicker === p.idx
+    let faceBall = false
     if (ctl && !isKicker) {
       dvx = team.inX * p.sk.vmax
       dvy = team.inY * p.sk.vmax
       sprint = team.sprint
       if (team.slow && b.owner === p.idx) speedK *= 0.45
-      if (team.jockey) speedK *= 0.7
+      if (b.owner !== p.idx && (p.press || p.tackleT > 0)) {
+        // 압박(D)·태클(Space): 공을 향해 스스로 달린다. 방향키는 45% 만큼 옆으로 튼다
+        const tx = b.x + b.vx * 0.25
+        const ty = b.y + b.vy * 0.25
+        const ddx = tx - p.x
+        const ddy = ty - p.y
+        const d = len(ddx, ddy)
+        if (d > 0.05) {
+          const k = p.tackleT > 0 ? 1.15 : 1.0
+          dvx = (ddx / d) * p.sk.vmax * k + dvx * 0.45
+          dvy = (ddy / d) * p.sk.vmax * k + dvy * 0.45
+        }
+      }
+      if (team.jockey && b.owner !== p.idx) {
+        speedK *= 0.7
+        faceBall = true
+      }
     } else {
       if ((st.tick + p.idx) % DECIDE_TICKS === 0) aiDecide(st, p)
       const ddx = p.tx - p.x
@@ -253,6 +286,8 @@ export function step(st: GameState, inputs: [Input, Input]): void {
     if (p.action === ACT_KICK) speedK *= 0.5
     if (p.holdT > 0) speedK *= 0.3
     movePlayer(p, dvx, dvy, speedK)
+    // 견제 — 공(소유자)을 마주 본다
+    if (faceBall) p.facing = atan2A(b.y - p.y, b.x - p.x)
     drainStamina(p, sprint && speedK > 1)
   }
 
@@ -327,7 +362,12 @@ export function hashState(st: GameState): number {
     mix(q(p.x)); mix(q(p.y)); mix(q(p.vx)); mix(q(p.vy)); mix(p.facing); mix(q(p.stamina)); mix(p.action); mix(p.actT); mix(p.holdT)
     mix(p.yellow); mix(p.sentOff ? 1 : 0); mix(p.offside ? 1 : 0); mix(p.spec.id)
   }
-  for (const t of st.teams) mix(t.subsLeft)
+  for (const t of st.teams) {
+    mix(t.subsLeft)
+    mix(t.gkRush)
+  }
+  mix(q(st.stoppage))
+  mix(st.added)
   mix(st.rng.s)
   mix(st.botRng.s)
   return h >>> 0
@@ -338,9 +378,15 @@ export function snapshot(st: GameState): GameState {
   return JSON.parse(JSON.stringify(st)) as GameState
 }
 
-/** 경기 시계 표시용 분 (0~90) */
+/** 경기 시계 표시용 분 (0~90). 추가시간은 45·90 에서 멈추고 `addedMinute` 가 따로 센다 */
 export function matchMinute(st: GameState): number {
   const perHalf = 45
-  const m = (st.clock / st.halfSec) * perHalf
+  const m = Math.min(perHalf, (st.clock / st.halfSec) * perHalf)
   return st.half === 1 ? m : perHalf + m
+}
+
+/** 추가시간에 들어갔으면 몇 분째인가 (1~), 아니면 0 */
+export function addedMinute(st: GameState): number {
+  if (st.clock < st.halfSec) return 0
+  return Math.floor(((st.clock - st.halfSec) / st.halfSec) * 45) + 1
 }

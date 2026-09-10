@@ -113,6 +113,9 @@ export class Renderer3D {
   private marker = new THREE.Group()
   private ring: THREE.Mesh
   private oppRing: THREE.Mesh
+  /** 방향키 표시 — 조작 선수 앞에 ">" (사용자 요청 2026-09-10) */
+  private chev = new THREE.Group()
+  private chevMat: THREE.MeshBasicMaterial
   private name: THREE.Sprite | null = null
   private nameFor = -1
   private camX = 0
@@ -176,6 +179,23 @@ export class Renderer3D {
     this.oppRing.position.y = 0.02
     this.oppRing.visible = false
     this.scene.add(this.oppRing)
+    // ">" 모양 — 평평하게 눕힌 뒤(메시) 그룹을 돌려 방향키 쪽을 가리킨다. 슛을 모으면 붉어지고 길어진다
+    const shape = new THREE.Shape()
+    shape.moveTo(-0.38, 0.5)
+    shape.lineTo(0.42, 0)
+    shape.lineTo(-0.38, -0.5)
+    shape.lineTo(-0.1, -0.5)
+    shape.lineTo(0.16, 0)
+    shape.lineTo(-0.1, 0.5)
+    shape.closePath()
+    this.chevMat = new THREE.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.92, side: THREE.DoubleSide, depthWrite: false })
+    const chevMesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), this.chevMat)
+    chevMesh.rotation.x = -Math.PI / 2
+    chevMesh.renderOrder = 3
+    this.chev.add(chevMesh)
+    this.chev.position.y = 0.03
+    this.chev.visible = false
+    this.scene.add(this.chev)
     this.resize()
   }
 
@@ -287,6 +307,20 @@ export class Renderer3D {
       if (this.name) this.name.visible = false
     }
     if (this.name && c >= 0) this.name.visible = true
+    // 방향키 표시 — 누르고 있는 동안 조작 선수 앞 1.3 m 에 ">" (공격: 노랑 · 슛 모으는 중: 빨강 · 수비: 흰색)
+    const team = curr.teams[view.humanTeam]
+    const ix = team ? team.inX : 0
+    const iy = team ? team.inY : 0
+    if (c >= 0 && c < n && team && (ix !== 0 || iy !== 0)) {
+      const rig = this.rigs[c]
+      const ang = Math.atan2(iy, ix)
+      const pow = Math.min(1, Math.max(team.holdShoot / 36, team.holdPass / 30))
+      this.chev.visible = true
+      this.chev.position.set(rig.root.position.x + Math.cos(ang) * 1.3, 0.03, rig.root.position.z - Math.sin(ang) * 1.3)
+      this.chev.rotation.y = ang
+      this.chev.scale.set(1 + pow * 0.9, 1, 1)
+      this.chevMat.color.setHex(team.holdShoot > 0 ? 0xff6a5a : b.owner === c ? 0xffe14a : 0xf4f4f4)
+    } else this.chev.visible = false
     // 상대가 공을 갖고 있으면 그 선수 발밑에 붉은 링
     const o = b.owner
     if (o >= 0 && curr.players[o].team !== view.humanTeam) {

@@ -472,8 +472,12 @@ export class Sfx {
         case 'card':
           this.card(e.n ?? 1)
           break
-        case 'kickoff':
+        case 'whistle':
+          // 킥오프를 실제로 차는 순간 (kickoff 사건은 자리 잡기라 조용하다 — 2026-09-10)
           this.whistle(1)
+          break
+        case 'block':
+          this.tackle(e.x)
           break
         case 'throwin':
           this.throwIn(e.x)

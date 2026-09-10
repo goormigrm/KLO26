@@ -241,6 +241,8 @@ export interface Team {
   subsLeft: number
   /** 넣어 둔 교체 명령 — 다음 데드볼에 적용 */
   pendingSub: SubOrder | null
+  /** 골키퍼 돌진(수비 W) — 이 틱까지 GK 가 볼 소유자에게 나간다 */
+  gkRush: number
 }
 
 export interface TeamStats {
@@ -261,6 +263,12 @@ export interface TeamStats {
 export type EventType =
   | 'goal' | 'shot' | 'save' | 'kickoff' | 'half' | 'end' | 'corner' | 'throwin' | 'goalkick' | 'tackle'
   | 'foul' | 'card' | 'offside' | 'penalty' | 'freekick' | 'sub' | 'post'
+  /** 주심 휘슬 — 킥오프를 실제로 차는 순간 (kickoff 사건은 "자리 잡기", 휘슬은 "시작") */
+  | 'whistle'
+  /** 수비수가 슛을 몸으로 막았다 */
+  | 'block'
+  /** 추가시간 알림 — n = 분 */
+  | 'added'
 
 export interface SimEvent {
   tick: number
@@ -300,7 +308,17 @@ export interface GameState {
   pending: PendingCall | null
   /** 마지막 판정 문구용 — 배너가 읽는다 (렌더 전용, 해시에 안 들어간다) */
   callText: string
+  /** callText 를 적은 틱 — HUD 가 잠깐만 띄운다 (렌더 전용) */
+  callTick: number
+  /** 이 하프에서 공이 죽어 있던 실시간 초 — 추가시간의 근거 (DESIGN 2장) */
+  stoppage: number
+  /** 발표한 추가시간(경기 분). −1 = 아직 안 정했다 */
+  added: number
 }
+
+/** 추가시간 상한 (경기 분) · 시간이 다 된 뒤 공격 흐름을 기다려 주는 최대 실시간 초 */
+export const ADDED_MAX_MIN = 5
+export const END_GRACE_SEC = 20
 
 export interface SquadConfig {
   name: string

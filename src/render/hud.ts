@@ -1,9 +1,12 @@
 // HUD — DOM 오버레이 (DESIGN 7.1 "HUD 는 DOM 오버레이"). 전광판 · 단계 배너 · 조작 선수 카드 · 파워 게이지 · 레이더 · 키 힌트.
 // 매 프레임 갱신하되 바뀐 글자만 쓴다. sim 을 바꾸지 않는다.
 
-import { matchMinute } from '../core/sim'
+import { addedMinute, matchMinute } from '../core/sim'
 import type { GameState } from '../core/state'
 import { Radar } from './radar'
+
+/** callText 를 이만큼(틱) 띄운다 — 킥오프·추가시간 알림 */
+const CALL_TICKS = 150
 
 export interface HudView {
   humanTeam: number
@@ -53,7 +56,7 @@ export class Hud {
       </div>
       <div class="subs" data-k="subs"></div>
       <div class="keys" data-k="keys">
-        <b>방향키</b> 이동 · <b>E</b> 전력질주 · <b>S</b> 패스 / 선수 변경 · <b>W</b> 스루 · <b>A</b> 로빙 / 슬라이딩 · <b>D</b> 슛(홀드) / 압박 ·
+        <b>방향키</b> 이동 · <b>E</b> 전력질주 · <b>S</b> 패스 / 선수 변경 · <b>W</b> 스루 / GK 돌진 · <b>A</b> 로빙 / 슬라이딩 · <b>D</b> 슛(홀드) / 압박(자동 추격) ·
         <b>Space</b> 태클 · <b>C</b> 견제 · <b>Q</b> 팀 압박 · <b>Q+D</b> 칩슛 · <b>Q+A</b> 하이 크로스 · <b>Shift</b> 페이스 컨트롤 · <b>[ ]</b> 전술 · <b>Esc</b> 메뉴·교체
       </div>`
     parent.appendChild(this.root)
@@ -83,17 +86,21 @@ export class Hud {
     this.set('home', h.short)
     this.set('away', a.short)
     this.set('score', `${h.goals} : ${a.goals}`)
-    this.set('clock', `${Math.floor(matchMinute(st))}'`)
+    // 추가시간은 45'+2 · 90'+3 처럼 (사용자 요청 2026-09-10)
+    const am = addedMinute(st)
+    const base = Math.floor(matchMinute(st))
+    this.set('clock', am > 0 && st.added >= 0 ? `${st.half === 1 ? 45 : 90}'+${Math.min(am, Math.max(st.added, am))}` : `${base}'`)
     this.set('half', st.half === 1 ? '전반' : '후반')
 
-    // 단계 배너
+    // 단계 배너 — 세션 문구 > 방금 난 판정/킥오프 문구(2.5초) > 단계 문구
     let banner = v.message
+    if (!banner && st.callText && st.tick - st.callTick < CALL_TICKS && st.phase === 'play') banner = st.callText
     if (!banner) banner = this.phaseText(st, v.humanTeam)
     const bn = this.el.banner
     if (banner) {
       this.set('banner', banner)
       bn.hidden = false
-      bn.classList.toggle('big', st.phase === 'goal' || st.phase === 'end')
+      bn.classList.toggle('big', st.phase === 'goal' || st.phase === 'end' || st.phase === 'halftime' || (st.phase === 'play' && banner === st.callText && st.callText.includes('킥오프')))
     } else bn.hidden = true
 
     // 조작 선수
@@ -127,8 +134,10 @@ export class Hud {
     const mine = r !== null && r.team === humanTeam
     const who = (t: number): string => st.teams[t].short
     switch (st.phase) {
-      case 'kickoff':
-        return mine ? '킥오프 — 방향키 + S 로 차기' : `${who(st.kickoffTeam)} 킥오프`
+      case 'kickoff': {
+        const when = st.clock < 0.5 ? (st.half === 1 ? '전반 ' : '후반 ') : ''
+        return mine ? `${when}킥오프 — 방향키로 받을 선수를 고르고 S (아군에게 짧게)` : `${when}${who(st.kickoffTeam)} 킥오프`
+      }
       case 'goal': {
         const last = st.events.length ? st.events[st.events.length - 1] : null
         const t = last && last.type === 'goal' ? last.team : -1
@@ -147,7 +156,7 @@ export class Hud {
       case 'penalty':
         return mine ? '⚽ 페널티킥 — 방향키(코너) + D 홀드(파워)' : `${who(r!.team)} 페널티킥`
       case 'halftime':
-        return '하프타임'
+        return '전반 종료 — 하프타임'
       case 'end':
         return '경기 종료'
       default:

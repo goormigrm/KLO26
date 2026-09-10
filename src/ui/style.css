@@ -378,3 +378,62 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
 .seg.wide button { flex: 1; }
 .sq-body { grid-template-columns: minmax(420px, 1.35fr) 260px minmax(0, 1fr); }
 @media (max-width: 1400px) { .sq-body { grid-template-columns: minmax(360px, 1fr) 240px minmax(0, 1fr); } }
+
+/* ---- 2026-09-10: 저장 슬롯 띠 · 급여 강조 · 강화 도움말 · 로비 스쿼드 띠 · 대기실 ---- */
+.slots-strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.slotcard { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.slotcard .n { font: 800 10.5px 'IBM Plex Mono', monospace; color: var(--gold); letter-spacing: .08em; }
+.slotcard b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slotcard small { color: var(--ink-3); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slotcard .acts { display: flex; gap: 4px; margin-top: 3px; }
+.slotcard .acts .btn { padding: 3px 6px; font-size: 11px; flex: 1; white-space: nowrap; }
+.slotcard.empty { border-style: dashed; }
+.slotcard.empty b { color: var(--ink-3); font-weight: 500; }
+.gauges.v2 { grid-template-columns: 1.5fr 1fr auto; align-items: stretch; }
+.gauges.v2 .g.color { align-self: center; }
+.gauges.v2 .g.color small { color: var(--ink-3); font-size: 11px; }
+.g.salary { background: linear-gradient(180deg, #16211a, var(--bg-2)); border: 1px solid #2ea04366; border-radius: 12px; padding: 10px 14px; }
+.g.salary.warn { border-color: #e3b34188; background: linear-gradient(180deg, #221f14, var(--bg-2)); }
+.g.salary.over { border-color: var(--risk); background: linear-gradient(180deg, #2a1616, var(--bg-2)); }
+.g.salary .big { display: flex; align-items: baseline; gap: 6px; margin: 2px 0 6px; }
+.g.salary .big b { font: 900 32px 'IBM Plex Mono', monospace; color: var(--ok); line-height: 1; }
+.g.salary.warn .big b { color: var(--gold); }
+.g.salary.over .big b { color: var(--risk); }
+.g.salary .big span { color: var(--ink-3); font: 600 14px 'IBM Plex Mono', monospace; }
+.g.salary .left { font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+.g.salary .left b { color: var(--ink); font-size: 13px; }
+.g.enh { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 14px; }
+.g.enh .help { font-size: 11px; color: var(--ink-3); margin-top: 6px; line-height: 1.45; }
+.crow .sal { font: 700 10.5px 'IBM Plex Mono', monospace; color: var(--ink-2); background: #1b2330; border-radius: 6px; padding: 1px 6px; white-space: nowrap; margin-left: 4px; }
+.crow .sal.up { color: #ffb4ae; }
+.crow .sal.down { color: #7ee787; }
+.crow .sal.over { color: #fff; background: rgba(248,81,73,.55); }
+.crow.over { opacity: .45; cursor: default; }
+.enh-box { margin-top: 10px; background: var(--bg-2); border: 1px solid #e3b34133; border-radius: 10px; padding: 10px; }
+.enh-box .t { font: 800 11px 'IBM Plex Mono', monospace; color: var(--gold); letter-spacing: .08em; margin-bottom: 4px; }
+.enh-box .exp { font-size: 11.5px; color: var(--ink-2); line-height: 1.45; margin-bottom: 6px; }
+.enh-box .exp b { color: var(--ink); }
+.enh-box .ctl { display: flex; align-items: center; gap: 8px; }
+.enh-box .ctl .btn { padding: 2px 12px; font-size: 16px; }
+.enh-box .delta { font: 700 12px 'IBM Plex Mono', monospace; color: var(--ink-2); margin-left: auto; }
+.enh-box .delta b { color: var(--gold); }
+.enh-box .auto { display: flex; gap: 6px; margin-top: 8px; }
+.enh-box .auto .btn { padding: 3px 8px; font-size: 11.5px; flex: 1; white-space: nowrap; }
+
+.squad-bar.v2 { position: relative; padding-left: 24px; overflow: hidden; }
+.squad-bar.v2 .cbar { position: absolute; left: 0; top: 0; bottom: 0; width: 10px; background: linear-gradient(180deg, var(--c) 0 55%, var(--c2) 55% 100%); }
+.squad-bar.v2 .sqinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.squad-bar.v2 .club { font-family: 'Black Han Sans', sans-serif; font-weight: 400; font-size: 24px; line-height: 1.1; }
+.squad-bar.v2 .mini { height: 6px; background: #2a3340; border-radius: 3px; overflow: hidden; max-width: 360px; margin-top: 4px; }
+.squad-bar.v2 .mini i { display: block; height: 100%; background: linear-gradient(90deg, #3fb950, #e3b341); }
+.squad-bar.v2 .mini i.over { background: var(--risk); }
+.squad-bar.v2 .acts { flex-direction: column; align-items: stretch; gap: 8px; }
+.squad-bar.v2 .acts .btn { margin-left: 0; min-width: 170px; }
+
+.wait-cols .side.club { position: relative; padding-left: 20px; overflow: hidden; text-align: left; }
+.wait-cols .side .cbar { position: absolute; left: 0; top: 0; bottom: 0; width: 8px; background: linear-gradient(180deg, var(--c) 0 55%, var(--c2) 55% 100%); }
+.wait-cols .side .cl { font-family: 'Black Han Sans', sans-serif; font-size: 20px; color: var(--gold); margin: 2px 0 6px; }
+.wait-cols .side .facts { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-bottom: 6px; }
+.wait-cols .side .facts span { font: 600 11px 'IBM Plex Mono', monospace; color: var(--ink-2); background: #1b2330; border-radius: 6px; padding: 2px 7px; }
+.wait-cols .side .facts span b { color: var(--gold); }
+.wait-box { min-width: 640px; }

@@ -305,7 +305,16 @@ export function enforceRestartPositions(st: GameState): void {
     const dir = st.teams[r.team].dir
     const oppGkIdx = st.teams[1 - r.team].gk
     for (const p of st.players) {
-      if (p.idx === r.kicker || p.idx === oppGkIdx) continue
+      if (p.idx === oppGkIdx) {
+        // 골키퍼는 킥 순간까지 골라인에서 0.6 m 안 (규칙)
+        const lineX = dir * (HALF_L - 0.35)
+        if ((lineX - p.x) * dir > 0.6) {
+          p.x = lineX - dir * 0.6
+          if (p.vx * -dir > 0) p.vx = 0
+        }
+        continue
+      }
+      if (p.idx === r.kicker) continue
       if ((p.x - r.x) * dir > -0.3) {
         p.x = r.x - dir * 0.3
         if (p.vx * dir > 0) p.vx = 0

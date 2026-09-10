@@ -88,7 +88,8 @@
 | **롱볼** | `handleInput` 리스타트 분기에서 **A 도 홀드**(`holdShoot` 공유, 떼는 순간 'A'). `performRestartKick` 프리킥·골킥 A → `doPass('lob', -1, …, aim = 방향키 쪽 18+32·power m)`. 예전엔 `pickPassTarget` 이 가까운 동료를 골라 짧았다 |
 | **키커 뒤 카메라** | `renderer3d.ts` — `spAnchor{kx,ky,gx,pk}` · `spBlend`(0.25 초) · `spHold` 1.4 초. 직접 프리킥 = 골문 36 m 안·\|y\|<26, PK 는 늘. 키커 뒤 7.5(PK 6) m · 높이 3.4(2.8) · 가운데 쪽 2.2(1.6) m 비켜. 찬 뒤엔 공을 본다. 렌더 전용 |
 | **배너** | 프리킥에 `골문 N m`, 골킥·프리킥 키 안내(S 짧게 / A 홀드 롱볼 / D 홀드 슛·펀트) |
-| 확인 | `tests/setpiece.test.ts` 3개(프리킥 A 꽉 30 m+ 공중 · A 툭 30 m 미만 · 골킥 A/D). `npm test` **120개**. 브라우저에서 프리킥·PK 사진 |
+| **PK 골키퍼** | `gkDecide` 가 페널티 단계엔 골라인 가운데를 지킨다(전엔 5 m 앞으로 나왔다) · `enforceRestartPositions` 가 0.6 m 안으로 붙잡는다 |
+| 확인 | `tests/setpiece.test.ts` 4개(프리킥 A 꽉 30 m+ 공중 · A 툭 30 m 미만 · 골킥 A/D · PK 골키퍼 골라인). `npm test` **121개**. 브라우저에서 프리킥·PK 사진 |
 
 ### 🎯 결정력 vs 골키퍼 · 속도의 대가 (9/11)
 
@@ -340,7 +341,7 @@
 
 ```bash
 npm install
-npm test               # 18 파일 · 120개
+npm test               # 18 파일 · 121개
 npm run build
 npm run dev            # http://localhost:5175/KLO26/
 npm run verify 200     # 단계 7 검증 (20분 이상 — 표본을 줄이지 말 것)

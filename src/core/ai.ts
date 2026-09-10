@@ -115,6 +115,12 @@ function gkDecide(st: GameState, gk: Player): void {
     gk.ty = gk.y
     return
   }
+  // 페널티킥을 막는 쪽 — 킥 순간까지 **골라인 위 가운데** (사용자 지적 2026-09-11: 5 m 앞으로 나와 있었다)
+  if (st.phase === 'penalty' && st.restart && st.restart.team !== ti) {
+    gk.tx = ownGoalX + dir * 0.35
+    gk.ty = 0
+    return
+  }
   const ot = ballOwnerTeam(st)
   if (ot < 0 && Math.abs(b.x - ownGoalX) < 16.5 && Math.abs(b.y) < 20) {
     interceptPoint(st, gk, tmp)

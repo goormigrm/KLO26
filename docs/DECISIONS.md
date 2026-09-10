@@ -202,5 +202,6 @@ KM26 → KMD26v1.0 → KLD26 의 결. 배포 주소 `https://goormigrm.github.io
 | G-31 (9/11) | 실제 축구에서 속도가 슈팅보다 센 게 맞나 — 슈팅은 골키퍼를 이기고, 속도는 뺏김·불안한 자세로 값을 치러야 | 그대로 옮겼다. `ball.shotQ`(찬 선수의 결정력)를 골키퍼 잡기·쳐내기에, 슛 속도에 `sho`, 전력 질주 중 슛 `rush`(오차·힘·궤적), 전력 드리블 태클 ×(1+2·loose), 전력 질주 퍼스트 터치 −0.18, 경합 반응 시간을 `posn` 에. 200경기: 슈팅 72.8 · **속도 72.3**(89.8 에서) · 수비 83.0 · 드리블 78.8. 속도가 슈팅 아래로 | `core/ball.ts` · `core/sim.ts` · `core/state.ts` · `tests/finishing.test.ts` · `DESIGN 4.3b` |
 | G-32 (9/11) | 프리킥·골킥이 롱볼이 안 되고 땅볼만 된다 | A 가 누르는 순간 가까운 동료에게 짧은 로빙만 갔다. **A 도 홀드**(D 처럼)로 바꾸고, 프리킥·골킥에서는 동료를 고르지 않고 **방향키 쪽 먼 지점**(18~50 m)에 떨어뜨린다. 코너 A 는 하이 크로스 그대로 | `core/sim.ts handleInput` · `core/rules.ts performRestartKick` · `tests/setpiece.test.ts` |
 | G-33 (9/11) | 직접 프리킥·PK 는 시점이 키커 뒤로 바뀌었으면 | 렌더 전용 세트피스 카메라 — 골문 36 m 안 프리킥과 PK 에서 키커 뒤·가운데 쪽으로 비켜 골문을 비스듬히. 찬 뒤 1.4 초 공을 따라 본다. 방송 카메라와 섞여 툭 끊기지 않는다. 배너에 골문 거리 | `render3d/renderer3d.ts` · `render/hud.ts` |
+| G-34 (9/11) | PK 에서 골키퍼가 골라인 앞으로 나와 있다 | 준비는 골라인이었는데 `gkDecide` 가 "상대가 14 m 안에서 공을 잡았다" 판단으로 5 m 앞으로 걸어 나왔다. 페널티 단계엔 골라인 가운데를 지키고, `enforceRestartPositions` 도 0.6 m 안으로 붙잡는다 | `core/ai.ts gkDecide` · `core/rules.ts` · `tests/setpiece.test.ts` |
 
 앞으로 생기는 갈림길은 이 문서에 번호를 이어 적는다.

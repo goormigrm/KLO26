@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { BTN_A, BTN_D, EMPTY_INPUT, type Input } from '../src/core/input'
 import { createState, step } from '../src/core/sim'
 import { synthSquad } from '../src/core/synth'
-import { setupFreeKick, setupRestart } from '../src/core/rules'
+import { setupFreeKick, setupPenalty, setupRestart } from '../src/core/rules'
 import { HALF_L, type GameState } from '../src/core/state'
 
 const idle: [Input, Input] = [EMPTY_INPUT, EMPTY_INPUT]
@@ -85,5 +85,21 @@ describe('세트피스 롱볼 (A 홀드)', () => {
     restart(st2, 'goalkick', -dir2 * (HALF_L - 5.5), 9)
     const punt = kick(st2, BTN_D, 40)
     expect(punt.dist).toBeGreaterThan(lob.dist * 0.9)
+  })
+})
+
+describe('페널티킥 골키퍼 자리', () => {
+  it('킥을 기다리는 동안 골키퍼는 골라인 가운데를 지킨다 (앞으로 걸어 나오지 않는다)', () => {
+    const st = humanMatch(63)
+    setupPenalty(st, 0)
+    const gk = st.players[st.teams[1].gk]
+    const lineX = st.teams[0].dir * (HALF_L - 0.35)
+    for (let i = 0; i < 240; i++) {
+      step(st, idle)
+      if (st.phase !== 'penalty') break
+      expect(Math.abs(gk.x - lineX)).toBeLessThan(0.8)
+      expect(Math.abs(gk.y)).toBeLessThan(0.6)
+    }
+    expect(st.phase).toBe('penalty')
   })
 })

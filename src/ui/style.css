@@ -501,3 +501,42 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
 .pitch.vertical .chip { width: 86px; padding: 4px 4px 3px; }
 .pitch.vertical .chip b { max-width: 78px; font-size: 12px; }
 .pitch.vertical .chip small { font-size: 9px; }
+
+/* ---- 2026-09-11: 명단 표 — 선발 11 → 후보 7 → 그 외 명단 한 통 (KM26 fmSquadTable 배치) ---- */
+.sq-list.roster { display: flex; flex-direction: column; gap: 2px; }
+.rhead, .rrow { display: grid; grid-template-columns: 42px minmax(88px, 1.1fr) 66px minmax(96px, 1.2fr) 246px 74px; gap: 8px; align-items: center; }
+.rhead { padding: 2px 10px 4px; font: 700 10px 'IBM Plex Mono', monospace; color: var(--ink-3); letter-spacing: .06em; position: sticky; top: 0; background: var(--bg); z-index: 2; }
+.rhead .lab { display: inline-grid; grid-template-columns: repeat(6, 36px); gap: 6px; text-align: center; font-size: 9.5px; letter-spacing: 0; }
+.rhead .lab i { font-style: normal; cursor: help; }
+.rsec { display: flex; align-items: baseline; gap: 8px; margin: 8px 0 2px; padding: 4px 10px 3px;
+  font: 800 12px 'IBM Plex Sans KR', sans-serif; color: var(--gold);
+  border-top: 1px solid #e3b34133; background: linear-gradient(180deg, #e3b3410f, transparent); }
+.rsec small { font-weight: 500; font-size: 11px; color: var(--ink-3); }
+.rsec.rest { color: var(--ink-2); border-top-color: var(--line-2); background: none; }
+.rrow { background: var(--bg-2); border: 1px solid var(--line-2); border-left: 3px solid var(--fam, var(--line-2));
+  border-radius: 7px; padding: 4px 9px; cursor: pointer; color: var(--ink); text-align: left; }
+.rrow:hover { border-color: #46525f; }
+.rrow.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+.rrow.can { outline: 2px solid var(--ok); outline-offset: -1px; }
+.rrow.cant, .rrow.off { opacity: .34; cursor: not-allowed; }
+.rrow.empty { border-style: dashed; color: var(--ink-3); }
+.rrow .rslot { font: 800 11px 'IBM Plex Mono', monospace; color: var(--ink-3); letter-spacing: .04em; }
+.rrow b { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rrow b .no { font: 700 10px 'IBM Plex Mono', monospace; color: var(--ink-3); margin-right: 4px; }
+.rrow b .enhtag { font: 700 10px 'IBM Plex Mono', monospace; color: var(--gold); font-style: normal; }
+.rrow small { color: var(--ink-3); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rrow .rov { display: flex; align-items: center; }
+.rrow .ract { text-align: right; }
+.rrow .mini { background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-2);
+  font: 600 10.5px 'IBM Plex Sans KR', sans-serif; padding: 2px 7px; cursor: pointer; white-space: nowrap; }
+.rrow .mini:hover { border-color: var(--gold); color: var(--gold); }
+.roster .crow-list { max-height: 420px; gap: 2px; }
+.roster .seg.wide { margin-top: 6px; }
+.roster .seg.wide button { flex: 1; }
+.roster .filters { margin: 6px 0; }
+.sq-body { grid-template-columns: 460px 270px minmax(720px, 1fr); }
+@media (max-width: 1560px) { .sq-body { grid-template-columns: 400px 240px minmax(680px, 1fr); }
+  .rhead, .rrow { grid-template-columns: 38px minmax(78px, 1fr) 62px minmax(84px, 1fr) 246px 70px; } }
+.rsec .warn { font-style: normal; font-weight: 600; font-size: 11px; color: #ffb4ae; margin-left: auto; }
+.sq-detail { position: sticky; top: 10px; max-height: calc(100vh - 24px); overflow-y: auto; }
+/* ⚠ .bench / .bchip 은 2026-09-11 부터 쓰지 않는다 (전술판 아래 후보 칩 제거 — 명단 표 .rrow 로 옮겼다) */

@@ -53,6 +53,8 @@
 | **대기실·로비** | `waitroom.sideHtml` — 구단 색 띠·선발 OVR·급여·팀컬러·강화. 로비 `squad-bar v2` |
 | **테스트** | 83 → **90** (`tests/feedback.test.ts` 7개). `restart.test` 의 "D 는 길게 찬다" 를 새 규칙(짧은 패스)으로 바꿨다 |
 
+**9/11 명단 배치 (DECISIONS 10장 G-11)** — 오른쪽이 **명단 한 통**이다: `rosterHead()` 머리줄 + `slotRow(i)` 로 선발 11(자리순)·후보 7, 그 아래 `cardRow()` 로 그 외 명단(스크롤). 셋 다 `.rrow` 로 같은 열을 쓴다. **전술판 아래 벤치 칩(`.bench`/`.bchip`)은 없앴다** — CSS 규칙은 남아 있지만 아무도 쓰지 않는다. `filtered()` 가 스쿼드 18명을 빼므로 "그 외 명단"이 진짜 나머지다. 줄 클릭은 전술판 칩과 같은 `this.sel` 을 쓰고, 버튼은 `[data-swap]`(bestPartner 맞바꿈)·`[data-pin]`(`pinToBench`).
+
 **9/11 요청 4건 (DECISIONS 10장 G-7~G-10)** — 세로 전술판(칩 이름 세 줄·가운데 자리 어긋남) · 능력치 눈금 다섯 칸 + 우리말 머리줄(`pipsHtml`) · 자동 채우기 띠를 전술판 위로 · 별 폭 버그(`width: max-content`).
 
 **같은 날 두 번째 요청 6건 (DECISIONS 10장 G-1~G-6)** — 자동 채우기 선발/후보 + 기준(`autoFill`) · **별점 표시**(`cards.ts ovrStars/statStars`, `ui/stars.ts starHtml/miniBars` — 숫자는 급여·능숙도만) · 목록 머리줄 · **JSON 저장/불러오기**(코드 UI 제거, `squadcode` 는 대기실 내부용) · **저장 안 하고 돌아가기**(`original` 스냅샷, `cancel`) · **유니폼 단색/원정 흰색**(`kits.ts` — `col2` 는 이제 아무 데도 안 쓴다).

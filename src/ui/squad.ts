@@ -146,7 +146,7 @@ export class SquadScreen {
   private slotName(i: number): string {
     if (i === 0) return 'GK'
     if (i < START_SIZE) return FORMATIONS[this.sq.formation][i - 1][1]
-    return `벤치 ${i - START_SIZE + 1}`
+    return `후보 S${i - START_SIZE + 1}`
   }
 
   /** 그 자리의 능숙도 (DESIGN 5.7) */
@@ -249,16 +249,6 @@ export class SquadScreen {
     }
     const pitch = Array.from({ length: START_SIZE }, (_, i) => chip(i)).join('')
 
-    const benchRow = Array.from({ length: SQUAD_SIZE - START_SIZE }, (_, k) => {
-      const i = k + START_SIZE
-      const c = cardById(sq.ids[i])
-      const on = this.sel === i ? ' on' : this.mark(i)
-      if (!c) return `<button class="bchip empty${on}" data-slot="${i}">비어 있음</button>`
-      return `<button class="bchip${on}" data-slot="${i}" draggable="true">
-        <span class="no">${c.no}</span><b>${c.name}</b><span class="ov">${starHtml(ovrStars(cardOvr(c, sq.enh[i] ?? 0)), true)}</span><small>${c.pos}</small>
-      </button>`
-    }).join('')
-
     const list = this.filtered()
     const detail = this.detailHtml(check.enhTotal)
     const left = CAP - check.salary
@@ -315,20 +305,23 @@ export class SquadScreen {
             <div class="p-arrow">공격 방향 ↑</div>
             ${pitch}
           </div>
-          <div class="sub-h">벤치 7 <small>${
-            this.sel >= 0
-              ? '<b>초록 테두리</b>가 지금 고른 선수와 바꿀 수 있는 자리입니다'
-              : '자리를 눌러 고른 뒤 다른 자리를 누르면 서로 바뀝니다 (끌어다 놓아도 됩니다)'
-          }</small></div>
-          <div class="bench">${benchRow}</div>
           <p class="hintline edit-hint">
-            <b>자리 옮기기</b> 두 자리를 차례로 누르면 서로 바뀝니다 ·
-            <b>선발↔벤치</b> 오른쪽 카드의 버튼 한 번 ·
-            <b>선수 교체</b> 자리를 고르고 오른쪽 목록에서 고릅니다
+            <b>자리 옮기기</b> 두 자리를 차례로 누르면 서로 바뀝니다 (끌어다 놓아도 됩니다) ·
+            <b>선수 교체</b> 자리를 고르고 오른쪽 명단에서 고릅니다
           </p>
         </div>
         <div class="sq-detail">${detail}</div>
-        <div class="sq-list">
+        <div class="sq-list roster">
+          ${this.rosterHead()}
+          <div class="rsec">⚽ 선발 11명 <small>자리를 누르면 전술판에서도 함께 골라집니다</small></div>
+          ${Array.from({ length: START_SIZE }, (_, i) => this.slotRow(i)).join('')}
+          <div class="rsec">🪑 후보 7명 <small>경기 중 교체로 들어갑니다</small>${
+            sq.ids.slice(START_SIZE).some((id) => cardById(id)?.pos === 'GK')
+              ? ''
+              : '<em class="warn">⚠ 예비 골키퍼 없음 — 주전이 퇴장하면 필드 선수가 골문에 섭니다</em>'
+          }</div>
+          ${Array.from({ length: SQUAD_SIZE - START_SIZE }, (_, k) => this.slotRow(k + START_SIZE)).join('')}
+          <div class="rsec rest">📋 그 외 명단 <small>선발·후보에 없는 선수 ${list.length}명</small></div>
           <div class="seg wide" id="scope">
             <button data-v="own"${this.ownOnly ? ' class="on"' : ''}>${club?.short ?? '내 구단'} 선수</button>
             <button data-v="all"${this.ownOnly ? '' : ' class="on"'}>전 구단 ${POOL_SIZE.toLocaleString('ko-KR')}장</button>
@@ -338,16 +331,82 @@ export class SquadScreen {
             <select class="sel" id="f-pos"><option value="">전 포지션</option>${POS_ORDER.map((p) => `<option${p === this.filterPos ? ' selected' : ''}>${p}</option>`).join('')}</select>
             <select class="sel" id="f-sort"><option value="ovr"${this.sort === 'ovr' ? ' selected' : ''}>종합 순</option><option value="sal"${this.sort === 'sal' ? ' selected' : ''}>급여 순</option><option value="name"${this.sort === 'name' ? ' selected' : ''}>이름 순</option></select>
           </div>
-          <div class="crow-head"><span>종합</span><span>이름</span><span>구단 · 포지션 · 급여</span><span class="lab">${(this.filterPos === 'GK' ? SIX_GK : SIX_FIELD).map(([k, n]) => `<i title="${k}">${n}</i>`).join('')}</span></div>
           <div class="crow-list">${list.slice(0, 200).map((c) => this.cardRow(c)).join('')}</div>
-          <p class="hintline">${list.length}장${list.length > 200 ? ' (앞 200장)' : ''}${this.ownOnly ? '' : ' · 다른 구단을 섞으면 팀컬러가 깨집니다'}</p>
+          <p class="hintline">${list.length}명${list.length > 200 ? ' (앞 200명)' : ''}${this.ownOnly ? '' : ' · 다른 구단을 섞으면 팀컬러가 깨집니다'}</p>
         </div>
       </div>`
     this.bind()
   }
 
+  /** 명단 표 머리줄 — 선발·후보·그 외가 같은 열을 쓴다 (KM26 fmSquadTable) */
+  private rosterHead(): string {
+    const labels = this.filterPos === 'GK' ? SIX_GK : SIX_FIELD
+    return `<div class="rhead"><span>자리</span><span>선수</span><span>종합</span><span>포지션 · 급여</span><span class="lab">${labels
+      .map(([k, n]) => `<i title="${k}">${n}</i>`)
+      .join('')}</span><span></span></div>`
+  }
+
+  /**
+   * 선발·후보 한 줄 (i = 자리 인덱스). KM26 처럼 **선발 11 → 후보 7** 을 한 표에 세로로 쌓는다.
+   * 줄을 누르면 그 자리가 골라지고(전술판과 같은 `this.sel`), 오른쪽 버튼은 선발↔후보를 한 번에 바꾼다.
+   */
+  private slotRow(i: number): string {
+    const starter = i < START_SIZE
+    const label = starter ? this.slotName(i) : `S${i - START_SIZE + 1}`
+    const c = cardById(this.sq.ids[i])
+    const on = this.sel === i ? ' on' : this.mark(i)
+    if (!c) {
+      return `<div class="rrow empty${on}" data-slot="${i}" role="button" tabindex="0">
+        <span class="rslot">${label}</span><b>비어 있음</b>
+        <span class="rov"></span><small>명단에서 선수를 고르세요</small><span></span><span></span></div>`
+    }
+    const fam = this.famAt(c, i)
+    const enh = this.sq.enh[i] ?? 0
+    const s = c.pos === 'GK' ? sixGKOf(c) : sixOf(c)
+    const labels = c.pos === 'GK' ? SIX_GK : SIX_FIELD
+    const bonus = teamColorBonus(this.sq.ids.slice(0, START_SIZE)).bonus
+    const partner = this.bestPartner(i)
+    const act = partner < 0 ? '' : `<button class="mini" data-swap="${i}" title="${starter ? '후보와 맞바꿉니다' : '선발과 맞바꿉니다'}">${starter ? '⬇ 후보로' : '⬆ 선발로'}</button>`
+    return `<div class="rrow${on}" data-slot="${i}" role="button" tabindex="0" draggable="true"${starter ? ` style="--fam:${famColor(fam)}"` : ''}>
+      <span class="rslot"${starter ? ` style="color:${famColor(fam)}"` : ''}>${label}</span>
+      <b><span class="no">${c.no}</span>${c.name}${enh ? ` <em class="enhtag">+${enh}</em>` : ''}</b>
+      <span class="rov">${starHtml(ovrStars(cardOvr(c, enh + (starter ? bonus : 0))), true)}</span>
+      <small>${c.pos} · 급여 ${cardSalary(c)}${starter ? ` · 능숙도 <span style="color:${famColor(fam)}">${fam}</span>` : ''}</small>
+      ${pipsHtml(Object.values(s).map(statStars), labels)}
+      <span class="ract">${act}</span>
+    </div>`
+  }
+
+  /** 그 외 명단 → 후보. 빈 후보 자리가 있으면 거기, 없으면 가장 약한 후보와 바꾼다 */
+  private pinToBench(id: number): void {
+    const c = cardById(id)
+    if (!c) return
+    let target = -1
+    let worst = 1e9
+    for (let i = START_SIZE; i < SQUAD_SIZE; i++) {
+      const cur = cardById(this.sq.ids[i])
+      if (!cur) {
+        target = i
+        break
+      }
+      const v = cardOvr(cur, 0)
+      if (v < worst) {
+        worst = v
+        target = i
+      }
+    }
+    if (target < 0) return
+    const outName = cardById(this.sq.ids[target])?.name
+    this.sq.ids[target] = id
+    this.sq.enh[target] = 0
+    this.msg = `${c.name} 을 후보 S${target - START_SIZE + 1} 에 넣었습니다${outName ? ` (${outName} 은 그 외 명단으로)` : ''}.`
+    this.snd.ui('ok')
+    saveSquad(this.sq)
+  }
+
   private cardRow(c: Card): string {
-    const used = this.sq.ids.includes(c.id) || (this.sel >= 0 && !this.canPlace(this.sel, c))
+    // 그 외 명단에는 스쿼드 18명이 들어오지 않는다 (filtered 가 뺀다). 남는 것은 "고른 자리에 못 놓는 선수"뿐
+    const used = this.sel >= 0 && !this.canPlace(this.sel, c)
     const cl = clubById(c.club)
     const s = c.pos === 'GK' ? sixGKOf(c) : sixOf(c)
     // 자리를 골랐으면 그 자리 능숙도를 색으로 (포지션에 맞는 선수를 눈으로 고른다)
@@ -367,12 +426,14 @@ export class SquadScreen {
     }
     const dis = used || over
     const labels = c.pos === 'GK' ? SIX_GK : SIX_FIELD
-    return `<button class="crow${used ? ' used' : ''}${over ? ' over' : ''}" data-card="${c.id}"${dis ? ' disabled' : ''}>
-      <span class="ov">${starHtml(ovrStars(cardOvr(c, 0)), true)}</span>
+    return `<div class="rrow crow${used ? ' used' : ''}${over ? ' over' : ''}${dis ? ' off' : ''}" data-card="${c.id}" role="button" tabindex="0">
+      <span class="rslot pos-${c.pos}"${showFam ? ` style="color:${famColor(fam)}"` : ''}>${c.pos}</span>
       <b>${c.name}</b>
-      <small${showFam ? ` style="color:${famColor(fam)}"` : ''}>${cl?.short ?? ''} · ${c.pos}${showFam ? ` · 능숙도 ${fam}` : ''} ${salHtml}</small>
+      <span class="rov">${starHtml(ovrStars(cardOvr(c, 0)), true)}</span>
+      <small${showFam ? ` style="color:${famColor(fam)}"` : ''}>${cl?.short ?? ''} ${salHtml}${showFam ? ` · 능숙도 ${fam}` : ''}</small>
       ${pipsHtml(Object.values(s).map(statStars), labels)}
-    </button>`
+      <span class="ract">${dis ? '' : `<button class="mini" data-pin="${c.id}" title="후보 7명에 넣습니다 (가장 약한 후보와 바뀝니다)">⬆ 후보로</button>`}</span>
+    </div>`
   }
 
   /** 저장 슬롯 띠 — 전술판 위에 늘 보인다 (5칸, 사용자 요청 2026-09-10) */
@@ -609,10 +670,13 @@ export class SquadScreen {
     saveSquad(this.sq)
   }
 
+  /** 그 외 명단 — 선발·후보에 **없는** 선수만 (KM26 "📋 그 외 명단") */
   private filtered(): Card[] {
     const q = this.search.trim().toLowerCase()
     const club = this.myClub()
+    const inSquad = new Set(this.sq.ids)
     const out = POOL.filter((c) => {
+      if (inSquad.has(c.id)) return false
       if (this.ownOnly && club >= 0 && c.club !== club) return false
       if (this.filterPos && c.pos !== this.filterPos) return false
       if (q && !c.name.toLowerCase().includes(q)) return false
@@ -743,6 +807,23 @@ export class SquadScreen {
           if (this.swap(from, i)) this.sel = i
           this.draw()
         }
+      }
+    })
+
+    // ---- 명단 표의 ⬇ 후보로 / ⬆ 선발로 (행 클릭보다 먼저) ----
+    this.root.querySelectorAll<HTMLButtonElement>('[data-swap]').forEach((b) => {
+      b.onclick = (e) => {
+        e.stopPropagation()
+        const i = Number(b.dataset.swap)
+        const partner = this.bestPartner(i)
+        if (partner < 0) {
+          this.msg = '바꿀 수 있는 자리가 없습니다.'
+          this.snd.ui('no')
+        } else if (this.swap(i, partner)) {
+          this.msg = ''
+          this.sel = partner
+        }
+        this.draw()
       }
     })
 
@@ -930,10 +1011,19 @@ export class SquadScreen {
   }
 
   private bindList(): void {
-    this.root.querySelectorAll<HTMLButtonElement>('[data-card]').forEach((b) => {
+    // ⬆ 후보로 — 행 클릭보다 먼저 잡는다
+    this.root.querySelectorAll<HTMLButtonElement>('[data-pin]').forEach((b) => {
+      b.onclick = (e) => {
+        e.stopPropagation()
+        this.pinToBench(Number(b.dataset.pin))
+        this.draw()
+      }
+    })
+    this.root.querySelectorAll<HTMLElement>('[data-card]').forEach((b) => {
+      if (b.classList.contains('off')) return
       b.onclick = () => {
         if (this.sel < 0) {
-          this.msg = '먼저 전술판에서 자리를 고르세요.'
+          this.msg = '먼저 전술판이나 위 명단에서 자리를 고르세요. (또는 ⬆ 후보로 를 누르세요)'
           this.snd.ui('no')
           this.draw()
           return

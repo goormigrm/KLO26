@@ -275,12 +275,13 @@ describe('교체', () => {
     const team = st.teams[0]
     expect(team.bench.length).toBe(7)
     const inSpec = team.bench[0]
-    team.pendingSub = { out: 5, in: 0 }
+    team.pendingSubs = [{ out: 5, in: 0 }]
     applyPendingSubs(st)
     const p = st.players[team.start + 5]
     expect(p.spec.id).toBe(inSpec.id)
     expect(p.subbedIn).toBe(true)
-    expect(team.subsLeft).toBe(2)
+    expect(team.subsLeft).toBe(4)
+    expect(team.subWindows).toBe(2)
     expect(team.bench.length).toBe(6)
   })
 
@@ -288,10 +289,10 @@ describe('교체', () => {
     const st = match()
     const team = st.teams[0]
     const before = st.players[team.start + 7].spec.id
-    team.pendingSub = { out: 7, in: 1 }
+    team.pendingSubs = [{ out: 7, in: 1 }]
     setupRestart(st, 'throwin', 1, 0, HALF_W + 0.4)
     expect(st.players[team.start + 7].spec.id).not.toBe(before)
-    expect(team.subsLeft).toBe(2)
+    expect(team.subsLeft).toBe(4)
   })
 
   it('교체 횟수를 다 쓰면 더 못 바꾼다', () => {
@@ -299,7 +300,7 @@ describe('교체', () => {
     const team = st.teams[0]
     team.subsLeft = 0
     const before = st.players[team.start + 5].spec.id
-    team.pendingSub = { out: 5, in: 0 }
+    team.pendingSubs = [{ out: 5, in: 0 }]
     applyPendingSubs(st)
     expect(st.players[team.start + 5].spec.id).toBe(before)
   })

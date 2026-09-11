@@ -139,6 +139,9 @@ function gkDecide(st: GameState, gk: Player): void {
       let between = 0
       for (const q of st.players) if (q.team === ti && !q.sk.isGK && !q.sentOff && dist(q.x, q.y, c.x, c.y) < 3) between++
       if (between === 0) d = clamp(dc * 0.5, 2, 7)
+      // 코앞까지 몰고 온 공은 **손으로 덮친다** (contestBall 이 press 를 본다). 예전엔 골키퍼가 절대 뺏지 않아
+      // 드리블로 옆을 지나 골문까지 걸어 들어갈 수 있었다 (사용자 제보 2026-09-11)
+      if (dist(gk.x, gk.y, b.x, b.y) < 3) gk.press = true
     }
     // 골키퍼 돌진 (수비 W, 2026-09-10) — 1.5초 동안 볼 소유자에게 나간다
     if (team.gkRush > st.tick && dc < 30) {

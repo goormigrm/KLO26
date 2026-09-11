@@ -3,7 +3,9 @@
 
 import * as THREE from 'three'
 import { angleToRad } from '../core/fixedmath'
-import { ACT_DIVE, HALF_L, HALF_W, type GameState, type Player, type SimEvent, goalX } from '../core/state'
+import { ACT_DIVE, GOAL_H, GOAL_HALF, HALF_L, HALF_W, type GameState, type Player, type SimEvent } from '../core/state'
+import { flightPath } from '../core/physics'
+import { kickerView, type KickPreview } from '../core/rules'
 import { FOV_WIDE, broadcastTarget, cameraLookAt, cameraPosition, fovForAspect } from './camera'
 import { buildPitch, type Pitch3D } from './pitch3d'
 import { Referees } from './referee3d'
@@ -47,7 +49,14 @@ export interface ViewInfo {
   controlled: number
   /** 리플레이 재생 중 — 카메라를 바짝 당긴다 */
   replay?: boolean
+  /** 세트피스 궤적 미리보기 — 킥커가 D/A 를 홀드 중일 때 세션이 계산해 준다 (2026-09-11) */
+  aim?: KickPreview | null
 }
+
+/** 궤적 미리보기 점 최대 개수 (60 Hz × 4 초) · 구슬 개수 */
+const PATH_MAX = 250
+const BEADS = 28
+const BEAD_M = new THREE.Matrix4()
 
 /** 공은 실제 0.11 m 보다 크게 그린다 — 70 m 밖에서 보인다 */
 const BALL_VIS_R = 0.19
@@ -136,6 +145,14 @@ export class Renderer3D {
   private spBlend = 0
   private spAnchor: { kx: number; ky: number; gx: number; pk: boolean } | null = null
   private spHold = 0
+  /** 세트피스 궤적 미리보기 (2026-09-11) — 점선 + 낙하점 링. 렌더 전용 */
+  private path: THREE.Line
+  private pathMat: THREE.LineDashedMaterial
+  private pathBuf: number[] = []
+  private land: THREE.Mesh
+  /** 궤적 위 구슬 — 1 px 선은 키커 뒤 시점에서 안 보여 등간격 구슬을 얹는다 */
+  private beads: THREE.InstancedMesh
+  private beadMat: THREE.MeshBasicMaterial
   private t = 0
   private opts: RenderOptions
   private kits: [Kit, Kit] | null = null
@@ -218,6 +235,30 @@ export class Renderer3D {
     this.chev.position.y = 0.03
     this.chev.visible = false
     this.scene.add(this.chev)
+    // 궤적 미리보기 — 점선(골문 안이면 금색 · 밖이면 흰색 · 롱볼은 하늘색)과 낙하점 링
+    const pg = new THREE.BufferGeometry()
+    pg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(PATH_MAX * 3), 3))
+    pg.setDrawRange(0, 0)
+    this.pathMat = new THREE.LineDashedMaterial({ color: 0xffe14a, dashSize: 0.5, gapSize: 0.3, transparent: true, opacity: 0.95, depthWrite: false })
+    this.path = new THREE.Line(pg, this.pathMat)
+    this.path.frustumCulled = false
+    this.path.renderOrder = 4
+    this.path.visible = false
+    this.path.computeLineDistances()
+    this.scene.add(this.path)
+    this.land = new THREE.Mesh(
+      new THREE.RingGeometry(0.35, 0.55, 32),
+      new THREE.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }),
+    )
+    this.land.rotation.x = -Math.PI / 2
+    this.land.visible = false
+    this.scene.add(this.land)
+    this.beadMat = new THREE.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.92, depthWrite: false })
+    this.beads = new THREE.InstancedMesh(new THREE.SphereGeometry(0.11, 10, 8), this.beadMat, BEADS)
+    this.beads.frustumCulled = false
+    this.beads.renderOrder = 4
+    this.beads.visible = false
+    this.scene.add(this.beads)
     this.resize()
   }
 
@@ -401,6 +442,51 @@ export class Renderer3D {
       this.chev.scale.set(1 + pow * 0.9, 1, 1)
       this.chevMat.color.setHex(team.holdShoot > 0 ? 0xff6a5a : b.owner === c ? 0xffe14a : 0xf4f4f4)
     } else this.chev.visible = false
+    // ---- 세트피스 궤적 미리보기 (2026-09-11) — 킥커가 D/A 를 홀드 중이면 평균 궤적을 점선으로 ----
+    if (view.aim) {
+      const a = view.aim
+      const n = Math.min(PATH_MAX, flightPath(a.x, a.y, a.z, a.vx, a.vy, a.vz, 4, this.pathBuf))
+      const geo = this.path.geometry
+      const pos = geo.getAttribute('position') as THREE.BufferAttribute
+      for (let i = 0; i < n; i++) pos.setXYZ(i, this.pathBuf[i * 3], this.pathBuf[i * 3 + 2] + 0.06, -this.pathBuf[i * 3 + 1])
+      pos.needsUpdate = true
+      geo.setDrawRange(0, n)
+      this.path.computeLineDistances()
+      const ex = this.pathBuf[(n - 1) * 3]
+      const ey = this.pathBuf[(n - 1) * 3 + 1]
+      const ez = this.pathBuf[(n - 1) * 3 + 2]
+      const tm = curr.teams[view.humanTeam]
+      const inGoal = a.kind === 'D' && Math.abs(ex) >= HALF_L - 0.01 && Math.sign(ex) === tm.dir && Math.abs(ey) < GOAL_HALF && ez < GOAL_H
+      const col = a.kind === 'A' ? 0x8ad4ff : inGoal ? 0xffe14a : 0xf4f4f4
+      this.pathMat.color.setHex(col)
+      this.beadMat.color.setHex(col)
+      ;(this.land.material as THREE.MeshBasicMaterial).color.setHex(a.kind === 'A' ? 0x8ad4ff : 0xf4f4f4)
+      // 구슬 — 궤적 길이를 등간격으로 나눠 얹는다 (점마다 60 Hz 간격이라 거리로 다시 샘플링)
+      let total = 0
+      for (let i = 1; i < n; i++) total += Math.hypot(this.pathBuf[i * 3] - this.pathBuf[i * 3 - 3], this.pathBuf[i * 3 + 1] - this.pathBuf[i * 3 - 2], this.pathBuf[i * 3 + 2] - this.pathBuf[i * 3 - 1])
+      const gap = Math.max(0.8, total / BEADS)
+      let k = 0
+      let acc = 0
+      let next = gap
+      for (let i = 1; i < n && k < BEADS; i++) {
+        acc += Math.hypot(this.pathBuf[i * 3] - this.pathBuf[i * 3 - 3], this.pathBuf[i * 3 + 1] - this.pathBuf[i * 3 - 2], this.pathBuf[i * 3 + 2] - this.pathBuf[i * 3 - 1])
+        if (acc >= next) {
+          BEAD_M.makeTranslation(this.pathBuf[i * 3], this.pathBuf[i * 3 + 2] + 0.06, -this.pathBuf[i * 3 + 1])
+          this.beads.setMatrixAt(k++, BEAD_M)
+          next += gap
+        }
+      }
+      this.beads.count = k
+      this.beads.instanceMatrix.needsUpdate = true
+      this.beads.visible = k > 0
+      this.path.visible = true
+      this.land.visible = !inGoal
+      this.land.position.set(ex, 0.025, -ey)
+    } else {
+      this.path.visible = false
+      this.land.visible = false
+      this.beads.visible = false
+    }
     // 상대가 공을 갖고 있으면 그 선수 발밑에 붉은 링
     const o = b.owner
     if (o >= 0 && curr.players[o].team !== view.humanTeam) {
@@ -442,11 +528,10 @@ export class Renderer3D {
     // ---- 세트피스 카메라: 키커 뒤 ----
     const r = curr.restart
     const tm = r ? curr.teams[r.team] : null
-    const direct =
-      r !== null && tm !== null && !view.replay &&
-      (curr.phase === 'penalty' || (curr.phase === 'freekick' && Math.hypot(r.x - goalX(tm), r.y) < 36 && Math.abs(r.y) < 26))
+    // 조건은 sim 의 `kickerView` 와 같다 — 방향키 해석(← → 코너 · ↑ ↓ 높이)이 이 시점에 맞춰져 있다
+    const direct = r !== null && tm !== null && !view.replay && kickerView(curr)
     if (direct && r && tm) {
-      this.spAnchor = { kx: r.x, ky: r.y, gx: goalX(tm), pk: curr.phase === 'penalty' }
+      this.spAnchor = { kx: r.x, ky: r.y, gx: tm.dir * HALF_L, pk: curr.phase === 'penalty' }
       this.spHold = 1.4
     } else if (this.spAnchor && curr.phase === 'play') {
       this.spHold -= dt // 찬 뒤 공이 날아가는 것을 잠깐 더 본다

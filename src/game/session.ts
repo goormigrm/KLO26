@@ -2,13 +2,15 @@
 // **홈/원정은 경기마다 동전 던지기로 정한다** (`toss.ts`, 2026-09-11) — 방장·사람이라고 홈이 아니다.
 // 틱은 Worker 타이머(60Hz), 그리기는 requestAnimationFrame. 렌더는 prev/curr 보간만 하고 sim 을 바꾸지 않는다.
 
-import { BTN_SKIP, BTN_SUB, soloInputs, type Input } from '../core/input'
+import { BTN_A, BTN_D, BTN_SKIP, BTN_SUB, SUB_CLEAR, soloInputs, type Input } from '../core/input'
 import { createState, hashState, snapshot, step } from '../core/sim'
 import { synthSquad } from '../core/synth'
 import { clubSquad, squadClub, toSquadConfig, type Squad } from '../cards/squad'
 import { CLUBS } from '../data/pool'
 import { matchKits } from '../render3d/kits'
-import { MAX_SUBS, TICK_MS, type Difficulty, type GameState } from '../core/state'
+import { TICK_MS, type Difficulty, type GameState } from '../core/state'
+import { SLOT_XY } from '../core/formation'
+import { previewRestartKick, type KickPreview } from '../core/rules'
 import type { Lockstep } from '../net/lockstep'
 import type { RoomLink } from '../net/room'
 import { sfx } from '../audio/sfx'
@@ -99,8 +101,12 @@ export class Session {
   private keysShown: boolean
   /** ⚙ 설정을 Esc 메뉴에서 열었나 (닫을 때 메뉴로 돌아간다) */
   private settingsFromMenu = false
-  /** 다음 틱에 실어 보낼 교체 명령 (Esc 메뉴에서 고른다) */
-  private subOrder: { out: number; in: number } | null = null
+  /**
+   * 실어 보낼 교체 명령 큐 (전술판에서 확정) — 한 틱에 하나씩. 맨 앞은 보통 SUB_CLEAR(넣어 둔 것 지우기).
+   * 온라인은 같은 틱을 두 번 샘플할 수 있어(상대 입력 대기) `subSentTick` 으로 **틱당 한 번만** 꺼낸다 — 락스텝은 첫 값을 지킨다
+   */
+  private subQueue: { out: number; in: number }[] = []
+  private subSentTick = -1
   /** 키 표시용 — 마지막으로 sim 에 보낸 입력 */
   private lastInput: Input = { mx: 0, my: 0, buttons: 0, a: 0, b: 0 }
   /** 온라인: 상대 입력을 기다리기 시작한 시각 (−1 = 안 기다림) */
@@ -329,11 +335,12 @@ export class Session {
     while (this.acc >= TICK_MS && steps < 4) {
       const t = this.state.tick
       const inp: Input = this.input.sample()
-      if (this.subOrder) {
+      if (this.subQueue.length > 0 && this.subSentTick !== t) {
+        const o = this.subQueue.shift()!
         inp.buttons |= BTN_SUB
-        inp.a = this.subOrder.out
-        inp.b = this.subOrder.in
-        this.subOrder = null
+        inp.a = o.out
+        inp.b = o.in
+        this.subSentTick = t
       }
       this.lastInput = inp
       // Enter — 내 화면의 리플레이는 바로 끝낸다 (세레모니 자체는 sim 이 양쪽 동의를 본다)
@@ -403,7 +410,7 @@ export class Session {
       message = `상대 입력 대기 중… (${this.cfg.net.link.rtt} ms)`
     }
     if (!this.drawReplay(dt)) {
-      this.renderer.draw(this.prev, this.state, alpha, dt, { humanTeam: me, controlled })
+      this.renderer.draw(this.prev, this.state, alpha, dt, { humanTeam: me, controlled, aim: this.previewAim() })
       this.hud.update(this.state, { humanTeam: me, controlled, message })
     }
     if (import.meta.env.DEV) this.captureAfterDraw()
@@ -419,6 +426,19 @@ export class Session {
       })
     }
     this.raf = requestAnimationFrame(this.frame)
+  }
+
+  /** 세트피스 궤적 미리보기 — 내가 킥커이고 D 또는 A 를 홀드 중일 때 (렌더 전용, 2026-09-11) */
+  private previewAim(): KickPreview | null {
+    const st = this.state
+    const r = st.restart
+    const me = this.meTeam
+    const team = st.teams[me]
+    if (!r || r.team !== me || st.phase === 'play' || r.kicker !== team.controlled) return null
+    const held = this.lastInput.buttons
+    const kind = held & BTN_D ? 'D' : held & BTN_A ? 'A' : null
+    if (!kind) return null
+    return previewRestartKick(st, me, kind, this.lastInput.mx, this.lastInput.my, Math.min(1, team.holdShoot / 36))
   }
 
   // ---- 메뉴 · 결과 ----
@@ -632,7 +652,7 @@ export class Session {
       <p>${this.cfg.net ? `온라인 대전 · 방 ${this.cfg.net.link.code} · ${this.cfg.net.link.rtt} ms` : `혼자 하기 — 봇 ${['', '쉬움', '보통', '어려움'][this.cfg.difficulty]}`} · 전후반 ${Math.round(this.cfg.halfSec / 60)}분${this.cfg.net ? ' · 멈추지 않습니다' : ''}</p>
       <div class="row">
         <button class="btn main" id="ov-resume">계속 (Esc)</button>
-        <button class="btn secondary" id="ov-sub">🔁 교체 (${this.state.teams[this.meTeam].subsLeft}/${MAX_SUBS})</button>
+        <button class="btn secondary" id="ov-sub">🔁 교체 (${this.state.teams[this.meTeam].subsLeft}명 · 기회 ${this.state.teams[this.meTeam].subWindows}번)</button>
         <button class="btn secondary" id="ov-settings">⚙ 설정</button>
         <button class="btn secondary" id="ov-quit">로비로</button>
       </div>`
@@ -719,55 +739,127 @@ export class Session {
     ;(box.querySelector('#ov-go') as HTMLButtonElement).onclick = () => this.exit()
   }
 
-  /** 교체 화면 — 나갈 선수와 들어올 선수를 고른다. 명령은 다음 데드볼에 적용된다 (DESIGN 2장) */
+  /**
+   * 교체 화면 — **전술판**에서 뛰는 선수와 후보를 맞바꾼다 (사용자 요청 2026-09-11).
+   * 기회 3번 · 최대 5명. 여기서 만든 짝은 확정하면 Input(BTN_SUB)으로 실려 가고(온라인도 같은 길),
+   * **다음 경기 중단**(스로인·골킥·코너·프리킥·골·하프타임)에 한꺼번에 들어가며 그때 기회를 하나 쓴다. 하프타임은 기회를 안 쓴다.
+   */
   private showSubs(): void {
     const st = this.state
     const team = st.teams[this.meTeam]
-    let out = -1
+    // 초안 — 이미 넣어 둔 명령에서 시작한다 (다시 열면 고칠 수 있다)
+    const draft: { out: number; in: number }[] = team.pendingSubs.map((o) => ({ out: o.out, in: o.in }))
+    let selOut = -1
+    let selIn = -1
     const box = this.overlay.querySelector('#overlay-box') as HTMLElement
+    const pair = (): void => {
+      if (selOut < 0 || selIn < 0) return
+      if (team.subWindows > 0 && draft.length < team.subsLeft) draft.push({ out: selOut, in: selIn })
+      selOut = -1
+      selIn = -1
+    }
     const draw = (): void => {
-      const onPitch = st.players
-        .slice(team.start, team.start + 11)
-        .map((p, i) => {
-          const tag = p.sentOff ? ' 🟥' : p.yellow ? ' 🟨' : ''
-          const sta = Math.round(p.stamina * 100)
-          const cls = i === out ? 'pick on' : 'pick'
-          const dis = p.sentOff ? ' disabled' : ''
-          return `<button class="${cls}" data-out="${i}"${dis}><b>${p.spec.no} ${p.spec.name}</b><small>${p.slot} · 체력 ${sta}%${tag}</small></button>`
+      const xi = st.players.slice(team.start, team.start + 11)
+      const full = team.subWindows <= 0 || draft.length >= team.subsLeft
+      const chip = (p: (typeof xi)[number], i: number): string => {
+        const xy = SLOT_XY[p.slot] ?? { x: 0.5, y: 0.5 }
+        const stagger = p.slot === 'CM' || p.slot === 'ST' || p.slot === 'CB' || p.slot === 'CAM' || p.slot === 'DM' ? 7 : 0
+        const q = draft.find((o) => o.out === i)
+        const cls = ['chip', i === selOut ? 'pick-on' : '', q ? 'queued' : '', p.sentOff ? 'cant' : ''].filter(Boolean).join(' ')
+        const sta = Math.round(p.stamina * 100)
+        const col = sta < 30 ? '#f85149' : sta < 55 ? '#e3b341' : '#3fb950'
+        const tag = p.sentOff ? ' 🟥' : p.yellow ? ' 🟨' : ''
+        return `<button class="${cls}" data-out="${i}" style="left:${xy.y * 100}%;top:${(1 - xy.x) * 100 + stagger}%"${p.sentOff ? ' disabled' : ''}>
+          <b>${p.spec.name}</b>
+          <small>${p.slot} · ${p.spec.no}번 · ${sta}%${tag}</small>
+          <span class="sta"><i style="width:${sta}%;background:${col}"></i></span>
+        </button>`
+      }
+      const pitch = xi.map(chip).join('')
+      const bench = team.bench
+        .map((b, i) => {
+          const q = draft.find((o) => o.in === i)
+          const cls = ['bchip', i === selIn ? 'pick-on' : '', q ? 'queued' : ''].filter(Boolean).join(' ')
+          return `<button class="${cls}" data-in="${i}"><span class="no">${b.no}</span><b>${b.name}</b><small>${b.pos}</small></button>`
         })
         .join('')
-      const bench = team.bench
-        .map((b, i) => `<button class="pick" data-in="${i}"${out < 0 ? ' disabled' : ''}><b>${b.no} ${b.name}</b><small>${b.pos}</small></button>`)
+      const queue = draft
+        .map(
+          (o, k) =>
+            `<div class="row"><span><b>${xi[o.out].spec.name}</b> <small>${xi[o.out].slot}</small> → 후보 <b>${team.bench[o.in]?.name ?? '?'}</b></span><button class="x" data-rm="${k}">빼기</button></div>`,
+        )
         .join('')
-      box.classList.add('wide')
+      const hint = selOut >= 0 ? `<b>${xi[selOut].spec.name}</b> 대신 들어올 후보를 고르세요` : selIn >= 0 ? `<b>${team.bench[selIn]?.name}</b> 이(가) 대신할 선수를 전술판에서 고르세요` : '전술판의 선수 하나, 후보 하나를 누르면 짝이 됩니다'
+      box.classList.add('wide', 'subwide')
       box.innerHTML = `
-        <h2>교체</h2>
-        <p>남은 교체 <b>${team.subsLeft}</b> / ${MAX_SUBS} · ${out < 0 ? '나갈 선수를 고르세요' : '들어올 선수를 고르세요'}</p>
-        <div class="sub-cols">
-          <div><div class="sub-h">뛰는 선수</div><div class="sub-grid">${onPitch}</div></div>
-          <div><div class="sub-h">벤치</div><div class="sub-grid">${bench || '<small>없음</small>'}</div></div>
+        <h2>교체 — 전술판</h2>
+        <p class="subhint">남은 인원 <b>${team.subsLeft}</b>명 · 남은 기회 <b>${team.subWindows}</b>번 · ${hint}<br>
+        확정하면 <b>다음 경기 중단</b>(스로인·골킥·코너·프리킥·골) 때 한꺼번에 들어가고 그때 기회를 하나 씁니다. 하프타임은 기회를 안 씁니다.${
+          full ? ' <b>더는 못 넣습니다.</b>' : ''
+        }</p>
+        <div class="subboard">
+          <div class="pitch vertical">
+            <div class="p-half"></div><div class="p-circle"></div><div class="p-spot"></div>
+            <div class="p-box top"></div><div class="p-box bottom"></div>
+            <div class="p-six top"></div><div class="p-six bottom"></div>
+            <div class="p-goal top"></div><div class="p-goal bottom"></div>
+            ${pitch}
+          </div>
+          <div>
+            <div class="sub-h">후보 ${team.bench.length}명</div>
+            <div class="bench">${bench || '<small>없음</small>'}</div>
+            <div class="subq">
+              <div class="sub-h">이번 중단에 들어갈 교체 (${draft.length}/${team.subsLeft})</div>
+              ${queue || '<small>아직 없음</small>'}
+            </div>
+          </div>
         </div>
-        <div class="row"><button class="btn secondary" id="ov-back">돌아가기</button></div>`
+        <div class="row">
+          <button class="btn main" id="ov-sub-ok">확정 (${draft.length}명)</button>
+          <button class="btn secondary" id="ov-back">돌아가기</button>
+        </div>`
       box.querySelectorAll<HTMLButtonElement>('[data-out]').forEach((b) => {
         b.onclick = () => {
-          out = Number(b.dataset.out)
+          const i = Number(b.dataset.out)
+          const k = draft.findIndex((o) => o.out === i)
+          if (k >= 0) draft.splice(k, 1) // 이미 짝이 된 선수를 누르면 그 짝을 푼다
+          else {
+            selOut = selOut === i ? -1 : i
+            pair()
+          }
           draw()
         }
       })
       box.querySelectorAll<HTMLButtonElement>('[data-in]').forEach((b) => {
         b.onclick = () => {
-          if (out < 0) return
-          this.subOrder = { out, in: Number(b.dataset.in) }
-          this.hideOverlay()
+          const i = Number(b.dataset.in)
+          const k = draft.findIndex((o) => o.in === i)
+          if (k >= 0) draft.splice(k, 1)
+          else {
+            selIn = selIn === i ? -1 : i
+            pair()
+          }
+          draw()
         }
       })
+      box.querySelectorAll<HTMLButtonElement>('[data-rm]').forEach((b) => {
+        b.onclick = () => {
+          draft.splice(Number(b.dataset.rm), 1)
+          draw()
+        }
+      })
+      ;(box.querySelector('#ov-sub-ok') as HTMLButtonElement).onclick = () => {
+        // 넣어 둔 것을 지우고 초안을 그대로 보낸다 — 한 틱에 하나씩
+        this.subQueue = [{ out: SUB_CLEAR, in: 0 }, ...draft]
+        this.hideOverlay()
+      }
       ;(box.querySelector('#ov-back') as HTMLButtonElement).onclick = () => this.showMenu()
     }
     draw()
   }
 
   private hideOverlay(): void {
-    ;(this.overlay.querySelector('#overlay-box') as HTMLElement).classList.remove('wide')
+    ;(this.overlay.querySelector('#overlay-box') as HTMLElement).classList.remove('wide', 'subwide')
     this.settingsFromMenu = false
     this.paused = false
     this.message = ''

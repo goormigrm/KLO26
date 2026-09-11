@@ -12,14 +12,14 @@ import {
   type PassKind,
 } from './ball'
 import {
-  BTN_A, BTN_C, BTN_D, BTN_E, BTN_PACE, BTN_PRESET_NEXT, BTN_PRESET_PREV, BTN_Q, BTN_S, BTN_SKIP, BTN_SPACE, BTN_SUB, BTN_W,
+  BTN_A, BTN_C, BTN_D, BTN_E, BTN_PACE, BTN_PRESET_NEXT, BTN_PRESET_PREV, BTN_Q, BTN_S, BTN_SKIP, BTN_SPACE, BTN_SUB, BTN_W, SUB_CLEAR,
   type Input,
 } from './input'
 import { drainStamina, moveBall, movePlayer, resolveCollisions } from './physics'
-import { advanceClock, checkOut, performRestartKick, resolvePending, setupKickoff, tickPhase, type RestartAim } from './rules'
+import { advanceClock, checkOut, performRestartKick, resolvePending, restartStick, setupKickoff, tickPhase, type RestartAim } from './rules'
 import {
   ACT_DIVE, ACT_FALLEN, ACT_KICK, ACT_RUN, ACT_SLIDE, BENCH_SIZE, DECIDE_TICKS, DEFAULT_HALF_SEC, DEFAULT_SLIDERS, DT,
-  MAX_SUBS, PLAYER_R, emptyStats,
+  MAX_SUBS, MAX_SUB_WINDOWS, PLAYER_R, emptyStats,
   type GameState, type MatchConfig, type Player, type PlayerSpec, type Sliders, type SquadConfig, type Team,
 } from './state'
 
@@ -53,7 +53,8 @@ function mkTeam(t: number, sq: SquadConfig, human: boolean, bot: number): Team {
     start: t * 11, gk: t * 11,
     bench: sq.players.slice(11, 11 + BENCH_SIZE).map((s) => s),
     subsLeft: MAX_SUBS,
-    pendingSub: null,
+    subWindows: MAX_SUB_WINDOWS,
+    pendingSubs: [],
     gkRush: -1,
   }
 }
@@ -126,8 +127,15 @@ function handleInput(st: GameState, t: number, inp: Input): void {
   team.jockey = !hasBall && (held & BTN_C) !== 0
   team.assist = !hasBall && (held & BTN_Q) !== 0
 
-  // 교체 명령 — 아무 때나 넣고 다음 데드볼에 적용 (DESIGN 2장)
-  if (edge & BTN_SUB) team.pendingSub = { out: inp.a, in: inp.b }
+  // 교체 명령 — 아무 때나 넣고 다음 데드볼에 적용 (DESIGN 2장). 한 틱에 한 명, SUB_CLEAR 면 전부 지운다
+  if (held & BTN_SUB) {
+    if (inp.a === SUB_CLEAR) team.pendingSubs = []
+    else if (
+      inp.a <= 10 && inp.b < team.bench.length &&
+      team.subWindows > 0 && team.pendingSubs.length < team.subsLeft &&
+      !team.pendingSubs.some((o) => o.out === inp.a || o.in === inp.b)
+    ) team.pendingSubs.push({ out: inp.a, in: inp.b })
+  }
 
   // 내가 찬 패스가 날아가는 동안은 **받으라고 보낸 선수**가 조작 선수다 (2026-09-11 제보:
   // 공에 가장 가까운 선수로 넘어가면서 누르고 있던 방향키 때문에 공과 상관없는 쪽으로 뛰었다)
@@ -155,6 +163,10 @@ function handleInput(st: GameState, t: number, inp: Input): void {
   }
   // 리스타트 킥커: 킥 키를 누르면 방향키 쪽으로 (스로인은 손, 골킥의 D 는 길게 — rules 가 가른다)
   if (st.phase !== 'play' && st.restart && st.restart.team === t && st.restart.kicker === c.idx) {
+    // 키커 뒤 시점(직접 프리킥·PK)이면 방향키를 **화면 기준**으로 읽는다 — ↑ 골문 쪽 · → 화면 오른쪽 (2026-09-11)
+    const stick = restartStick(st, t, inp.mx, inp.my)
+    team.inX = stick.dx
+    team.inY = stick.dy
     // D(슛·펀트)와 A(롱볼)는 **홀드**로 힘을 모아 떼는 순간 찬다. S·W 는 누르는 순간 (2026-09-11: A 도 홀드)
     if (held & (BTN_D | BTN_A)) team.holdShoot++
     const fire = edge & (BTN_S | BTN_W)
@@ -162,7 +174,12 @@ function handleInput(st: GameState, t: number, inp: Input): void {
     const aRelease = (prev & BTN_A) && !(held & BTN_A)
     if (fire || dRelease || aRelease) {
       const kind: RestartAim['kind'] = dRelease ? 'D' : aRelease ? 'A' : edge & BTN_W ? 'W' : 'S'
-      performRestartKick(st, { kind, dx: team.inX, dy: team.inY, power: clamp(team.holdShoot / 36, 0, 1) })
+      const aim: RestartAim = { kind, dx: stick.dx, dy: stick.dy, power: clamp(team.holdShoot / 36, 0, 1) }
+      if (stick.screen) {
+        aim.lat = stick.lat
+        aim.lift = stick.lift
+      }
+      performRestartKick(st, aim)
       team.holdShoot = 0
     }
     team.prevButtons = held
@@ -221,6 +238,8 @@ export function step(st: GameState, inputs: [Input, Input]): void {
   handleInput(st, 1, inputs[1])
   updateAnchors(st)
   const b = st.ball
+  // 체력 배율 — 하프 길이에 맞춰 종료 무렵 바닥나게 (하프 180 초 → 0.5)
+  const staK = 90 / st.halfSec
 
   for (const p of st.players) {
     if (p.sentOff) continue
@@ -323,7 +342,7 @@ export function step(st: GameState, inputs: [Input, Input]): void {
     movePlayer(p, dvx, dvy, speedK)
     // 견제 — 공(소유자)을 마주 본다
     if (faceBall) p.facing = atan2A(b.y - p.y, b.x - p.x)
-    drainStamina(p, sprint && speedK > 1)
+    drainStamina(p, sprint && speedK > 1, staK)
   }
 
   st.prevBallX = b.x
@@ -399,6 +418,8 @@ export function hashState(st: GameState): number {
   }
   for (const t of st.teams) {
     mix(t.subsLeft)
+    mix(t.subWindows)
+    mix(t.pendingSubs.length)
     mix(t.gkRush)
   }
   mix(q(st.stoppage))

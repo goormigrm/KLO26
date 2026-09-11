@@ -29,8 +29,12 @@ export const BTN_Z = 1 << 9
 export const BTN_PRESET_NEXT = 1 << 10
 /** [ — 전술 프리셋 이전 */
 export const BTN_PRESET_PREV = 1 << 11
-/** 교체 명령 — a = 나가는 선발(팀 안 0~10), b = 들어오는 벤치(0~6). 다음 데드볼에 적용 */
+/**
+ * 교체 명령 — a = 나가는 선발(팀 안 0~10), b = 들어오는 벤치(0~6). 다음 데드볼에 적용.
+ * 한 틱에 한 명 — 여러 명은 여러 틱에 나눠 보낸다. a = SUB_CLEAR(255) 면 넣어 둔 명령을 전부 지운다 (2026-09-11)
+ */
 export const BTN_SUB = 1 << 12
+export const SUB_CLEAR = 255
 /** Enter — 골 세레모니·리플레이 건너뛰기 (온라인은 양쪽이 다 눌러야 넘어간다 · 2026-09-11) */
 export const BTN_SKIP = 1 << 13
 

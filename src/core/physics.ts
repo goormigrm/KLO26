@@ -51,12 +51,19 @@ export function movePlayer(p: Player, dvx: number, dvy: number, speedK: number):
   else if (p.y > HALF_W + 2) { p.y = HALF_W + 2; p.vy = 0 }
 }
 
-/** 체력 — 스프린트 소모, 걷기 회복 */
-export function drainStamina(p: Player, sprinting: boolean): void {
+/**
+ * 체력 — 스프린트 소모, 걷기 회복. `k` 는 경기 길이 배율 (sim 이 `90 / halfSec` 로 준다 — 하프 3분이면 0.5).
+ *
+ * 2026-09-11 개정 (사용자 제보 "전반 끝인데 대부분 0 에 가깝다") — 예전 계수로는 하프타임 평균 15%, 종료 1% 였다.
+ * 이제 **경기 길이에 맞춰** 닳는다: 카드 체력(sta)이 낮은 선수는 종료 무렵 바닥, 높은 선수는 여유가 남는다.
+ * sta 폭도 넓혔다 — 0.3 → ×1.18 · 0.9 → ×0.64 (예전 1.12 · 0.76)
+ */
+export function drainStamina(p: Player, sprinting: boolean, k = 0.5): void {
   const sp = len(p.vx, p.vy)
-  if (sprinting && sp > 2) p.stamina -= 0.04 * (1.3 - 0.6 * p.sk.sta) * DT
-  else if (sp > 2) p.stamina -= 0.006 * (1.3 - 0.6 * p.sk.sta) * DT
-  else p.stamina += 0.01 * DT
+  const w = (1.45 - 0.9 * p.sk.sta) * k
+  if (sprinting && sp > 2) p.stamina -= 0.04 * w * DT
+  else if (sp > 2) p.stamina -= 0.006 * w * DT
+  else p.stamina += 0.01 * k * DT
   p.stamina = clamp(p.stamina, 0, 1)
 }
 
@@ -100,6 +107,36 @@ export function moveBall(b: Ball): boolean {
     }
   }
   return hitPosts(b, px)
+}
+
+/**
+ * 렌더 전용 — 자유 공의 예상 궤적 (프리킥 미리보기, 2026-09-11). `moveBall` 과 같은 중력·공기 저항으로
+ * 60 Hz 적분해 [x, y, z, …] 를 채운다. 땅에 닿거나 골라인을 넘거나 maxSec 이 지나면 멈춘다.
+ * 결정론과 무관하다 — 시뮬 상태를 건드리지 않는다.
+ */
+export function flightPath(x: number, y: number, z: number, vx: number, vy: number, vz: number, maxSec: number, out: number[]): number {
+  out.length = 0
+  const steps = Math.floor(maxSec / DT)
+  for (let i = 0; i < steps; i++) {
+    out.push(x, y, z)
+    if (z > 0 || vz > 0) {
+      vz -= GRAVITY * DT
+      vx *= 1 - AIR_DRAG * DT
+      vy *= 1 - AIR_DRAG * DT
+    }
+    x += vx * DT
+    y += vy * DT
+    z += vz * DT
+    if (z <= 0 && i > 2) {
+      out.push(x, y, 0)
+      break
+    }
+    if (Math.abs(x) >= HALF_L) {
+      out.push(x, y, z)
+      break
+    }
+  }
+  return out.length / 3
 }
 
 /** 골포스트(원기둥)·크로스바 충돌. 맞았으면 true (소리·연출용) */

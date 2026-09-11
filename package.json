@@ -18,6 +18,9 @@
     "power": "vite-node tools/power.ts",
     "attrcheck": "vite-node tools/attrcheck.ts",
     "tactics": "vite-node tools/tactics.ts",
+    "shots": "vite-node tools/shots.ts",
+    "stamina": "vite-node tools/stamina.ts",
+    "throwin": "vite-node tools/throwin.ts",
     "build:cards": "python tools/build_cards.py"
   },
   "dependencies": {

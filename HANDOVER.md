@@ -1,8 +1,8 @@
-# HANDOVER — 2026-09-11 (13차)
+# HANDOVER — 2026-09-11 (14차)
 
-> **이 문서가 최신입니다.** 단계 1~7 이 전부 들어가 있고, 2026-09-10~11 에 사용자가 직접 해 보고 낸 **제보·요청 34건**을 반영했습니다.
-> 이번 세션(7~13차)은 **경기 중 설정 분리 → 원정 버그 → 스쿼드 경제(영입 제한·팀워크·구단명) → 능력치 A/B 검증과 손질 → 세레모니·리플레이 → 속도 지배 완화 → 결정력 vs 골키퍼 → 세트피스 시점·롱볼** 순서였습니다.
-> 남은 것은 **다른 회선 두 대 실제 대전**(PREP B-1), **강화 효과 키우기**, **파울 빈도**, 그리고 공개입니다.
+> **이 문서가 최신입니다.** 단계 1~7 이 전부 들어가 있고, 2026-09-10~11 에 사용자가 직접 해 보고 낸 **제보·요청 42건**을 반영했습니다.
+> 14차(11일 오후)는 **골키퍼 선방 현실화 → 교체 5명/3회 전술판 → 체력 → 스로인 → 프리킥 오프사이드·조준·궤적 → D 압박 파울** 이었습니다. 체력 완화로 속도 A/B 가 다시 올라간 것(79.8)도 **속도 폭 재축소**로 잡았습니다. 이제부터 **커밋·push 는 자동**입니다(사용자 지시).
+> 남은 것은 **다른 회선 두 대 실제 대전**(PREP B-1), **강화 효과 키우기**, 그리고 공개입니다.
 
 ## 세션 메타데이터
 
@@ -10,11 +10,11 @@
 |---|---|
 | 날짜 | 2026-09-10 ~ 09-11 (직전 12차: 09-11 세트피스, 6차: 09-11 코인토스) |
 | 저장소 · 브랜치 | `https://github.com/goormigrm/KLO26` · `main` |
-| 마지막 커밋 | HANDOVER 13차 (그 앞이 `8b86abb` 🧤 PK 골키퍼 골라인) |
-| git 상태 | **클린** (`main...origin/main` — 미커밋 변경 0, 이 문서 커밋 전 기준) |
+| 마지막 커밋 | 14차 (골키퍼·교체·체력·스로인·프리킥·파울·속도 폭) — `git log -1` |
+| git 상태 | **클린** (`main...origin/main`) — 사용자 지시(2026-09-11): **작업이 끝나면 묻지 말고 자동으로 커밋·push** |
 | 배포 | <https://goormigrm.github.io/KLO26/> — 이번 세션 커밋 14건, 확인한 것 전부 Actions success (동시 푸시로 하나가 cancelled 된 것은 다음 것이 덮었다) |
 | 작업 디렉터리 | 노트북: `C:\Users\tkdrm\Workspace\personal\KLO26` · 메인 PC: `C:\Users\tkdrm\OneDrive\Desktop\klo26` |
-| 테스트 | `npm test` — **18 파일 · 121개** 통과 |
+| 테스트 | `npm test` — **20 파일 · 136개** 통과 |
 
 두 PC 를 오가므로 다음 세션은 `git fetch origin && git status -sb` 부터.
 
@@ -34,12 +34,12 @@
 | 4 | 오프사이드 · 파울/카드 · 프리킥/PK · 교체 · 세트피스(**A 홀드 롱볼**) · 심판 3명 · 추가시간 · 백패스 룰 · **골 세레모니 9초(Enter 건너뛰기)** | ✅ |
 | 5 | 카드·스쿼드 (급여 상한 252 · **타 구단 영입 선발 5·후보 2 · 웃돈 ×1.5** · **팀워크(뭉침+약체 가산)** · 강화 예산 · 별점 · JSON) | ✅ |
 | 6 | Trystero 로비·방 · 2인 락스텝 · 해시/리싱크 · 대기실 · 홈/원정 동전 던지기 | ✅ 로컬 두 탭까지 |
-| 7 | 밸런스 계측 (`verify` · `asym` · `balance` · `oneone` · `clubs` · **`attrcheck` · `tactics` · `economy` · `power`**) | ✅ |
+| 7 | 밸런스 계측 (`verify` · `asym` · `balance` · `oneone` · `clubs` · `attrcheck` · `tactics` · `economy` · `power` · **`shots` · `stamina` · `throwin`**) | ✅ |
 | — | 소리 · 테스트 모드(`?test=1`) · 입력 키 표시(설정) · 공지 사진·GIF 파이프(DEV) | ✅ |
 
 **흐름**: 로비 → (스쿼드 수정 | 구단 바꾸기) → (혼자 하기 | 방 만들기/참가 → 대기실) → 코인토스 → 경기 → 결과.
 
-**능력치 A/B (200경기, 대조군 50%)** — 수비 83.0 · 드리블 78.8 · 슈팅 72.8 · 속도 72.3 · 골키퍼 64.3 · 패스 ~58. 처음엔 속도 89.8 · 태클/마크/패스/GK 49~51(안 닿음) 이었다. 표는 DESIGN 4.5a.
+**능력치 A/B** — 13차(200경기): 수비 83.0 · 드리블 78.8 · 슈팅 72.8 · 속도 72.3 · 골키퍼 64.3 · 패스 ~58. **14차 뒤**: 40판에서 수비 85.6 · 속도 82.5 · 드리블 73.1 · 슈팅 71.3 · 골키퍼 66.9 · 패스 51.2 · 대조군 50.0. 속도 재상승을 100판으로 확인(79.8 > 슈팅 75.3)하고 **속도 폭을 한 번 더 좁혀** 속도 74.8% · 슈팅 73.5% (DESIGN 4.8d 끝). 수비 85.6 은 13차 백로그(반응 시간 폭) 그대로. 처음엔 속도 89.8 · 태클/마크/패스/GK 49~51(안 닿음) 이었다. 표는 DESIGN 4.5a.
 
 ---
 
@@ -66,6 +66,14 @@
 | 11 | **결정력이 GK 를 이기고 속도는 값을 치른다** — `ball.shotQ` · 전력 질주 슛 `rush` · 전력 드리블 뺏김 · 퍼스트 터치 · 경합 반응 시간(posn) | `core/ball.ts doShoot/gkCatch/contestBall/tryControl/interceptPoint` · `tests/finishing.test.ts` | DESIGN 4.3b · G-31 |
 | 12 | **세트피스** — 직접 프리킥(골문 36 m 안)·PK 키커 뒤 카메라 · 프리킥·골킥 **A 홀드 롱볼**(18~50 m) · 배너에 골문 거리 | `renderer3d.ts spAnchor/spBlend/spHold` · `core/sim.ts`(A 홀드) · `core/rules.ts performRestartKick` · `tests/setpiece.test.ts` | DESIGN 4.8c · G-32/33 |
 | 12 | PK 골키퍼는 킥 순간까지 **골라인 가운데** | `core/ai.ts gkDecide` · `core/rules.ts enforceRestartPositions` | G-34 |
+| 14 | **골키퍼 선방 현실화** — 유효슛 중 골 9% → 37%. 사람 조준 2.7 m · 쳐내기를 뻗음·속도·결정력에 · 다이브 gkReach · 코앞 드리블러 공 덮치기 | `core/ball.ts aimShot/gkCatch/contestBall` · `core/ai.ts gkDecide` · `tools/shots.ts` | DESIGN 4.7 · 4.8d · G-35 |
+| 14 | **교체 기회 3번 · 최대 5명 · 전술판** — `pendingSubs[]`·`subWindows`, Input 한 틱 한 명 + `SUB_CLEAR`, 데드볼에 한꺼번에(하프타임 무료). 세션 큐는 **틱당 한 번만** 꺼낸다(락스텝 첫 값) | `core/state.ts` · `core/sim.ts` · `core/rules.ts applyPendingSubs` · `game/session.ts showSubs/subQueue` · `render/hud.ts` · `tests/subs.test.ts` | DESIGN 2장 · 4.8d · G-36 |
+| 14 | **체력** 경기 길이 배율 `90/halfSec` + sta 폭 — 하프타임 15 → 51% | `core/physics.ts drainStamina` · `core/sim.ts` · `tools/stamina.ts` | DESIGN 4.3 표 · G-37 |
+| 14 | **스로인** 발 근처에 떨어지게(가로채기 41 → 24%) · 안쪽 30° | `core/ball.ts doThrow` · `tools/throwin.ts` | G-38 |
+| 14 | 프리킥 대기 중 공격수 **오프사이드 위치 금지** | `core/rules.ts enforceRestartPositions` | DESIGN 4.9 · G-39 |
+| 14 | **직접 프리킥·PK 조준 + 궤적 미리보기** — `kickerView` 가 시점 정본, `restartStick` 화면 기준(← → 코너 · ↑ ↓ 높이), `aimShot(fine)` 난수 없음 → `previewRestartKick` 이 같은 계산, 렌더 `flightPath` + 구슬 | `core/rules.ts` · `core/ball.ts` · `core/sim.ts` · `render3d/renderer3d.ts` · `game/session.ts previewAim` · `render/hud.ts` | DESIGN 3장 · 4.8d · G-40 |
+| 14 | **D 압박 파울** 계수 1/3~1/4 — 파울 17.7 → 13 · 태클 16 → 26 | `core/ball.ts contestBall` | G-41 |
+| 14 | **속도 폭 재축소** — 체력 완화로 속도 A/B 79.8 > 슈팅. 스프린트 소모 상향은 효과 없음(되돌림). `vmax 7.0+1.6·PAC` · `accel 5.8+2.4·acc` → 속도 74.8% | `core/skills.ts` | DESIGN 4.3 표 · 4.8d · G-42 |
 
 ### 스크린샷·GIF 다시 뜨기
 
@@ -107,6 +115,10 @@
 | 세레모니 카메라가 공을 따라감 | 공은 골망 속, 모임은 20 m 밖이라 화면 밖 | 득점자를 따라간다 |
 | 브라우저 도구의 `key` 액션으로 Esc/방향키 | 페이지에 안 닿았다 | `window.dispatchEvent(new KeyboardEvent)` (교훈 62) |
 | bash heredoc 으로 큰 python 패치 | 따옴표 파싱이 깨졌다 | 스크립트는 **Write 도구로 파일에** 쓰고 실행 |
+| 궤적 미리보기를 1 px `LineDashedMaterial` 로만 | 키커 뒤 시점에서 잔디에 묻혀 안 보였다 | 구슬(`InstancedMesh` 28개)을 등간격으로 얹었다 |
+| 브라우저 검증 중 src 를 고침 | vite 가 전체 리로드해 `__klo` 가 사라지고 경기가 날아갔다 | 검증을 다 끝낸 뒤 src 를 만진다 |
+| 프리킥 재현 뒤 응답 사이에 시간이 흐름 | 사람 킥커 대기(6.8초)가 지나 AI 가 대신 찼다 | `st.phaseT = 99999` 로 붙잡고 한 배치 안에서 찍는다 |
+| 스로인 테스트에서 공을 라인 밖(34.4)에 놓음 | 첫 틱에 아웃 판정 | 손에 든 공은 라인 안쪽(33.9)에 |
 | 골 강제 재현 (공만 골라인 앞에 놓기) | 골키퍼가 잡았다 | 골키퍼를 14 m 치우고 22 m/s 로 |
 
 ---
@@ -137,6 +149,13 @@
 | 결정력이 GK 를 이기고 속도는 값을 치른다 (`shotQ`·`rush`·반응 시간) | `core/ball.ts` · `core/state.ts` · `DESIGN 4.3b` · `G-31` · `tests/finishing.test.ts` |
 | 프리킥·골킥 A 홀드 롱볼 · 직접 프리킥/PK 키커 뒤 카메라 | `core/sim.ts` · `core/rules.ts` · `renderer3d.ts` · `hud.ts` · `DESIGN 4.8c` · **`DESIGN 3장 세트피스 줄(13차 정정)`** · `G-32/33` · 가이드 |
 | PK 골키퍼는 골라인 가운데 | `core/ai.ts` · `core/rules.ts` · `G-34` |
+| 골키퍼 조준 2.7 m · 쳐내기 뻗음·속도·결정력 · 덮치기 | `core/ball.ts` · `core/ai.ts` · `DESIGN 4.7 · 4.8d` · `G-35` · 가이드 |
+| 교체 기회 3 · 최대 5 · 전술판 · 데드볼 일괄(하프타임 무료) | `core/state.ts` · `core/sim.ts` · `core/rules.ts` · `session.ts` · `hud.ts` · `DESIGN 2장 · 4.8d` · `G-36` · README · 가이드 |
+| 체력 경기 길이 배율 | `core/physics.ts` · `core/sim.ts` · `DESIGN 4.3 표` · `G-37` · 가이드 |
+| 스로인 발 근처 · 안쪽 30° | `core/ball.ts` · `DESIGN 4.8d` · `G-38` |
+| 프리킥 대기 중 오프사이드 위치 금지 | `core/rules.ts` · `DESIGN 4.9` · `G-39` |
+| 키커 뒤 시점 화면 기준 조준 · 궤적 미리보기 (시점 정본 `kickerView`) | `core/rules.ts` · `core/ball.ts` · `renderer3d.ts` · `session.ts` · `hud.ts` · `DESIGN 3장 · 4.8d` · `G-40` · README · 가이드 |
+| D 압박 파울 계수 | `core/ball.ts` · `DESIGN 4.8d` · `G-41` |
 | 게임패드 개발 안 함 (백로그에도 없음) · 폰 지원 안 함 | `DESIGN 1.3 · 3.2 · 13장` · README · 첫 화면 · 공지글 |
 
 > **결정 전파 검증 (13차 · 2026-09-11)** — 위 항목의 수치·이름을 grep 으로 전 범위 검색했다.
@@ -153,7 +172,7 @@
 
 ### 사용자가 먼저
 
-1. **다시 한 판** — 이번 세션 34건이 손에 맞는지. 특히 **속도·결정력 균형(공을 몰고 전력 질주하면 뺏기는가 · 잘 찬 슛이 들어가는가)** · 세레모니/리플레이 흐름 · 세트피스 시점 · A 홀드 롱볼 · **수비가 너무 단단한가**(A/B 83%).
+1. **다시 한 판** — 14차 8건(골키퍼 선방 · 교체 전술판 · 프리킥 ← → ↑ ↓ 조준과 궤적 · 체력 · 스로인 · D 파울 · 속도 폭)이 손에 맞는지. 앞선 34건도: 특히 **속도·결정력 균형(공을 몰고 전력 질주하면 뺏기는가 · 잘 찬 슛이 들어가는가)** · 세레모니/리플레이 흐름 · 세트피스 시점 · A 홀드 롱볼 · **수비가 너무 단단한가**(A/B 83%).
 2. **B-1 다른 회선 두 대로 대전** — 로컬 두 탭은 통과. NAT 는 같은 PC 로 못 잡는다. (PREP B-1) 온라인에서 세레모니 양쪽 동의 흐름도 이때 본다.
 3. **공개 채널 정하기** — `docs/공지글-모음.md` 문안·첨부(사진 9·GIF 2) 준비됨.
 
@@ -163,9 +182,9 @@
 |---|---|---|
 | 1 | 2차 피드백 반영 | 사용자가 "됐다" |
 | 2 | **강화가 값을 하게** — 수비 +2.7%p · 공격 +2.0%p (목표 8~15). 강화 +1 = 능력치 40종 +1 인데 스킬 곱셈에 묻힌다. 강화분을 스킬에 직접 얹는 안(레벨당 ×1.02)을 `attrcheck` 방식으로 재 볼 것 | `npm run verify 200` 또는 attrcheck 류에서 +8%p 이상 |
-| 3 | 파울 빈도 — 40판 17.5/판(많다). Space 돌진 태클·전력 드리블 뺏김 계수가 늘렸을 수 있다 | `npm run balance -- 120` 에서 10~13 |
+| 3 | 파울 빈도 — 14차에서 13/판(태클 26)까지 내렸다. 남은 것은 봇의 슬라이딩(`slideContest`)·GK 차징 몫. 사용자 체감이 아직 많으면 그쪽 | `npm run balance -- 120` 에서 ≤ 11 |
 | 4 | 수비 묶음 83% 가 과한지 — 경합 반응 시간 폭 `0.35−0.25·posn` 을 `0.30−0.18·posn` 으로 줄여 재 본다 | `npm run attrcheck 100 def,pace,shoot` 에서 수비 ≤ 78 · 속도 ≤ 슈팅 유지 |
-| 5 | 단계 8 공개 — 공지 올리기 · README 배포 상태 갱신 | 공지 게시 |
+| 5 | 단계 8 공개 — 공지 올리기 · README 배포 상태 갱신. `docs/공지글-모음.md` 에 14차(골키퍼·교체·프리킥 조준) 문안은 **아직 없다** | 공지 게시 |
 
 ---
 

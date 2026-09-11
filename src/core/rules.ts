@@ -6,10 +6,10 @@
 //  · PK — 킥커와 두 GK 말고는 박스 밖 + 스팟에서 9.15 m 밖 + 공보다 뒤
 // 위치를 매 틱 밀어내므로 사람이 조작해도 규칙을 어길 수 없다.
 
-import { atan2A, clamp, len } from './fixedmath'
+import { atan2A, clamp, cosA, len, sinA } from './fixedmath'
 import { anchorOf, type Band } from './formation'
 import { rand } from './rng'
-import { clearOffside, dist, doPass, doShoot, doThrow, gkPunt, nearestOppDist, pickPassTarget } from './ball'
+import { G, aimShot, clearOffside, dist, doPass, doShoot, doThrow, gkPunt, lobVector, nearestOppDist, offsideLineX, pickPassTarget } from './ball'
 import { crossedGoalLine } from './physics'
 import { skillsOf } from './skills'
 import {
@@ -325,6 +325,20 @@ export function enforceRestartPositions(st: GameState): void {
     return
   }
   const clear = ph === 'throwin' ? THROWIN_CLEAR : CIRCLE_R
+  if (ph === 'freekick') {
+    // 프리킥을 기다리는 동안 **공격 팀은 오프사이드 위치에 서지 않는다** — 차는 순간 "뜬금없는 오프사이드"가
+    // 나지 않게 (사용자 제보 2026-09-11). 오프사이드 위치 = 상대 진영 · 공보다 앞 · 뒤에서 두 번째 상대보다 앞
+    // 셋 다일 때이므로, 그 셋 중 가장 앞선 선까지만 허용한다. 라인은 수비수가 움직이면 바뀌니 매 틱 본다
+    const dir = st.teams[r.team].dir
+    const allow = Math.max(offsideLineX(st, r.team) * dir, b.x * dir, 0)
+    for (const p of st.players) {
+      if (p.team !== r.team || p.idx === r.kicker || p.sk.isGK || p.sentOff) continue
+      if (p.x * dir > allow - 0.3) {
+        p.x = dir * (allow - 0.3)
+        if (p.vx * dir > 0) p.vx = 0
+      }
+    }
+  }
   for (const p of st.players) {
     if (p.team === r.team || p.sentOff) continue
     if (ph === 'goalkick') {
@@ -346,10 +360,107 @@ export function enforceRestartPositions(st: GameState): void {
 export interface RestartAim {
   /** S 그라운드 · W 스루 · A 로빙/크로스 · D 슛(또는 길게) */
   kind: 'S' | 'W' | 'A' | 'D'
+  /** 월드 방향 (키커 뒤 시점이면 `restartStick` 이 화면 기준을 월드로 돌려 놓은 값) */
   dx: number
   dy: number
   /** D 홀드 파워 0~1 (PK 높이 · 슛 파워) */
   power: number
+  /** 키커 뒤 시점의 정밀 조준 — 화면 좌우(코너) · 위아래(높이). 없으면 자동 보조 */
+  lat?: number
+  lift?: number
+}
+
+/**
+ * 키커 뒤 시점인가 — 직접 프리킥(골문 36 m 안 · |y| < 26)·페널티킥. 렌더 카메라가 **같은 조건**으로 키커 뒤로 가므로
+ * 방향키 해석(`restartStick`)도 여기에 맞춘다 (2026-09-11 — "프리킥 궤적을 위아래좌우로 바꿀 수 있게")
+ */
+export function kickerView(st: GameState): boolean {
+  const r = st.restart
+  if (!r) return false
+  if (st.phase === 'penalty') return true
+  if (st.phase !== 'freekick') return false
+  const tm = st.teams[r.team]
+  return Math.hypot(r.x - goalX(tm), r.y) < 36 && Math.abs(r.y) < 26
+}
+
+/**
+ * 리스타트 킥커의 방향키 해석. 키커 뒤 시점이면 **화면 기준** — ↑ = 골문 쪽, → = 화면 오른쪽(= 월드 −dir·y) —
+ * 이고 코너(lat)·높이(lift)를 따로 돌려준다. 아니면 월드 그대로다.
+ */
+export function restartStick(st: GameState, teamIdx: number, mx: number, my: number): { dx: number; dy: number; lat: number; lift: number; screen: boolean } {
+  const dir = st.teams[teamIdx].dir
+  const sx = mx / 127
+  const sy = my / 127
+  if (!kickerView(st)) return { dx: sx, dy: sy, lat: 0, lift: 0, screen: false }
+  return { dx: dir * sy, dy: -dir * sx, lat: -dir * sx, lift: sy, screen: true }
+}
+
+/** 궤적 미리보기의 시작점·초기 속도 (렌더 전용) */
+export interface KickPreview {
+  x: number
+  y: number
+  z: number
+  vx: number
+  vy: number
+  vz: number
+  kind: 'D' | 'A'
+}
+
+/**
+ * 렌더 전용 — 지금 누르고 있는 키로 찼을 때의 **평균** 초기 속도 (궤적 미리보기, 2026-09-11).
+ * `performRestartKick` 과 같은 계산을 쓴다. 미리 볼 수 없는 킥(코너 크로스·짧은 패스)은 null.
+ */
+export function previewRestartKick(
+  st: GameState,
+  teamIdx: number,
+  kind: 'D' | 'A',
+  mx: number,
+  my: number,
+  power: number,
+): KickPreview | null {
+  const r = st.restart
+  if (!r || r.team !== teamIdx) return null
+  const k = st.players[r.kicker]
+  const team = st.teams[teamIdx]
+  const dir = team.dir
+  const b = st.ball
+  const { dx, dy, lat, lift, screen } = restartStick(st, teamIdx, mx, my)
+  const stick = dx !== 0 || dy !== 0
+  const phase = st.phase
+  if (kind === 'D') {
+    if (phase === 'penalty') {
+      const A = aimShot(st, k, 0, 0, clamp(0.55 + power * 0.45, 0.55, 1), false, stick ? clamp(dy, -1, 1) || 1 : 1, screen ? { lat, lift } : undefined)
+      const a = atan2A(A.ty - b.y, goalX(team) - b.x)
+      return { x: b.x, y: b.y, z: 0, vx: cosA(a) * A.speed, vy: sinA(a) * A.speed, vz: A.vz, kind }
+    }
+    if (phase === 'freekick' && stick) {
+      const A = aimShot(st, k, dx, dy, clamp(0.6 + power * 0.4, 0.6, 1), false, null, screen ? { lat, lift } : undefined)
+      const a = atan2A(A.ty - b.y, goalX(team) - b.x)
+      return { x: b.x, y: b.y, z: 0, vx: cosA(a) * A.speed, vy: sinA(a) * A.speed, vz: A.vz, kind }
+    }
+    if (phase === 'goalkick' && stick) {
+      // gkPunt 와 같은 값
+      const d = 55 + 17 * k.sk.gkKick
+      const T = 2.3 + 0.35 * k.sk.gkKick
+      const speed = (d / T) * (1.08 + 0.13 * T)
+      const tx = clamp(k.x + dir * d, -HALF_L + 3, HALF_L - 3)
+      const ty = clamp(dy * 30, -HALF_W + 3, HALF_W - 3)
+      const a = atan2A(ty - b.y, tx - b.x)
+      return { x: b.x, y: b.y, z: 0.3, vx: cosA(a) * speed, vy: sinA(a) * speed, vz: 0.5 * G * T * 1.06, kind }
+    }
+    return null
+  }
+  if ((phase === 'freekick' || phase === 'goalkick') && stick) {
+    const l = Math.max(1e-6, Math.hypot(dx, dy))
+    const L = 18 + 32 * power
+    const ax = clamp(k.x + (dx / l) * L, -HALF_L + 2, HALF_L - 2)
+    const ay = clamp(k.y + (dy / l) * L, -HALF_W + 1, HALF_W - 1)
+    const d = dist(b.x, b.y, ax, ay)
+    const v = lobVector(d)
+    const a = atan2A(ay - b.y, ax - b.x)
+    return { x: b.x, y: b.y, z: 0, vx: cosA(a) * v.speed, vy: sinA(a) * v.speed, vz: v.vz, kind }
+  }
+  return null
 }
 
 /**
@@ -397,7 +508,9 @@ export function performRestartKick(st: GameState, aim: RestartAim | null = null)
     const side = aim && aim.dx !== 0 ? Math.sign(aim.dy || 0) || (rand(st.rng) < 0.5 ? -1 : 1) : rand(st.rng) < 0.5 ? -1 : 1
     const power = aim ? clamp(0.55 + aim.power * 0.45, 0.55, 1) : 0.75 + rand(st.rng) * 0.2
     const aimSide = aim && (aim.dx !== 0 || aim.dy !== 0) ? clamp(aim.dy, -1, 1) || side : side
-    doShoot(st, k, 0, 0, power, false, aimSide)
+    // 사람: ← → 코너 · ↑ ↓ 높이 (키커 뒤 시점 — 2026-09-11)
+    const fine = aim && aim.lat !== undefined && aim.lift !== undefined ? { lat: aim.lat, lift: aim.lift } : undefined
+    doShoot(st, k, 0, 0, power, false, aimSide, fine)
     st.ball.restartBy = k.idx
     clearOffside(st)
     return
@@ -420,7 +533,11 @@ export function performRestartKick(st: GameState, aim: RestartAim | null = null)
     const { dx, dy } = aim
     if (aim.kind === 'D') {
       if (phase === 'goalkick') gkPunt(st, k, dy * 30)
-      else if (phase === 'freekick') doShoot(st, k, dx, dy, clamp(0.6 + aim.power * 0.4, 0.6, 1), false, null)
+      else if (phase === 'freekick') {
+        // 직접 프리킥: 키커 뒤 시점이면 ← → 코너 · ↑ ↓ 높이 (2026-09-11). 화면의 점선이 이 계산의 평균 궤적이다
+        const fine = aim.lat !== undefined && aim.lift !== undefined ? { lat: aim.lat, lift: aim.lift } : undefined
+        doShoot(st, k, dx, dy, clamp(0.6 + aim.power * 0.4, 0.6, 1), false, null, fine)
+      }
       else doPass(st, k, 'lob', -1, dx, dy, 1)
     } else if (aim.kind === 'W') doPass(st, k, 'through', pickPassTarget(st, k, dx, dy, true), dx, dy, 0.5)
     else if (aim.kind === 'A') {
@@ -516,34 +633,49 @@ function kickoffTarget(st: GameState, k: Player, aim: RestartAim | null): number
 
 // ---------------------------------------------------------------- 교체
 
-/** 넣어 둔 교체 명령을 적용한다 (데드볼에서만). 등번호가 바뀌므로 렌더가 리그를 다시 만든다 */
-export function applyPendingSubs(st: GameState): void {
+/**
+ * 넣어 둔 교체 명령을 적용한다 (데드볼에서만). 등번호가 바뀌므로 렌더가 리그를 다시 만든다.
+ *
+ * 2026-09-11 개정 (사용자 요청) — **기회 3번에 최대 5명**. 한 중단에 여러 명이 한꺼번에 들어가고 그때 기회를 하나 쓴다.
+ * 하프타임 교체는 기회를 쓰지 않는다(`free`) — 실제 규칙과 같다.
+ */
+export function applyPendingSubs(st: GameState, free = false): void {
   for (let t = 0; t < 2; t++) {
     const team = st.teams[t]
-    const s = team.pendingSub
-    if (!s) continue
-    team.pendingSub = null
-    if (team.subsLeft <= 0) continue
-    if (s.in < 0 || s.in >= team.bench.length) continue
-    const idx = team.start + s.out
-    if (s.out < 0 || s.out > 10) continue
-    const p = st.players[idx]
-    if (p.sentOff) continue
-    const spec = team.bench[s.in]
-    if (!spec) continue
-    // 등번호 슬롯은 그대로 두고 "누가 입고 뛰는가"만 바꾼다
-    team.bench.splice(s.in, 1)
-    p.spec = spec
-    p.sk = skillsOf(spec, p.slot, p.band as Band)
-    p.stamina = 1
-    p.yellow = 0
-    p.subbedIn = true
-    p.action = ACT_RUN
-    p.actT = 0
-    p.holdT = 0
-    p.tackleT = 0
-    team.subsLeft--
-    st.events.push({ tick: st.tick, type: 'sub', team: t, player: idx, x: p.x, y: p.y, n: s.in })
+    const orders = team.pendingSubs
+    if (orders.length === 0) continue
+    team.pendingSubs = []
+    if (!free && team.subWindows <= 0) continue
+    let made = 0
+    // 벤치 인덱스가 큰 것부터 — splice 로 앞이 밀리지 않게
+    for (const s of [...orders].sort((a, b) => b.in - a.in)) {
+      if (team.subsLeft <= 0) break
+      if (s.in < 0 || s.in >= team.bench.length) continue
+      const idx = team.start + s.out
+      if (s.out < 0 || s.out > 10) continue
+      const p = st.players[idx]
+      if (p.sentOff) continue
+      const spec = team.bench[s.in]
+      if (!spec) continue
+      // 등번호 슬롯은 그대로 두고 "누가 입고 뛰는가"만 바꾼다
+      team.bench.splice(s.in, 1)
+      const outName = p.spec.name
+      p.spec = spec
+      p.sk = skillsOf(spec, p.slot, p.band as Band)
+      p.stamina = 1
+      p.yellow = 0
+      p.subbedIn = true
+      p.action = ACT_RUN
+      p.actT = 0
+      p.holdT = 0
+      p.tackleT = 0
+      team.subsLeft--
+      made++
+      st.events.push({ tick: st.tick, type: 'sub', team: t, player: idx, x: p.x, y: p.y, n: s.in })
+      st.callText = `교체 ${team.short} — ${outName} ↔ ${spec.name}`
+      st.callTick = st.tick
+    }
+    if (made > 0 && !free) team.subWindows--
   }
 }
 
@@ -584,7 +716,7 @@ export function tickPhase(st: GameState): void {
   }
   if (ph === 'halftime') {
     if (st.phaseT <= 0) {
-      applyPendingSubs(st)
+      applyPendingSubs(st, true) // 하프타임 교체는 기회를 안 쓴다
       switchSides(st)
       setupKickoff(st, 1 - st.firstKickoff)
     }

@@ -1,6 +1,7 @@
 // HUD — DOM 오버레이 (DESIGN 7.1 "HUD 는 DOM 오버레이"). 전광판 · 단계 배너 · 조작 선수 카드 · 파워 게이지 · 레이더 · 키 힌트.
 // 매 프레임 갱신하되 바뀐 글자만 쓴다. sim 을 바꾸지 않는다.
 
+import { kickerView } from '../core/rules'
 import { addedMinute, matchMinute } from '../core/sim'
 import { goalX, type GameState } from '../core/state'
 import { Radar } from './radar'
@@ -137,7 +138,8 @@ export class Hud {
     // 교체·카드 요약
     const myTeam = st.teams[v.humanTeam]
     const cards = st.players.filter((p) => p.team === v.humanTeam && (p.yellow > 0 || p.sentOff)).length
-    this.set('subs', `교체 ${myTeam.subsLeft}/3${myTeam.pendingSub ? ' (대기)' : ''}${cards ? ` · 카드 ${cards}` : ''}`)
+    const pend = myTeam.pendingSubs.length
+    this.set('subs', `교체 ${myTeam.subsLeft}명 · 기회 ${myTeam.subWindows}번${pend ? ` · 대기 ${pend}명` : ''}${cards ? ` · 카드 ${cards}` : ''}`)
 
     this.radar.draw(st, this.colors, v.controlled)
   }
@@ -173,12 +175,13 @@ export class Hud {
       case 'freekick': {
         const call = st.callText ? `${st.callText} — ` : ''
         const dG = Math.round(Math.hypot(r!.x - goalX(st.teams[r!.team]), r!.y))
+        if (mine && kickerView(st)) return `${call}직접 프리킥 · 골문 ${dG} m — ← → 코너 · ↑ ↓ 높이 · D 홀드 힘(점선 = 예상 궤적) / A 홀드 롱볼 / S 짧게`
         return mine
           ? `${call}프리킥 · 골문 ${dG} m — 방향키 + S 짧게 / A 홀드 롱볼 / D 홀드 슛`
           : `${call}${who(r!.team)} 프리킥 · 골문 ${dG} m`
       }
       case 'penalty':
-        return mine ? '⚽ 페널티킥 — 방향키(코너) + D 홀드(파워)' : `${who(r!.team)} 페널티킥`
+        return mine ? '⚽ 페널티킥 — ← → 코너 · ↑ ↓ 높이 · D 홀드 힘 (점선 = 예상 궤적)' : `${who(r!.team)} 페널티킥`
       case 'halftime':
         return '전반 종료 — 하프타임'
       case 'end':

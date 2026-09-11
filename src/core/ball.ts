@@ -12,7 +12,7 @@ import {
 
 /** 각도 단위(1024/360) — 도 → 각도 */
 export const DEG = 1024 / 360
-const G = 9.81
+export const G = 9.81
 
 /** 균등난수 셋의 합으로 정규분포를 흉내 낸다 (sd ≈ 1) */
 export function randN(r: Rng): number {
@@ -314,7 +314,7 @@ export function contestBall(st: GameState, o: Player): void {
     const d = dist(feetX(q, 0.3), feetY(q, 0.3), b.x, b.y)
     // 2026-09-11 검증 — 태클(tck)만 올려서는 승률이 안 움직였다(태클이 판에 5번뿐). 잘 하는 수비수는
     // **더 먼 발에서** 공을 건드려 기회 자체가 늘게 한다
-    const reach = gkHolding ? baseReach : baseReach + 0.3 * q.sk.tck
+    const reach = gkHolding ? baseReach : q.sk.isGK ? 1.1 : baseReach + 0.3 * q.sk.tck
     if (d > reach) continue
     if (gkHolding) {
       // 골키퍼가 손에 들고 있는 공은 뺏을 수 없다 — 도전 자체가 반칙 (DESIGN 4.7)
@@ -322,6 +322,25 @@ export function contestBall(st: GameState, o: Player): void {
       return
     }
     const angleF = 0.55 + 0.45 * (1 - fromBehind(o, q))
+    if (q.sk.isGK) {
+      // 골키퍼가 발 앞 공을 손으로 덮친다 — 핸들링이 좋을수록. 잡으면 손에 든다 (2026-09-11: 드리블 골 막기)
+      const pg = 0.03 * (0.5 + q.sk.gkHand) * angleF * (1 + 1.5 * loose)
+      const roll = rand(st.rng)
+      if (roll < pg) {
+        giveBall(st, q)
+        q.holdT = 90 + Math.round(rand(st.rng) * 60)
+        o.lastKick = st.tick
+        st.stats[q.team].tackles++
+        st.events.push({ tick: st.tick, type: 'tackle', team: q.team, player: q.idx, x: b.x, y: b.y })
+        return
+      }
+      // 덮치다 사람을 잡으면 파울 (박스 안이라 PK)
+      if (roll < pg + 0.006 + 0.02 * fromBehind(o, q)) {
+        foul(st, q, b.x, b.y, 0.05, 'foul')
+        return
+      }
+      continue
+    }
     // 전력으로 몰고 달리는 공은 닿는 거리도 늘지만(loose) **뺏길 확률도** 오른다 — 사용자 지적 2026-09-11
     let p = 0.05 * (0.3 + 1.3 * q.sk.tck) * (1.4 - 0.8 * o.sk.drib) * angleF * (0.6 + 0.8 * (q.sk.str / (q.sk.str + o.sk.str + 0.0001))) * (1 + 2.0 * loose)
     if (q.tackleT > 0) p *= 3
@@ -350,9 +369,11 @@ export function contestBall(st: GameState, o: Player): void {
       st.events.push({ tick: st.tick, type: 'tackle', team: q.team, player: q.idx, x: b.x, y: b.y })
       return
     }
-    // 실패 — 뒤에서 밀었으면 파울 (스탠딩 태클은 더 거칠다)
+    // 실패 — 뒤에서 밀었으면 파울 (스탠딩 태클은 더 거칠다).
+    // 2026-09-11 (사용자 제보 "D 로 수비하면 거의 다 파울") — 예전 계수(틱당 1~6.5%)는 붙어 있는 1초 동안 파울이
+    // 거의 확실했고 판당 파울(17.7)이 태클 성공(16.4)보다 많았다. 정면 1/3 · 뒤 2/7 · 성향 1/4 로 (판당 파울 17.7 → 13 · 태클 16 → 26): 정면은 드물고 뒤에서만 위험하다
     const behind = fromBehind(o, q)
-    let foulP = 0.010 + 0.035 * behind + 0.020 * q.sk.agg
+    let foulP = 0.003 + 0.010 * behind + 0.005 * q.sk.agg
     if (q.tackleT > 0) foulP *= 2.2
     if (roll < p + foulP) {
       foul(st, q, b.x, b.y, 0.02 + 0.08 * behind, 'foul')
@@ -475,6 +496,12 @@ export function pickPassTarget(st: GameState, p: Player, dx: number, dy: number,
   return best
 }
 
+/** 로빙 패스·크로스의 속도 — d m 를 띄워 보낼 때. 공기 저항(선형 0.25)이 있어 이론 포물선보다 짧게 떨어지니 보정 계수로 되돌린다. 난수 없음 (렌더 미리보기에도 쓴다) */
+export function lobVector(d: number): { speed: number; vz: number } {
+  const T = clamp(d / 13, 0.9, 2.6)
+  return { speed: (d / T) * (1.08 + 0.13 * T), vz: 0.5 * G * T * 1.06 }
+}
+
 /**
  * 패스. target ≥ 0 이면 그 동료에게(AI), −1 이면 (dx,dy) 방향으로 공간에.
  * aim 을 주면 낙하점을 그대로 쓴다(코너킥·골킥).
@@ -532,10 +559,9 @@ export function doPass(
   let vz = 0
   const aerial = kind === 'lob' || kind === 'highcross'
   if (aerial) {
-    // 공기 저항(선형 0.25)이 있어 이론 포물선보다 짧게 떨어진다 — 보정 계수로 되돌린다
-    const T = clamp(d / 13, 0.9, 2.6)
-    speed = (d / T) * (1.08 + 0.13 * T)
-    vz = 0.5 * G * T * 1.06
+    const v = lobVector(d)
+    speed = v.speed
+    vz = v.vz
   } else if (kind === 'lowcross') {
     speed = clamp(12 + 0.6 * d, 14, 24)
     vz = 0.8
@@ -589,9 +615,21 @@ export function doThrow(st: GameState, p: Player, target: number, dx: number, dy
       ux /= l
       uy /= l
     }
+    // 스로인은 **피치 안쪽으로** — 라인과 평행하게(← →) 던지면 공이 라인 밖을 따라 날아 바로 상대 스로인이 됐다
+    // (사용자 제보 2026-09-11 "이유 없이 상대 공"). 안쪽 성분을 최소 30° 로 튼다
+    const inward = -Math.sign(by) || 1
+    if (uy * inward < 0.5) {
+      uy = inward * 0.5
+      ux = (Math.sign(ux) || 1) * Math.sqrt(0.75)
+    }
     const d = 8 + 12 * hold
     ax = bx + ux * d
     ay = by + uy * d
+  }
+  // 목표가 라인 근처면 안쪽으로 1.5 m 는 들어오게
+  {
+    const inward = -Math.sign(by) || 1
+    if ((ay - by) * inward < 1.5) ay = by + inward * 1.5
   }
   let d = dist(bx, by, ax, ay)
   // 던지기 사거리는 팔심 — str 이 높으면 멀리. 최대 THROW_SPEED_MAX 로 자른다
@@ -609,8 +647,11 @@ export function doThrow(st: GameState, p: Player, target: number, dx: number, dy
   releaseBall(st, p, false)
   b.vx = cosA(a) * speed
   b.vy = sinA(a) * speed
-  b.vz = 0.5 * G * T
-  b.z = 2.0 // 머리 위에서 놓는다
+  // 머리 위(2.0 m)에서 놓아 **받을 선수 발 근처(0.3 m)에 떨어지게** 한다. 예전엔 vz = ½GT 라 T 초 뒤에도
+  // 2 m 높이였고, 거기서 땅까지 떨어지는 0.6 초 동안 8 m 를 더 날아가 상대 발 앞에 떨어졌다 —
+  // 스로인 41% 를 상대가 가로챘다 (2026-09-11 계측 `npm run throwin`)
+  b.z = 2.0
+  b.vz = (0.3 - b.z) / T + 0.5 * G * T
   b.passTo = target
   b.passLive = true
   b.fromThrow = true
@@ -620,13 +661,24 @@ export function doThrow(st: GameState, p: Player, target: number, dx: number, dy
   st.stats[p.team].passes++
 }
 
-/**
- * 슛. 사람: (dx,dy) 가 골문 쪽 ±35° 안이면 **골키퍼가 비운 코너**를 기본값으로 잡고 스틱 옆 성분으로 옮긴다.
- * 밖이면 그 방향 그대로(빗나감). AI: aimSide(−1·0·1)로 코너를 준다.
- *
- * 옛날에는 스틱을 옆으로 안 밀면 정중앙(=골키퍼 자리)을 겨눠 1대1 이 거의 안 들어갔다 (사용자 제보 2026-09-09).
- */
-export function doShoot(st: GameState, p: Player, dx: number, dy: number, power: number, chip: boolean, aimSide: number | null): void {
+/** 슛의 **평균** 궤적 — 조준점·속도·수직 속도·오차 폭. 난수는 없다. doShoot 이 여기에 오차를 얹고, 렌더가 프리킥 궤적 미리보기에 쓴다 (2026-09-11) */
+export interface ShotAim {
+  /** 골라인에서의 조준 y */
+  ty: number
+  speed: number
+  vz: number
+  /** 각도 오차 표준편차 (도) */
+  sigma: number
+  chip: boolean
+}
+
+/** 세트피스 정밀 조준 (키커 뒤 시점, 2026-09-11) — lat: 화면 좌우 −1..1 (코너) · lift: 화면 위아래 −1..1 (높이) */
+export interface FineAim {
+  lat: number
+  lift: number
+}
+
+export function aimShot(st: GameState, p: Player, dx: number, dy: number, power: number, chip: boolean, aimSide: number | null, fine?: FineAim): ShotAim {
   const b = st.ball
   const team = st.teams[p.team]
   const gx = goalX(team)
@@ -635,7 +687,8 @@ export function doShoot(st: GameState, p: Player, dx: number, dy: number, power:
   let ty = 0
   let awkward = false
   const gk = oppGK(st, p.team)
-  if (aimSide !== null) ty = aimSide * 2.9
+  if (fine && fine.lat !== 0) ty = clamp(fine.lat, -1, 1) * 3.1
+  else if (aimSide !== null) ty = aimSide * 2.9
   else {
     // 자동 보조 (DESIGN 3.3, 2026-09-10 개정): 슛은 **언제나 골문을 겨눈다**.
     // 방향키의 위/아래(월드 y) 성분이 코너를 고르고, 안 누르면 골키퍼가 비운 코너다.
@@ -648,7 +701,9 @@ export function doShoot(st: GameState, p: Player, dx: number, dy: number, power:
       // 골문 반대쪽으로 밀고 찼다 — 몸을 틀어 차는 것이라 오차만 커진다 (빗나가게 하지는 않는다)
       if ((dx * team.dir) / l < -0.3) awkward = true
     }
-    ty = clamp(open * 1.6 * (1 - Math.abs(lat)) + lat * 3.1, -3.1, 3.1)
+    // 비운 코너는 **진짜 코너**(2.7 m)다. 예전 1.6 m 는 골키퍼가 서서 손만 뻗어도 닿는 자리라 12 m 정면 슛이
+    // 1~4% 만 들어갔다 (2026-09-11 계측 `npm run shots` — 유효슛 중 골 9%). AI 는 원래 2.9 m 를 겨눴다
+    ty = clamp(open * 2.7 * (1 - Math.abs(lat)) + lat * 3.1, -3.1, 3.1)
   }
   const dG = dist(bx, by, gx, 0)
   // 전력으로 달리던 중의 슛은 자세가 불안하다 (사용자 지적 2026-09-11 — 빠른 드리블 뒤 슛은 슈팅 능력이 떨어져야 한다).
@@ -668,15 +723,39 @@ export function doShoot(st: GameState, p: Player, dx: number, dy: number, power:
   if ((foot === 'R' && ty * team.dir < -1.5) || (foot === 'L' && ty * team.dir > 1.5)) sigma *= 1.4
   if (st.tick - p.gotT < 12) sigma *= 1.3
   if (p.stamina < 0.3) sigma *= 1.25
-  let a = atan2A(ty - by, gx - bx)
-  a += Math.round(randN(st.rng) * sigma * DEG)
   let vz: number
   if (chip) {
     speed = 12 + 6 * power
     const T = clamp(dG / speed, 0.6, 1.6)
     vz = 0.5 * G * T * 0.95
-  } else {
-    vz = speed * (0.04 + 0.1 * power) * (1.3 - 0.6 * p.sk.fin) + randN(st.rng) * 0.5 + rush * 0.9
+  } else if (fine) {
+    // 높이를 직접 고른다 — ↓ 깔아서 0.25 m · 가운데 1.2 m · ↑ 크로스바 밑 2.1 m 로 골라인에 닿게 (공기 저항만큼 조금 느리게 잡는다)
+    const zT = 0.25 + ((clamp(fine.lift, -1, 1) + 1) / 2) * 1.85
+    const t = dG / (speed * 0.9)
+    vz = (zT + 0.5 * G * t * t) / t
+  } else vz = speed * (0.04 + 0.1 * power) * (1.3 - 0.6 * p.sk.fin) + rush * 0.9
+  return { ty, speed, vz, sigma, chip }
+}
+
+/**
+ * 슛. 사람: (dx,dy) 가 골문 쪽이면 **골키퍼가 비운 코너**를 기본값으로 잡고 스틱 옆 성분으로 옮긴다 (`aimShot`).
+ * AI: aimSide(−1·0·1)로 코너를 준다.
+ *
+ * 옛날에는 스틱을 옆으로 안 밀면 정중앙(=골키퍼 자리)을 겨눠 1대1 이 거의 안 들어갔다 (사용자 제보 2026-09-09).
+ */
+export function doShoot(st: GameState, p: Player, dx: number, dy: number, power: number, chip: boolean, aimSide: number | null, fine?: FineAim): void {
+  const b = st.ball
+  const team = st.teams[p.team]
+  const gx = goalX(team)
+  const bx = b.x
+  const by = b.y
+  const A = aimShot(st, p, dx, dy, power, chip, aimSide, fine)
+  const speed = A.speed
+  let a = atan2A(A.ty - by, gx - bx)
+  a += Math.round(randN(st.rng) * A.sigma * DEG)
+  let vz = A.vz
+  if (!chip) {
+    vz += randN(st.rng) * 0.5
     if (vz < 0) vz = 0
   }
   releaseBall(st, p)
@@ -783,9 +862,10 @@ export function gkCatch(st: GameState, gk: Player): void {
       const py = b.y + b.vy * t
       const lat = dist(gk.x, gk.y, px, py)
       if (lat > HAND_STAND) {
-        // 손이 안 닿는다 — 도달 거리 안이면 몸을 날린다. 닿을지는 실제 거리로 판정한다
-        if (lat > gk.sk.gkReach + 0.4) return
-        const diveSpeed = 3.8 + 3.4 * gk.sk.gkHand
+        // 손이 안 닿는다 — 도달 거리 근처면 몸을 날린다(시도는 넉넉히, 닿을지는 **실제 거리·시간**으로)
+        if (lat > gk.sk.gkReach + 1.0) return
+        // 다이브 속도 — 도달(gkReach: 반사·공중장악·민첩·점프·키)이 주, 핸들링이 부
+        const diveSpeed = 3.4 + 1.2 * gk.sk.gkReach + 1.2 * gk.sk.gkHand
         gk.action = ACT_DIVE
         gk.actT = 24
         gk.vx = ((px - gk.x) / lat) * diveSpeed
@@ -798,12 +878,15 @@ export function gkCatch(st: GameState, gk: Player): void {
   if (d > hand) return
   if (isShot && since < gk.sk.gkReact) return
   let chance: number
+  // 뻗은 정도 0(몸 정면) ~ 1(손끝). 다이브 중 상단(z > 1.8)으로 오는 공은 손이 더 멀다
+  let stretch = clamp(d / hand, 0, 1)
+  if (gk.action === ACT_DIVE && b.z > 1.8) stretch = Math.min(1, stretch + 0.4)
+  const fast = clamp((speed - 14) / 26, 0, 0.36)
   if (speed < 6) chance = 0.95
   else {
     // 멀리 뻗을수록·빠를수록 어렵다 (계수는 2026-09-09 계측 — 1대1 14 m 전환율 39%)
-    const stretch = clamp(d / hand, 0, 1)
     // 2026-09-11 검증 — 곱(0.88~1.11)으로는 폭이 좁았다. 바탕값에 넣어 LO 0.72 / HI 0.92
-    chance = 0.6 + 0.34 * gk.sk.gkHand - 0.46 * stretch - clamp((speed - 14) / 26, 0, 0.32)
+    chance = 0.6 + 0.34 * gk.sk.gkHand - 0.46 * stretch - fast
     // 결정력 높은 선수의 슛은 잡기 어렵다 (사용자 지적 2026-09-11) — fin 0.38 → +0.04 · 0.92 → −0.13
     if (isShot) chance -= 0.45 * (b.shotQ - 0.5)
   }
@@ -819,9 +902,12 @@ export function gkCatch(st: GameState, gk: Player): void {
     }
     return
   }
-  // 쳐내기 — 잡을 확률에서 남은 만큼만. 완전히 놓칠 수도 있다
-  // 쳐내기 — 잘 찬 공은 손에 맞고도 흘러 들어가거나 멀리 못 걷어낸다
-  if (rand(st.rng) > 0.4 + 0.3 * gk.sk.gkHand + 0.25 * gk.sk.gkPunch - (isShot ? 0.4 * (b.shotQ - 0.5) : 0)) return
+  // 쳐내기 — 잡기에 실패한 공을 손으로 밀어내는 것. **몸 정면이면 대부분(0.75), 손끝이면 드물게(0.2)**.
+  // 예전엔 뻗은 정도와 상관없이 78% 였다 — 손끝에 스친 공까지 다 막혀 유효슛 중 골이 9% 뿐이었다 (2026-09-11 계측).
+  // 잘 찬 공(shotQ)은 손에 맞고도 흘러 들어간다
+  let parry = (0.45 + 0.25 * gk.sk.gkHand + 0.25 * gk.sk.gkPunch) * (1 - 0.6 * stretch) - 0.3 * fast
+  if (isShot) parry -= 0.3 * (b.shotQ - 0.5)
+  if (rand(st.rng) > parry) return
   if (isShot && b.onTarget) {
     S.saves++
     st.events.push({ tick: st.tick, type: 'save', team: gk.team, player: gk.idx, x: b.x, y: b.y })

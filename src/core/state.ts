@@ -47,8 +47,9 @@ export const CIRCLE_R = 9.15
 export const THROWIN_CLEAR = 2
 /** 스로인 최대 속도 (m/s) — 손으로 던지므로 킥보다 훨씬 느리다 */
 export const THROW_SPEED_MAX = 14
-/** 교체 가능 인원 · 벤치 크기 */
-export const MAX_SUBS = 3
+/** 교체 — 최대 인원 5 · 기회 3번 (한 중단에 여러 명, 하프타임은 기회를 안 쓴다 · 2026-09-11) · 벤치 7 */
+export const MAX_SUBS = 5
+export const MAX_SUB_WINDOWS = 3
 export const BENCH_SIZE = 7
 
 export type PosGroup = 'GK' | 'DF' | 'MF' | 'FW'
@@ -185,7 +186,7 @@ export interface PendingCall {
   penalty: boolean
 }
 
-/** 교체 명령 — 다음 데드볼에 적용 (DESIGN 2장) */
+/** 교체 명령 — 다음 데드볼(스로인·골킥·코너·프리킥·골·하프타임)에 적용 (DESIGN 2장) */
 export interface SubOrder {
   /** 나가는 선발 (팀 안 0~10) */
   out: number
@@ -244,10 +245,12 @@ export interface Team {
   gk: number
   /** 벤치 — 교체로 들어올 수 있는 선수 (DESIGN 2장 · 7명) */
   bench: PlayerSpec[]
-  /** 남은 교체 횟수 */
+  /** 남은 교체 인원 (5) */
   subsLeft: number
-  /** 넣어 둔 교체 명령 — 다음 데드볼에 적용 */
-  pendingSub: SubOrder | null
+  /** 남은 교체 기회 (3) — 한 중단에 들어간 교체가 한 기회. 하프타임은 안 센다 */
+  subWindows: number
+  /** 넣어 둔 교체 명령들 — 다음 데드볼에 한꺼번에 적용 */
+  pendingSubs: SubOrder[]
   /** 골키퍼 돌진(수비 W) — 이 틱까지 GK 가 볼 소유자에게 나간다 */
   gkRush: number
 }

@@ -351,7 +351,7 @@ export class Renderer3D {
       rig.root.visible = !p.sentOff
       rig.root.position.set(x, 0, -y)
       rig.root.rotation.y = facingToRotY(fr)
-      animateRig(rig, this.animOf(p, fr), dt)
+      animateRig(rig, this.animOf(p, fr, curr), dt)
     }
     // ---- 공 ----
     const b = curr.ball
@@ -589,8 +589,11 @@ export class Renderer3D {
     this.gl.render(this.scene, this.camera)
   }
 
-  private animOf(p: Player, facingRad: number) {
+  private animOf(p: Player, facingRad: number, st: GameState) {
     const speed = Math.hypot(p.vx, p.vy)
+    // 전력질주 — 사람 조작 선수는 E 홀드, 나머지는 AI 의 sprint. 체력이 바닥이면 sim 도 안 빨라지니 모션도 보통으로
+    const tm = st.teams[p.team]
+    const sprint = (tm.human && tm.controlled === p.idx ? tm.sprint : p.sprint) && p.stamina > 0.05 && speed > 4.5
     // 다이브 방향: 정면 기준 오른쪽 성분
     let lateral = 0
     if (p.action === ACT_DIVE) {
@@ -599,7 +602,7 @@ export class Renderer3D {
       const l = p.vx * rx + p.vy * ry
       lateral = l > 0.05 ? 1 : l < -0.05 ? -1 : 0
     }
-    return { action: p.action, actT: p.actT, speed, holding: p.holdT > 0, lateral, throwing: p.throwing }
+    return { action: p.action, actT: p.actT, speed, holding: p.holdT > 0, lateral, throwing: p.throwing, sprint }
   }
 
   /** 프레임 시간(ms) 계측용 */

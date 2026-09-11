@@ -6,7 +6,7 @@ import { atan2A, clamp, cosA, len, sinA } from './fixedmath'
 import { feetX, feetY } from './physics'
 import { rand, type Rng } from './rng'
 import {
-  ACT_DIVE, ACT_KICK, ACT_RUN, ACT_SLIDE, BOX_HALF_W, BOX_L, CONTROL_R, DT, GOAL_H, GOAL_HALF, HALF_L, HALF_W,
+  ACT_DIVE, ACT_FALLEN, ACT_KICK, ACT_RUN, ACT_SLIDE, BOX_HALF_W, BOX_L, CONTROL_R, DT, GOAL_H, GOAL_HALF, HALF_L, HALF_W,
   THROW_SPEED_MAX, goalX, inBoxOf, ownGoalX, type GameState, type PendingCall, type Player,
 } from './state'
 
@@ -481,7 +481,8 @@ export function pickPassTarget(st: GameState, p: Player, dx: number, dy: number,
       if (dd > 512) dd = 1024 - dd
       const deg = dd / DEG
       if (deg > cone) continue
-      let s = 1 - deg / cone - (d > 40 ? 0.4 : d > 25 ? 0.15 : 0)
+      // 각도만 보면 정면의 먼 선수가 옆의 가까운 선수를 이겼다 — 거리 가중(−0.035/m · 각도는 절반 무게)으로 **방향키 쪽 가까운 선수**가 먼저다 (제보 2026-09-11)
+      let s = 1 - 0.5 * (deg / cone) - d * 0.035 - (d > 40 ? 0.4 : d > 25 ? 0.15 : 0)
       // 오프사이드 위치의 동료에게는 보내지 않는다
       const dir = st.teams[p.team].dir
       const line = offsideLineX(st, p.team) * dir
@@ -834,8 +835,31 @@ export function doClear(st: GameState, p: Player): void {
 export function gkCatch(st: GameState, gk: Player): void {
   const b = st.ball
   if (b.owner >= 0 || gk.holdT > 0 || gk.sentOff) return
-  if (gk.action !== ACT_RUN && gk.action !== ACT_DIVE) return
   if (st.tick - gk.lastKick <= 8) return
+  if (gk.action === ACT_FALLEN) {
+    // 다이브 뒤 일어나는 중 — 잡지는 못한다. 누운 몸에 맞은 공만 튕긴다 (2026-09-11: 좌우 연속 다이브 금지)
+    if (dist(gk.x, gk.y, b.x, b.y) < 0.6 && b.z < 1.0 && len(b.vx, b.vy) > 3) {
+      const wasShot = b.shotBy >= 0 && b.onTarget
+      b.vx = -b.vx * 0.3 + randN(st.rng) * 1.5
+      b.vy = b.vy * 0.4 + randN(st.rng) * 1.5
+      b.vz = 1 + rand(st.rng)
+      b.lastTouch = gk.idx
+      b.lastTeam = gk.team
+      b.shotBy = -1
+      b.onTarget = false
+      b.passTo = -1
+      b.passLive = false
+      b.fromThrow = false
+      b.restartBy = -1
+      gk.lastKick = st.tick
+      if (wasShot) {
+        st.stats[gk.team].saves++
+        st.events.push({ tick: st.tick, type: 'save', team: gk.team, player: gk.idx, x: b.x, y: b.y })
+      }
+    }
+    return
+  }
+  if (gk.action !== ACT_RUN && gk.action !== ACT_DIVE) return
   if (b.z > 2.6) return
   // 백패스 규칙 — 아군이 발로 준 공(스로인 포함)은 손으로 잡을 수 없다. 발로만 다룬다 (2026-09-10)
   if (b.lastTeam === gk.team && b.lastTouch !== gk.idx && (b.passLive || b.fromThrow)) return

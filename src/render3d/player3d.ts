@@ -38,6 +38,8 @@ export interface PlayerRig {
   lie: number
   lieSide: number
   lastAction: number
+  /** 직전이 다이브였다 — 넘어져 있는 동안 옆으로 누운 자세를 유지한 채 일어난다 */
+    wasDive: boolean
   dispose(): void
 }
 
@@ -198,7 +200,7 @@ export function buildPlayer(spec: PlayerSpec, kit: Kit): PlayerRig {
     root, body, head, legL, legR, armL, armR,
     height: 1.03 * scale,
     scale,
-    walk: 0, kickT: 0, lie: 0, lieSide: 1, lastAction: 0,
+    walk: 0, kickT: 0, lie: 0, lieSide: 1, lastAction: 0, wasDive: false,
     dispose() {
       for (const g of disposables) g.dispose()
       numTex.dispose()
@@ -223,6 +225,8 @@ export interface AnimInput {
   lateral: number
   /** 스로인을 던지려고 두 팔을 머리 위로 올렸다 */
   throwing: boolean
+  /** 전력질주 중 — 보폭이 빠르고 팔을 크게 굽혀 흔들며 상체를 앞으로 (사용자 요청 2026-09-11) */
+  sprint: boolean
 }
 
 /** 코드 애니메이션 — 걷기/달리기 · 킥 · 슬라이딩 · 넘어짐 · GK 다이브 */
@@ -233,11 +237,16 @@ export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
   rig.kickT = Math.max(0, rig.kickT - dt)
 
   // 눕기 목표: 슬라이딩·넘어짐 1, 다이브 1 (옆으로), 아니면 0
+  if (a.action === ACT_DIVE) rig.wasDive = true
+  else if (a.action !== ACT_FALLEN) rig.wasDive = false
   let lieTarget = 0
   let sideways = false
   if (a.action === ACT_SLIDE) lieTarget = 1
-  else if (a.action === ACT_FALLEN) lieTarget = Math.min(1, a.actT / 10)
-  else if (a.action === ACT_DIVE) {
+  else if (a.action === ACT_FALLEN) {
+    lieTarget = Math.min(1, a.actT / 10)
+    // 골키퍼가 다이브 뒤 일어나는 중 — 옆으로 누운 그대로 천천히 (2026-09-11)
+    if (rig.wasDive) sideways = true
+  } else if (a.action === ACT_DIVE) {
     lieTarget = 1
     sideways = true
     if (a.lateral !== 0) rig.lieSide = a.lateral
@@ -246,18 +255,22 @@ export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
   rig.lie += (lieTarget - rig.lie) * k
   const lie = rig.lie
 
-  // 걷기 위상 — 속도에 비례
+  // 걷기 위상 — 속도에 비례. 전력질주는 보폭 주기 ×1.25 · 팔 스윙 ×1.6 · 상체 앞으로 · 위아래 흔들림 ×1.5
   const moving = a.speed > 0.4 && lie < 0.5
-  if (moving) rig.walk += dt * (5 + a.speed * 2.1)
+  const sprint = a.sprint && moving
+  if (moving) rig.walk += dt * (5 + a.speed * 2.1) * (sprint ? 1.25 : 1)
   else rig.walk *= 1 - Math.min(1, dt * 10)
-  const amp = Math.min(1, a.speed / 6) * 0.85
+  const amp = Math.min(1, a.speed / 6) * (sprint ? 1.1 : 0.85)
   const swing = moving ? Math.sin(rig.walk) * amp : 0
   const legL = swing
   let legR = -swing
-  let armL = -swing * 0.8
-  let armR = swing * 0.8
-  let leanX = moving ? 0.06 * Math.min(1, a.speed / 8) : 0
-  const bob = moving ? Math.abs(Math.sin(rig.walk)) * 0.025 * amp : 0
+  const armK = sprint ? 1.3 : 0.8
+  let armL = -swing * armK
+  let armR = swing * armK
+  let leanX = moving ? 0.06 * Math.min(1, a.speed / 8) + (sprint ? 0.18 : 0) : 0
+  const bob = moving ? Math.abs(Math.sin(rig.walk)) * 0.025 * amp * (sprint ? 1.5 : 1) : 0
+  // 전력질주는 팔을 굽혀 앞으로 당긴 자세
+  const armFwd = sprint ? 0.4 : 0
 
   // 킥: 오른발을 앞으로 (−x 회전이 앞), 상체 뒤로 살짝
   if (rig.kickT > 0) {
@@ -280,8 +293,8 @@ export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
   }
   rig.legL.rotation.x = legL * (1 - lie)
   rig.legR.rotation.x = legR * (1 - lie) + 0.35 * lie
-  rig.armL.rotation.x = armL * (1 - lie) + (sideways ? -2.6 : -0.6) * lie
-  rig.armR.rotation.x = armR * (1 - lie) + (sideways ? -2.6 : -0.6) * lie
+  rig.armL.rotation.x = (armL - armFwd) * (1 - lie) + (sideways ? -2.6 : -0.6) * lie
+  rig.armR.rotation.x = (armR - armFwd) * (1 - lie) + (sideways ? -2.6 : -0.6) * lie
 
   if (sideways || (lie > 0.01 && rig.lie > 0 && a.action === ACT_DIVE)) {
     rig.body.rotation.x = 0

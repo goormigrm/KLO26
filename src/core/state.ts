@@ -233,6 +233,10 @@ export interface Team {
   /** 이번 틱 방향키 (−1..1) · 홀드 키 */
   inX: number
   inY: number
+  /** 마지막으로 0 이 아니었던 방향키와 그 틱 — 방향키를 놓은 직후 떼는 패스·슛은 이 방향으로 (2026-09-11) */
+  aimX: number
+  aimY: number
+  aimT: number
   sprint: boolean
   slow: boolean
   jockey: boolean

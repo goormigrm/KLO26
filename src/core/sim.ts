@@ -49,7 +49,7 @@ function mkTeam(t: number, sq: SquadConfig, human: boolean, bot: number): Team {
     dir: t === 0 ? 1 : -1, formation: sq.formation,
     sliders: copySliders(presets[1]), presets, preset: 1,
     controlled: -1, goals: 0, prevButtons: 0, holdShoot: 0, holdPass: 0, lastA: -1000,
-    inX: 0, inY: 0, sprint: false, slow: false, jockey: false, assist: false, skipCele: false,
+    inX: 0, inY: 0, aimX: 0, aimY: 0, aimT: -1000, sprint: false, slow: false, jockey: false, assist: false, skipCele: false,
     start: t * 11, gk: t * 11,
     bench: sq.players.slice(11, 11 + BENCH_SIZE).map((s) => s),
     subsLeft: MAX_SUBS,
@@ -185,8 +185,16 @@ function handleInput(st: GameState, t: number, inp: Input): void {
     team.prevButtons = held
     return
   }
-  const dx = team.inX
-  const dy = team.inY
+  // 방향키를 놓은 직후(0.25 초 안)에 떼는 패스·슛은 **마지막으로 눌렀던 방향**으로 간다 — S/D 를 떼는 순간 손가락이
+  // 방향키를 먼저 놓으면 (0,0) 이 되어 바라보는 방향으로 엉뚱하게 갔다 (사용자 제보 2026-09-11)
+  if (team.inX !== 0 || team.inY !== 0) {
+    team.aimX = team.inX
+    team.aimY = team.inY
+    team.aimT = st.tick
+  }
+  const recent = st.tick - team.aimT < 15
+  const dx = team.inX !== 0 || team.inY !== 0 ? team.inX : recent ? team.aimX : 0
+  const dy = team.inX !== 0 || team.inY !== 0 ? team.inY : recent ? team.aimY : 0
   if (hasBall && b.owner === c.idx && c.holdT === 0 && st.phase === 'play') {
     if (held & BTN_S) team.holdPass++
     else if (prev & BTN_S) {
@@ -266,7 +274,14 @@ export function step(st: GameState, inputs: [Input, Input]): void {
       }
       p.x += p.vx * DT
       p.y += p.vy * DT
-      if (--p.actT <= 0) p.action = ACT_RUN
+      if (--p.actT <= 0) {
+        // 다이브가 끝나면 **일어나는 시간**(0.5 초)이 든다 — 공을 잡았으면 바로 일어난다.
+        // 예전엔 곧바로 다시 몸을 날릴 수 있어 좌우 순간이동처럼 보였다 (사용자 제보 2026-09-11)
+        if (p.action === ACT_DIVE && p.holdT === 0) {
+          p.action = ACT_FALLEN
+          p.actT = 30
+        } else p.action = ACT_RUN
+      }
       continue
     }
     if (p.action === ACT_KICK && --p.actT <= 0) p.action = ACT_RUN
@@ -296,16 +311,26 @@ export function step(st: GameState, inputs: [Input, Input]): void {
           sprint = sprint || d > 5
         }
       } else if (b.owner !== p.idx && (p.press || p.tackleT > 0)) {
-        // 압박(D)·태클(Space): 공을 향해 스스로 달린다. 방향키는 45% 만큼 옆으로 튼다
-        const tx = b.x + b.vx * 0.25
-        const ty = b.y + b.vy * 0.25
+        // 압박(D)·태클(Space): 공을 향해 스스로 달린다 — 소유자가 있으면 **그 선수의 0.35 초 뒤 자리**, 자유 공이면 공의 0.25 초 뒤.
+        // 방향키는 25% 만 섞는다(예전 45% 는 반대로 누르면 거의 안 갔다) · 압박 중엔 저절로 전력질주다 — 체력은 든다 (제보 2026-09-11)
+        let tx: number
+        let ty: number
+        if (b.owner >= 0) {
+          const o = st.players[b.owner]
+          tx = o.x + o.vx * 0.35
+          ty = o.y + o.vy * 0.35
+        } else {
+          tx = b.x + b.vx * 0.25
+          ty = b.y + b.vy * 0.25
+        }
         const ddx = tx - p.x
         const ddy = ty - p.y
         const d = len(ddx, ddy)
         if (d > 0.05) {
           const k = p.tackleT > 0 ? 1.15 : 1.0
-          dvx = (ddx / d) * p.sk.vmax * k + dvx * 0.45
-          dvy = (ddy / d) * p.sk.vmax * k + dvy * 0.45
+          dvx = (ddx / d) * p.sk.vmax * k + dvx * 0.25
+          dvy = (ddy / d) * p.sk.vmax * k + dvy * 0.25
+          if (d > 2) sprint = true
         }
       }
       if (team.jockey && b.owner !== p.idx) {

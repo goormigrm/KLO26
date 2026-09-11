@@ -211,5 +211,9 @@ KM26 → KMD26v1.0 → KLD26 의 결. 배포 주소 `https://goormigrm.github.io
 | G-40 (9/11) | 직접 프리킥 궤적을 그려 주고, 방향키 위아래좌우로 바꿀 수 있게 | 키커 뒤 시점에서는 방향키를 **화면 기준**(← → 코너 · ↑ ↓ 높이)으로 — 시점 조건 `kickerView` 를 sim 에 두고 렌더·HUD·입력이 공유. `aimShot(fine)` 은 난수가 없어 미리보기(`previewRestartKick`)와 실제가 같은 계산. 궤적은 렌더 전용 `flightPath` + 구슬 28개(1 px 선은 안 보였다) | `core/rules.ts kickerView/restartStick/previewRestartKick` · `core/ball.ts aimShot` · `render3d/renderer3d.ts` · `game/session.ts previewAim` |
 | G-41 (9/11) | D 로 수비하면 거의 다 파울 | `contestBall` 파울 계수 정면 1/3 · 뒤 2/7 · 성향 1/4 (틱당 굴림이라 1초 붙으면 거의 확실했다). 판당 파울 17.7 → 13, 태클 성공 16 → 26 | `core/ball.ts contestBall` |
 | G-42 (9/11) | 체력을 덜 지치게 하자 속도 영향이 다시 커진 건 아닌가 — 확인해서 조정 | 맞았다: 100판 속도 79.8 > 슈팅 75.3(13차 72.3 < 72.8 은 전원 탈진 덕). 스프린트 소모 상향(0.065)은 속도를 못 내리고(78.8) 슈팅만 떨어뜨려 되돌렸다. **속도 폭 자체**를 한 번 더(최고 +14% → +11%, 가속 +25% → +19%) → 속도 74.8% · 슈팅 73.5%. 체력 분포는 유지 | `core/skills.ts` · `core/physics.ts` · DESIGN 4.3 · 4.8d |
+| G-43 (9/11) | 패스가 방향키 쪽 가까운 선수가 아닌 데로 간다 | 둘: 떼는 순간 방향키가 (0,0)이면 바라보는 방향으로 갔다 → 0.25초 안은 마지막 방향(`aimX/Y/T`). 후보 점수가 각도 위주 → 각도 절반 + 거리 −0.035/m | `core/sim.ts handleInput` · `core/ball.ts pickPassTarget` · `tests/feedback_0911b.test.ts` |
+| G-44 (9/11) | D 를 눌러도 공 가진 상대에게 잘 안 간다 | 목표를 소유자의 0.35초 뒤 자리로 · 방향키 45% → 25% · 압박 중 자동 전력질주 | `core/sim.ts step` |
+| G-45 (9/11) | 전력질주 모션을 다르게 | `AnimInput.sprint` — 보폭·팔 스윙·팔 굽힘·상체 기울기·흔들림. 사람 조작 선수는 `team.sprint`, 나머지는 `p.sprint` | `render3d/player3d.ts` · `renderer3d.ts animOf` |
+| G-46 (9/11) | 골키퍼가 좌우 다이빙을 순간이동처럼 — 일어나는 시간을 | 다이브 뒤 `ACT_FALLEN` 30틱, 그동안 못 잡고 몸에 맞은 공만 튕김. 잡았으면 바로 선다. 렌더는 옆으로 누운 채 일어남 | `core/sim.ts` · `core/ball.ts gkCatch` · `player3d.ts` |
 
 앞으로 생기는 갈림길은 이 문서에 번호를 이어 적는다.

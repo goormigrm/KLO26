@@ -5,7 +5,7 @@ import { atan2A, clamp, cosA, len, sinA } from './fixedmath'
 import { anchorOf, type Band } from './formation'
 import { rand } from './rng'
 import {
-  dist, doClear, doPass, doShoot, inOwnBox, interceptPoint, nearestOppDist, offsideLineX, randN, type PassKind,
+  dist, doClear, doPass, doShoot, fromBehind, inOwnBox, interceptPoint, nearestOppDist, offsideLineX, randN, type PassKind,
 } from './ball'
 import { CIRCLE_R, HALF_L, HALF_W, THROWIN_CLEAR, goalX, type GameState, type Player, GOAL_TICKS } from './state'
 
@@ -643,6 +643,17 @@ export function aiDecide(st: GameState, p: Player): void {
   const d = dist(p.x, p.y, c.x, c.y)
   if (rank === 0) {
     if (d < dPress) {
+      // 뒤에서 쫓는 중이면 덤비지 않는다 (2026-09-15: 뒤에서 오는 태클은 파울·경고·퇴장) —
+      // 소유자 진행 방향 앞·우리 골문 쪽 4 m 로 달려 **골사이드를 잡은 뒤** 붙는다. 못 앞지르면 그냥 따라간다
+      if (fromBehind(c, p) > 0.6 && len(c.vx, c.vy) > 2 && d > 1.0) {
+        const ownX = -dir * HALF_L
+        const dOwn = Math.max(1, dist(c.x, c.y, ownX, 0))
+        p.tx = clamp(c.x + ((ownX - c.x) / dOwn) * 4 + c.vx * 0.3, -HALF_L + 1, HALF_L - 1)
+        p.ty = clamp(c.y + ((0 - c.y) / dOwn) * 4 + c.vy * 0.3, -HALF_W + 1, HALF_W - 1)
+        p.press = false
+        p.sprint = p.stamina > 0.15
+        return
+      }
       // 위치 선정(posn)이 좋을수록 소유자의 다음 자리를 앞서 읽는다 (수비 강화 2026-09-10)
       const lead = 0.3 + 0.3 * p.sk.posn
       p.tx = c.x + c.vx * lead
@@ -658,10 +669,10 @@ export function aiDecide(st: GameState, p: Player): void {
     return
   }
   if (rank < pressN && d < dPress) {
-    // 두·세 번째도 함께 간다 (Q 팀 지원 요청은 슬라이더와 무관하게 한 명 더 붙인다)
+    // 두·세 번째도 함께 간다 (Q 팀 지원 요청은 슬라이더와 무관하게 한 명 더 붙인다) — 뒤에서 쫓는 중이면 덤비지 않는다
     p.tx = c.x - dir * 2 + c.vx * 0.2
     p.ty = c.y + (p.y >= c.y ? 2.5 : -2.5)
-    p.press = true
+    p.press = !(fromBehind(c, p) > 0.6 && len(c.vx, c.vy) > 2)
     p.sprint = d > 6 && p.stamina > 0.25
     return
   }
@@ -675,7 +686,8 @@ export function aiDecide(st: GameState, p: Player): void {
     const uy = (0 - c.y) / Math.max(1, dOwn)
     p.tx = clamp(c.x + ux * back, -HALF_L + 1, HALF_L - 1)
     p.ty = clamp(c.y + uy * back, -HALF_W + 1, HALF_W - 1)
-    p.press = team.assist
+    // 소유자가 코앞(3.5 m)까지 오면 커버도 **앞에서** 맞선다 — 뒤에서 쫓는 사람이 못 뺏게 된 뒤(2026-09-15) 커버가 서 있기만 하면 그냥 지나간다
+    p.press = (team.assist || d < 3.5) && fromBehind(c, p) <= 0.6
     p.sprint = d > 8 && p.stamina > 0.25
     return
   }
@@ -726,6 +738,8 @@ export function aiDecide(st: GameState, p: Player): void {
   }
   p.markOf = -1
   goAnchor(p, -2, dir)
+  // 지역을 지키다 소유자가 앞에서 3 m 안으로 오면 맞선다 (뒤에서는 안 덤빈다)
+  if (d < 3 && fromBehind(c, p) <= 0.6) p.press = true
 }
 
 /** 사람이 조작할 다음 선수 — 공에 가장 가까운 필드 선수. exclude 를 주면 그 다음 */

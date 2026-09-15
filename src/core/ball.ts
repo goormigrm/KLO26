@@ -404,24 +404,63 @@ export function tryControl(st: GameState): void {
 
 // ---------------------------------------------------------------- 태클 · 파울
 
-/** 뒤에서 들어갔나 — 0(정면) ~ 1(등 뒤) */
-function fromBehind(o: Player, q: Player): number {
+/**
+ * 도전자 q 가 소유자 o 의 뒤에서 들어갔나 — 0(정면) ~ 1(등 뒤).
+ * 2026-09-15 저녁까지 **뒤집혀 있었다**(o→q 방향이 facing 과 같을 때, 즉 q 가 앞에 있을 때 1 을 돌려줬다) —
+ * 그래서 정면 도전이 파울로, 뒤 도전이 정면으로 취급돼 "뒤에서 뺏는 장면"이 잦았다 (사용자 제보). facing 은 이동 방향이다
+ */
+export function fromBehind(o: Player, q: Player): number {
   const rel = atan2A(q.y - o.y, q.x - o.x)
   let dd = (rel - o.facing) & 1023
   if (dd > 512) dd = 1024 - dd
-  return 1 - dd / 512
+  return dd / 512
 }
 
-/** 파울을 선언한다. 박스 안이면 PK. card: 0 없음 · 1 경고 (두 번째 경고면 퇴장으로 올린다) */
-function foul(st: GameState, offender: Player, x: number, y: number, cardChance: number, kind: 'foul' | 'gkcharge'): void {
+/**
+ * 파울을 선언한다. 박스 안이면 PK. card: 0 없음 · 1 경고 (두 번째 경고면 퇴장으로 올린다).
+ * minCard 를 주면 굴림과 무관하게 최소 그 카드 — 뒤에서 오는 태클(1) · 명백한 득점 기회 저지(2, 2026-09-15)
+ */
+function foul(st: GameState, offender: Player, x: number, y: number, cardChance: number, kind: 'foul' | 'gkcharge', minCard = 0): void {
   const victimTeam = 1 - offender.team
   const defTeam = st.teams[offender.team]
   // 반칙한 팀이 지키는 박스 안이면 PK. GK 차징(공격수가 GK 를 덮친 것)은 PK 가 아니다
   const pk = kind === 'foul' && inBoxOf(defTeam, x, y)
   let card = 0
-  if (rand(st.rng) < cardChance) card = offender.yellow >= 1 ? 2 : 1
+  if (rand(st.rng) < cardChance) card = 1
+  card = Math.max(card, minCard)
+  if (card === 1 && offender.yellow >= 1) card = 2
   st.stats[offender.team].fouls++
   call(st, { kind, team: victimTeam, by: offender.idx, x, y, card, penalty: pk })
+}
+
+/**
+ * 뒤에서 달려드는 태클인가 — 소유자가 2 m/s 넘게 움직이는데 도전자가 등 뒤(fromBehind > 0.6)에 있다.
+ * 축구 규칙에서 뒤에서 들어가는 태클은 공을 먼저 건드려도 대개 파울·경고다 (사용자 제보 2026-09-15: 1:1 상황에서 뒤에서 뺏는 장면이 잦다)
+ */
+function tackleFromBack(o: Player, q: Player): boolean {
+  return len(o.vx, o.vy) > 2.0 && fromBehind(o, q) > 0.6
+}
+
+/**
+ * 명백한 득점 기회(DOGSO)인가 — 소유자가 상대 골문 35 m 안에서 골문 쪽으로 가고, 소유자와 골문 사이(옆으로 6 m 안)에
+ * 도전자와 골키퍼를 뺀 수비수가 없다. 이 상황의 파울은 퇴장이다
+ */
+function clearChance(st: GameState, o: Player, q: Player): boolean {
+  const team = st.teams[o.team]
+  const dir = team.dir
+  const gx = goalX(team)
+  const dG = dist(o.x, o.y, gx, 0)
+  // 골문 30 m 안 · 공격 3분의 1 · 골문 쪽으로 달리는 중이어야 "명백한 기회"
+  if (dG > 30 || o.x * dir < 17) return false
+  if (o.vx * dir < 1.5) return false
+  for (const p of st.players) {
+    if (p.team === o.team || p.sk.isGK || p.sentOff || p.idx === q.idx) continue
+    const ahead = (p.x - o.x) * dir
+    // 소유자보다 3 m 넘게 뒤처진 수비수는 못 따라온다고 본다. 앞에 있는 수비수는 옆으로 8 m 안이면 막을 수 있다
+    if (ahead < -3) continue
+    if (Math.abs(p.y - o.y) < 8 || distToSegment(p.x, p.y, o.x, o.y, gx, 0) < 6) return false
+  }
+  return true
 }
 
 /** 볼 소유자에게 붙은 상대가 뺏으려 한다 — 한 틱에 한 명만 (DESIGN 4.8 압박) */
@@ -448,7 +487,12 @@ export function contestBall(st: GameState, o: Player): void {
       foul(st, q, b.x, b.y, 0.18, 'gkcharge')
       return
     }
-    const angleF = 0.55 + 0.45 * (1 - fromBehind(o, q))
+    // 뒤에서 달려드는 태클(2026-09-15): 뺏을 확률 ×0.25, 파울은 틱당 2~5%, 파울이면 경고(명백한 득점 기회면 퇴장).
+    // **AI 는 뒤에서 덤비지 않는다** — 사람이 조작하는 선수만 (그리고 그 대가를 치른다). 봇 vs 봇에서 퇴장 2.3/판이 나왔다
+    const fromBack = tackleFromBack(o, q)
+    const qTeam = st.teams[q.team]
+    if (fromBack && !(qTeam.human && qTeam.controlled === q.idx)) continue
+    const angleF = (0.55 + 0.45 * (1 - fromBehind(o, q))) * (fromBack ? 0.25 : 1)
     if (q.sk.isGK) {
       // 골키퍼가 발 앞 공을 손으로 덮친다 — 핸들링이 좋을수록. 잡으면 손에 든다 (2026-09-11: 드리블 골 막기)
       const pg = 0.03 * (0.5 + q.sk.gkHand) * angleF * (1 + 1.5 * loose)
@@ -508,9 +552,11 @@ export function contestBall(st: GameState, o: Player): void {
     // 거의 확실했고 판당 파울(17.7)이 태클 성공(16.4)보다 많았다. 정면 1/3 · 뒤 2/7 · 성향 1/4 로 (판당 파울 17.7 → 13 · 태클 16 → 26): 정면은 드물고 뒤에서만 위험하다
     const behind = fromBehind(o, q)
     let foulP = 0.003 + 0.010 * behind + 0.005 * q.sk.agg
-    if (q.tackleT > 0) foulP *= 2.2
+    if (fromBack) foulP = 0.02 + 0.03 * behind
+    if (q.tackleT > 0) foulP *= fromBack ? 1.5 : 2.2
     if (roll < p + foulP) {
-      foul(st, q, b.x, b.y, 0.02 + 0.08 * behind, 'foul')
+      if (fromBack) foul(st, q, b.x, b.y, 0.7, 'foul', clearChance(st, o, q) ? 2 : 1)
+      else foul(st, q, b.x, b.y, 0.02 + 0.08 * behind, 'foul')
       return
     }
   }
@@ -534,20 +580,24 @@ export function slideContest(st: GameState, q: Player): void {
       }
       return
     }
+    const fromBack = tackleFromBack(o, q)
     if (d > 0.7 || b.z > 0.8) {
-      // 공은 못 건드리고 사람만 쳤다 → 파울
+      // 공은 못 건드리고 사람만 쳤다 → 파울 (뒤에서면 경고, 명백한 득점 기회면 퇴장 — 2026-09-15)
       if (dist(fx, fy, o.x, o.y) < 1.0 && st.tick - q.lastKick > 20) {
         const behind = fromBehind(o, q)
         q.lastKick = st.tick
-        foul(st, q, o.x, o.y, 0.08 + 0.22 * behind, 'foul')
+        if (fromBack) foul(st, q, o.x, o.y, 0.9, 'foul', clearChance(st, o, q) ? 2 : 1)
+        else foul(st, q, o.x, o.y, 0.08 + 0.22 * behind, 'foul')
       }
       return
     }
-    if (rand(st.rng) >= 0.45 + 0.4 * q.sk.tck) {
+    // 뒤에서 미끄러져 들어간 슬라이딩은 공을 먼저 건드려도 성공률 ×0.4 — 대개 발을 건다
+    if (rand(st.rng) >= (0.45 + 0.4 * q.sk.tck) * (fromBack ? 0.4 : 1)) {
       // 태클 실패 — 발을 걸었다
       const behind = fromBehind(o, q)
       q.lastKick = st.tick
-      foul(st, q, o.x, o.y, 0.06 + 0.20 * behind, 'foul')
+      if (fromBack) foul(st, q, o.x, o.y, 0.9, 'foul', clearChance(st, o, q) ? 2 : 1)
+      else foul(st, q, o.x, o.y, 0.06 + 0.20 * behind, 'foul')
       return
     }
     o.lastKick = st.tick

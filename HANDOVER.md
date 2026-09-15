@@ -1,4 +1,4 @@
-# HANDOVER — 2026-09-15 (25차)
+# HANDOVER — 2026-09-15 (26차)
 
 > **이 문서가 최신입니다.** 단계 1~7 이 전부 들어가 있고, 2026-09-10~11 에 사용자가 직접 해 보고 낸 **제보·요청 42건**을 반영했습니다.
 > 14차(11일 오후)는 **골키퍼 선방 현실화 → 교체 5명/3회 전술판 → 체력 → 스로인 → 프리킥 오프사이드·조준·궤적 → D 압박 파울** 이었습니다. 체력 완화로 속도 A/B 가 다시 올라간 것(79.8)도 **속도 폭 재축소**로 잡았습니다. 이제부터 **커밋·push 는 자동**입니다(사용자 지시).
@@ -80,6 +80,7 @@
 | 15 | **전력질주 모션** `AnimInput.sprint` | `render3d/player3d.ts` · `renderer3d.ts animOf(p, fr, st)` | G-45 (브라우저 미확인) |
 | 15 | **GK 다이브 뒤 `ACT_FALLEN` 30틱** — 못 잡고 몸에 맞은 공만 튕김 · 렌더 `rig.wasDive` | `core/sim.ts` · `core/ball.ts gkCatch` · `player3d.ts` | G-46 (DESIGN 4.7 미반영 · 브라우저 미확인) |
 | 16 (9/15) | **개발 계획서** — FC 온라인 대회 영상(FSL SUMMER wonder08 vs Exito) 정지 화면 분석 → 엔진·화면 차이표·로드맵·실사 캐릭터 옵션(Mixamo 권장)·라이선스 확인 | `docs/개발계획-FC온라인-벤치마크.md` | CHANGELOG 9/15 |
+| 26 (9/15) | **실사 캐릭터 "난리" 수정** — T포즈(같은 클립 두 액션 → run 복제), 루트 모션 제거(`stripRootMotion`, 빌드 도구도), 뼈 이름 정규식(`mixamorig5…`), 킥·패스 클립을 차는 순간(`strikeTime`) 앞에서 제 속도로. `__klo.renderer()` · `tools/char/inspect.mjs` | `render3d/playerReal.ts` · `tools/char/build.mjs` · `tools/char/inspect.mjs` · `game/session.ts` | CHANGELOG 9/15 · 캐릭터-교체-절차 2·4 · DESIGN 7.2 |
 | 25 (9/15) | **팀 전술 7종 · 개인 전술 · 세레모니 3종** — `core/tactics.ts`(TEAM_TACTICS · ROLES · roleTraits · defaultPresets · normalizeSliders), `Sliders` 에 tempo/buildup/defStyle, `Player.role/rt`, `SquadConfig.roles`, ai.ts(앵커 fwd/back/wide · run · box · hold · drop · 템포 · 빌드업 · 수비 방식 · 세트피스 인원), ball.ts gkDistribute(빌드업), 스쿼드 코드 v2(386비트), 스쿼드 화면 전술 패널·역할 상자, 세레모니 `celeStyle` + 리플레이 억제 | `core/tactics.ts` · `core/state.ts` · `core/sim.ts` · `core/ai.ts` · `core/ball.ts` · `cards/squad.ts` · `cards/squadcode.ts` · `ui/squad.ts` · `ui/style.css` · `render3d/renderer3d.ts` · `player3d.ts` · `playerReal.ts` · `tests/tactics.test.ts` | CHANGELOG 9/15 · DESIGN 4.10a · 5.8 · 5.9 · DECISIONS G-47·48 · 가이드 3·4 |
 | 24 (9/15) | **저녁 제보 11건** — GK 전용 키(D 펀트·A 던지기·S 패스·0.5 s 자동 배급), GK 배급 패스 길 검사, 공 바라보기, 광고판 회전 순서, 스루 목표·세기·오차, 박스 침투(사이드 크로스), 하이 크로스 머리 위 낙하, 대인마킹 골사이드(`markOf`)·커버 골문 쪽, 세트피스 배치(`setPieceAttack/Defend` — 박스 여섯 자리·벽·대인), Ch38 캐릭터(부위별 킷·킥/패스 클립·walk 대체) | `core/sim.ts` · `core/ball.ts` · `core/ai.ts` · `core/state.ts` · `render3d/pitch3d.ts` · `playerReal.ts` · `tools/char/build.mjs` · `public/models/player.glb` | CHANGELOG 9/15 · DESIGN 3.1 · 4.5 · 4.7 · 4.10 · 가이드 |
 | 23 (9/15) | **P4 연출** — 리플레이 골문 뒤 → 측면 컷(`ViewInfo.replayCam`), 골망 출렁임(`Pitch3D.netHit/update`), 하프타임 통계(`session.showHalfStats/statsTable`), 세레모니 FOV 19 | `render3d/renderer3d.ts` · `pitch3d.ts` · `game/session.ts` | CHANGELOG 9/15 · DESIGN 4.8b |
@@ -238,6 +239,11 @@
 ---
 
 ## 주의사항 & 교훈
+
+- **(26차) three.js `mixer.clipAction(clip)` 은 같은 클립이면 같은 액션을 돌려준다** — 한 클립을 두 속도로 쓰려면 `clip.clone()`. 안 그러면 가중치가 서로 덮여 합이 0 이 되는 순간 **바인드 포즈(T포즈)** 가 나온다. 실사가 "난리"였던 첫째 원인.
+- **(26차) Mixamo 는 "In Place" 를 켜서 받거나, 못 켰으면 Hips x·z 를 지운다** — 자리는 sim 이 정하므로 클립에 전진이 있으면 되돌아오는 순간 순간이동처럼 보인다. `tools/char/inspect.mjs` 가 Hips 이동 폭을 찍어 준다(run 2.5 m · kick 2.8 m 였다).
+- **(26차) 뼈 이름은 정확 일치로 찾지 말 것** — `mixamorig`, `mixamorig:`, `mixamorig5` 다 나온다. 못 찾으면 오버레이가 **조용히** 꺼지니 로더에서 못 찾은 뼈는 콘솔에 남긴다.
+- **(26차) 브라우저 패널이 가려져 있으면 rAF 가 멈춰 리그 상태가 옛것** — 측정 전에 `__klo.frameNow()` 를 몇 번 돌려 프레임을 강제로 그린다. 스크린샷도 5초 타임아웃이 잦다.
 
 - **(25차) 유튜브 영상은 이 환경에서 못 본다** — 자동 자막 트랙이 빈 응답, 스크립트 패널 0줄, 브라우저 패널 캡처는 창이 가려지면 5초 타임아웃. 영상을 근거로 삼아야 하면 사용자에게 **캡처 몇 장**을 부탁하는 것이 빠르다.
 - **(25차) 역할은 "이름"이 아니라 "계수"로 sim 에 넣는다** — `RoleTraits` 7개 숫자만 `ai.ts` 가 본다. 자리군마다 역할 뜻이 달라도 AI 분기가 안 는다. 역할 번호는 **자리**에 붙고, 포메이션을 바꾸면 전부 0 (같은 숫자가 다른 뜻이 되는 것을 막는다).

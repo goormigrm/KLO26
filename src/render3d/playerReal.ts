@@ -17,17 +17,60 @@ import { BASE_H, numberTexture, type AnimInput, type Kit, type Rig } from './pla
 export interface CharacterLib {
   scene: THREE.Group
   idle: THREE.AnimationClip
-  /** 없으면 run 을 느리게 튼다 */
-  walk: THREE.AnimationClip | null
+  /**
+   * walk 클립. 파일에 없으면 **run 을 복제한 별도 클립**이다 — 같은 클립 객체로 `clipAction` 을 두 번 부르면
+   * three.js 가 같은 액션을 돌려줘 walk 가중치가 run 에 덮이고, 걷는 속도에서 가중치 합이 0 → T포즈가 됐다 (2026-09-15 사용자 제보 "실사는 완전 난리")
+   */
+  walk: THREE.AnimationClip
+  walkIsRun: boolean
   run: THREE.AnimationClip
   /** 있으면 절차적 킥 대신 클립 (Mixamo "Strike"·"Soccer Pass") */
   kick: THREE.AnimationClip | null
   pass: THREE.AnimationClip | null
+  /** 킥·패스 클립에서 "차는 순간"(초) — 오른 허벅지 회전이 가장 빠른 때. 클립을 그 조금 앞에서 시작한다 */
+  kickAt: number
+  passAt: number
   /** 바인드 포즈 높이 (m) */
   height: number
   /** 클립이 원래 만들어진 이동 속도 (m/s) — 재생 속도를 sim 속도에 맞출 때 */
   walkSpeed: number
   runSpeed: number
+}
+
+/**
+ * Hips 위치 트랙의 수평 이동(x·z)을 지운다 — Mixamo 를 "In Place" 없이 받으면 달리기가 0.5 초마다 2.5 m,
+ * 킥이 2.8 m 앞으로 나갔다 되돌아온다(2026-09-15 계측). 자리는 sim 이 정하므로 렌더 클립은 제자리여야 한다. 위아래(y)는 남긴다
+ */
+function stripRootMotion(clip: THREE.AnimationClip): void {
+  for (const t of clip.tracks) {
+    if (!/hips\.position$/i.test(t.name)) continue
+    const v = t.values
+    for (let i = 3; i < v.length; i += 3) {
+      v[i] = v[0]
+      v[i + 2] = v[2]
+    }
+  }
+}
+
+/** 오른 허벅지(RightUpLeg) 회전이 가장 빠른 순간(초) — 킥·패스 클립의 "차는 순간". 트랙이 없으면 0 */
+function strikeTime(clip: THREE.AnimationClip): number {
+  const t = clip.tracks.find((k) => /RightUpLeg\.quaternion$/i.test(k.name))
+  if (!t) return 0
+  const times = t.times
+  const v = t.values
+  let best = 0
+  let bestT = 0
+  for (let i = 1; i < times.length; i++) {
+    const a = (i - 1) * 4
+    const b = i * 4
+    const dot = Math.min(1, Math.abs(v[a] * v[b] + v[a + 1] * v[b + 1] + v[a + 2] * v[b + 2] + v[a + 3] * v[b + 3]))
+    const w = (2 * Math.acos(dot)) / Math.max(1e-6, times[i] - times[i - 1])
+    if (w > best) {
+      best = w
+      bestT = times[i]
+    }
+  }
+  return bestT
 }
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/player.glb`
@@ -53,7 +96,21 @@ export function loadCharacterLib(): Promise<CharacterLib> {
       scene.updateMatrixWorld(true)
       const box = new THREE.Box3().setFromObject(scene)
       const height = Math.max(0.5, box.max.y - box.min.y)
-      return { scene, idle: find('idle'), walk: opt('walk'), run: find('run'), kick: opt('kick'), pass: opt('pass'), height, walkSpeed: 1.6, runSpeed: 5.0 }
+      for (const c of g.animations) stripRootMotion(c)
+      const run = find('run')
+      const walkClip = opt('walk')
+      let walk = walkClip
+      if (!walk) {
+        walk = run.clone()
+        walk.name = 'walk'
+      }
+      const kick = opt('kick')
+      const pass = opt('pass')
+      return {
+        scene, idle: find('idle'), walk, walkIsRun: !walkClip, run, kick, pass,
+        kickAt: kick ? strikeTime(kick) : 0, passAt: pass ? strikeTime(pass) : 0,
+        height, walkSpeed: 1.6, runSpeed: 5.0,
+      }
     })
     libPromise.catch(() => {
       libPromise = null // 다음에 다시 시도할 수 있게
@@ -163,9 +220,20 @@ interface Bones {
   head: THREE.Object3D | null
 }
 
+/**
+ * 뼈 찾기 — Mixamo 접두어는 `mixamorig`, `mixamorig:`, **`mixamorig5`**(Ch38 처럼 숫자가 붙는다) 로 제각각이고
+ * GLTFLoader 가 ':' 을 지운다. 접두어 뒤 이름만 맞춘다 (2026-09-15: 정확 일치로 찾다가 전부 놓쳐 킥·세레모니·등번호가 꺼져 있었다)
+ */
 function bone(model: THREE.Object3D, name: string): THREE.Object3D | null {
-  return model.getObjectByName(`mixamorig${name}`) ?? model.getObjectByName(`mixamorig:${name}`) ?? null
+  const re = new RegExp(`^mixamorig\\d*:?${name}$`, 'i')
+  let found: THREE.Object3D | null = null
+  model.traverse((o) => {
+    if (!found && re.test(o.name)) found = o
+  })
+  return found
 }
+
+let warnedBones = false
 
 export interface RealRig extends Rig {
   body: THREE.Group
@@ -233,8 +301,8 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
 
   const mixer = new THREE.AnimationMixer(model)
   const idle = mixer.clipAction(lib.idle)
-  // walk 클립이 없으면 run 을 느리게 — 두 번째 액션으로 같은 클립을 쓴다
-  const walk = lib.walk ? mixer.clipAction(lib.walk) : mixer.clipAction(lib.run, undefined, THREE.NormalAnimationBlendMode)
+  // walk 는 늘 별도 클립(없으면 로더가 run 을 복제해 둔다) — 같은 클립이면 같은 액션이 돌아와 T포즈가 난다
+  const walk = mixer.clipAction(lib.walk)
   const run = mixer.clipAction(lib.run)
   for (const a of [idle, walk, run]) {
     a.enabled = true
@@ -243,7 +311,7 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
     a.play()
   }
   idle.setEffectiveWeight(1)
-  const walkSpeed = lib.walk ? lib.walkSpeed : lib.runSpeed * 0.55
+  const walkSpeed = lib.walkIsRun ? lib.runSpeed * 0.55 : lib.walkSpeed
   // 킥·패스 클립 (있으면) — 한 번 재생, 끝나면 멈춘다
   const kickAct = lib.kick ? mixer.clipAction(lib.kick) : null
   const passAct = lib.pass ? mixer.clipAction(lib.pass) : null
@@ -269,6 +337,12 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
     rForeArm: bone(model, 'RightForeArm'),
     head: bone(model, 'Head'),
   }
+  // 못 찾은 뼈는 오버레이가 조용히 꺼지므로 한 번은 알린다 (2026-09-15: Ch38 의 mixamorig5 접두어를 전부 놓쳤었다)
+  if (!warnedBones) {
+    const missing = (Object.keys(bones) as (keyof Bones)[]).filter((k) => !bones[k])
+    if (missing.length) console.warn(`[char] 뼈를 못 찾았다: ${missing.join(', ')} — 킥·세레모니·등번호 위치 오버레이가 꺼진다`)
+    warnedBones = true
+  }
 
   let kickT = 0
   let headT = 0
@@ -290,14 +364,17 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
     animate(a: AnimInput, dt: number): void {
       if (a.action === ACT_KICK && lastAction !== ACT_KICK) {
         kickT = 0.36
-        // 클립이 있으면 절차적 킥 대신 — 슛은 kick, 패스는 pass. 클립을 0.55 초에 맞춰 돌린다
+        // 클립이 있으면 절차적 킥 대신 — 슛은 kick, 패스는 pass. 클립 전체를 압축해 돌리지 않고(조깅+스트라이크 1.3 초를
+        // 0.55 초에 넣으면 허둥댄다) **차는 순간 0.14 초 앞에서 제 속도로** 시작해 0.6 초만 튼다
         const want = a.shot ? kickAct ?? passAct : passAct ?? kickAct
         if (want) {
           if (clipKick) clipKick.setEffectiveWeight(0)
           clipKick = want
-          clipT = 0.55
-          const dur = want.getClip().duration
-          want.reset().setEffectiveTimeScale(Math.max(0.5, dur / 0.55)).setEffectiveWeight(1).play()
+          const at = want === kickAct ? lib.kickAt : lib.passAt
+          const t0 = Math.max(0, at - 0.14)
+          want.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).play()
+          want.time = t0
+          clipT = Math.max(0.3, Math.min(0.6, want.getClip().duration - t0))
           kickT = 0 // 절차적 킥은 끈다
         }
       }

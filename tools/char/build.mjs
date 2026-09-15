@@ -85,7 +85,15 @@ for (const f of animFiles) {
       const inA = s.getInput()
       const outA = s.getOutput()
       const inp = doc.createAccessor().setType('SCALAR').setArray(inA.getArray().slice()).setBuffer(buffer)
-      const oup = doc.createAccessor().setType(outA.getType()).setArray(outA.getArray().slice()).setBuffer(buffer)
+      const outArr = outA.getArray().slice()
+      // 루트 모션 제거 — Hips 위치의 x·z 를 첫 프레임에 고정 (In Place 없이 받은 Mixamo 클립이 2~3 m 전진했다 되돌아온다). --keep-root 로 남긴다
+      if (!args.includes('--keep-root') && /hips$/i.test(norm(target.getName())) && ch.getTargetPath() === 'translation') {
+        for (let i = 3; i < outArr.length; i += 3) {
+          outArr[i] = outArr[0]
+          outArr[i + 2] = outArr[2]
+        }
+      }
+      const oup = doc.createAccessor().setType(outA.getType()).setArray(outArr).setBuffer(buffer)
       const sm = doc.createAnimationSampler().setInput(inp).setOutput(oup).setInterpolation(s.getInterpolation())
       const c = doc.createAnimationChannel().setTargetNode(target).setTargetPath(ch.getTargetPath()).setSampler(sm)
       out.addSampler(sm).addChannel(c)

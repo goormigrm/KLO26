@@ -240,7 +240,7 @@ describe('스쿼드 코드 v2 · 검증 · 정규화', () => {
     expect(n.roles!.every((r) => r === 0)).toBe(true)
     const cfg = toSquadConfig(n, '팀', '팀')
     expect(cfg.roles).toHaveLength(START_SIZE)
-    expect(cfg.presets[0].defStyle).toBeDefined()
+    expect(cfg.presets?.[0].defStyle).toBeDefined()
   })
 })
 

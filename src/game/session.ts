@@ -206,6 +206,8 @@ export class Session {
       state: () => this.state,
       tick: () => this.state.tick,
       info: () => this.renderer.info,
+      // 리그·씬 검사용 (실사 캐릭터 자세 문제를 콘솔에서 뜯어볼 때, 2026-09-15)
+      renderer: () => this.renderer,
       // 두 브라우저가 같은 경기를 보고 있는지 대조할 때 쓴다 (60틱마다 쌓인다)
       hashes: () => [...this.hashes.entries()],
       snd: () => this.snd,

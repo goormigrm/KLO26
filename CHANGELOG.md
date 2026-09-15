@@ -10,7 +10,9 @@
 - 찰흙·실사가 같은 `Rig` 인터페이스(root · height · animate · dispose) — 렌더러는 구분하지 않는다. ⚙ 설정 **"선수 그래픽: 실사 / 찰흙"**(기본 실사, 경기 도중 전환). 로비에서 파일을 미리 받고, 못 받으면 찰흙으로 남는다.
 - 임시 캐릭터는 three.js 예제의 **Soldier**(Mixamo 캐릭터, 헬멧 군인, 11k 삼각형, 2.1 MB) — 실사 비율·모션캡처 달리기·팀색 물들이기·성능을 검증했다. **최종 인간 캐릭터는 Mixamo 에서 받아야 한다** → [docs/캐릭터-교체-절차.md](docs/캐릭터-교체-절차.md).
 - 성능: 22명 실사 50만 삼각형(그림자 패스 포함) · 드로우콜 125~180 · **30~51 fps**(찰흙 60). 그림자맵 4096 → 2048. 남은 최적화는 P0(그림자 범위를 공 주변으로) 에서.
-- 다음: P1-b 변환 도구(`npm run char:build` — fbx2gltf + gltf-transform), Mixamo 인간 캐릭터·축구 클립 투입, P0 화면 인상.
+- **P1-b 변환 도구** `npm run char:build -- <FBX 폴더>` (`tools/char/build.mjs`) — fbx2gltf 로 FBX→GLB, @gltf-transform 으로 애니 클립을 뼈 이름으로 캐릭터에 이식(파일 이름 = 클립 이름), dedup·prune·resample·quantize(위치·법선·UV 만). Blender 불필요.
+  Mixamo 샘플(`Samba Dancing.fbx`)로 검증 — 2.6 MB · 스킨 2 · 클립 53채널. devDependencies: fbx2gltf 0.9.7 · @gltf-transform/{core,extensions,functions} 4.5.
+- 다음: **사용자가 Mixamo 에서 인간 캐릭터 + 축구 클립 FBX 를 받아** `C:\assets\mixamo\` 에 → `npm run char:build` → 축구 클립을 `playerReal.ts` 에 연결(P1-c) → P0 화면 인상.
 
 ## 2026-09-15 — 📋 개발 계획서: FC 온라인 대회 영상 벤치마크 · 실사 캐릭터 검토
 

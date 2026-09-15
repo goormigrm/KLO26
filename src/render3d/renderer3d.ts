@@ -56,6 +56,10 @@ export interface ViewInfo {
   controlled: number
   /** 리플레이 재생 중 — 카메라를 바짝 당긴다 */
   replay?: boolean
+  /** 리플레이 앵글 (P4, 2026-09-15) — 앞 절반은 골문 뒤, 뒤 절반은 측면 낮은 컷. 없으면 방송 카메라(바짝) */
+  replayCam?: 'behind' | 'side'
+  /** 리플레이가 보는 골문의 x (sim) — 득점 팀이 공격한 골문 */
+  replayGoalX?: number
   /** 세트피스 궤적 미리보기 — 킥커가 D/A 를 홀드 중일 때 세션이 계산해 준다 (2026-09-11) */
   aim?: KickPreview | null
   /** 슛·패스 홀드 파워 0~1 — 조작 선수 발밑 바 (2026-09-15, FC 온라인 방식) */
@@ -359,6 +363,7 @@ export class Renderer3D {
       const e = events[i]
       if (e.type === 'card') this.refs.showCard(e.n ?? 1, e.x, e.y)
       else if (e.type === 'offside') this.refs.raiseFlag(e.y)
+      else if (e.type === 'goal') this.pitch.netHit(e.x > 0 ? 1 : -1, e.y) // 골망 출렁임 (P4)
     }
   }
 
@@ -577,6 +582,7 @@ export class Renderer3D {
       ;(this.powFill.material as THREE.MeshBasicMaterial).color.setHex(hold > 0.85 ? 0xf85149 : hold > 0.55 ? 0xffb347 : 0xffe14a)
     } else this.powBar.visible = false
     this.refs.update(curr, dt)
+    this.pitch.update(dt)
 
     // ---- 카메라 ----
     // 세레모니 중엔 골망 속 공이 아니라 **득점자(모이는 곳)** 를 따라간다 (2026-09-11 — 공을 따르면 모임이 화면 밖)
@@ -591,7 +597,7 @@ export class Renderer3D {
     }
     const tgt = broadcastTarget(fx, fy, fvx)
     if (view.replay) tgt.fov = Math.min(tgt.fov, 20) // 리플레이는 바짝
-    else if (curr.phase === 'goal') tgt.fov = Math.min(tgt.fov, 24) // 세레모니도 조금 당긴다
+    else if (curr.phase === 'goal') tgt.fov = Math.min(tgt.fov, 19) // 세레모니 클로즈업 (P4: 24 → 19)
     if (!this.camInit) {
       this.camX = tgt.x
       this.camLookY = tgt.lookY
@@ -661,6 +667,28 @@ export class Renderer3D {
       ly += (1.0 - ly) * k
       lz += (-lookSy - lz) * k
       fovNow += (spFov - fovNow) * k
+    }
+    // ---- 리플레이 앵글 (P4): 골문 뒤 → 측면 낮은 컷. 컷은 즉시(방송 리플레이처럼) ----
+    if (view.replay && view.replayCam && view.replayGoalX !== undefined) {
+      const gx = view.replayGoalX
+      const gdir = gx > 0 ? 1 : -1
+      if (view.replayCam === 'behind') {
+        px = gx + gdir * 13
+        py = 6.5
+        pz = -by * 0.35
+        lx = bx
+        ly = 0.6
+        lz = -by
+        fovNow = 30
+      } else {
+        px = bx - gdir * 9
+        py = 3.2
+        pz = HALF_W * 0.62
+        lx = bx + gdir * 2
+        ly = 0.8
+        lz = -by
+        fovNow = 26
+      }
     }
     if (this.spBlend > 0.5) {
       // 키커 뒤 카메라에서는 머리 위 이름표·화살표가 화면을 가린다 — 발밑 링만 남긴다

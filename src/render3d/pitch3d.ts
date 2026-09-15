@@ -12,6 +12,10 @@ const GOAL_DEPTH = 2.0
 const POST_VIS_R = 0.09
 
 export interface Pitch3D {
+  /** 골망 출렁임 — 골이 들어간 골문(dir)의 y 자리에 충격 (P4, 2026-09-15) */
+  netHit(dir: number, y: number): void
+  /** 매 프레임 — 골망 진동 감쇠 */
+  update(dt: number): void
   group: THREE.Group
   sun: THREE.DirectionalLight
   /** 홈 팀 색으로 관중석·스탠드를 다시 칠한다 (2026-09-11 — 경기마다 홈이 바뀐다) */
@@ -201,7 +205,13 @@ function cylinder(r: number, len: number, m: THREE.Material): THREE.Mesh {
 }
 
 /** 골대 하나 — 포스트·크로스바·뒤 기둥·네트 격자. dir = 골문이 있는 x 부호 */
-function buildGoal(dir: number, postM: THREE.Material, netM: THREE.LineBasicMaterial): THREE.Group {
+interface GoalBuilt {
+  group: THREE.Group
+  net: THREE.LineSegments
+  base: Float32Array
+}
+
+function buildGoal(dir: number, postM: THREE.Material, netM: THREE.LineBasicMaterial): GoalBuilt {
   const g = new THREE.Group()
   const x0 = dir * HALF_L
   const xb = dir * (HALF_L + GOAL_DEPTH)
@@ -242,10 +252,13 @@ function buildGoal(dir: number, postM: THREE.Material, netM: THREE.LineBasicMate
       pts.push(xx, 0, s * GOAL_HALF, xx, yTop, s * GOAL_HALF) // 옆 세로
     }
   }
+  const base = new Float32Array(pts)
   const geo = new THREE.BufferGeometry()
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3))
-  g.add(new THREE.LineSegments(geo, netM))
-  return g
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3))
+  const net = new THREE.LineSegments(geo, netM)
+  net.frustumCulled = false
+  g.add(net)
+  return { group: g, net, base }
 }
 
 export function buildPitch(opts: PitchOptions): Pitch3D {
@@ -272,7 +285,11 @@ export function buildPitch(opts: PitchOptions): Pitch3D {
   // ---- 골대 ----
   const postM = new THREE.MeshLambertMaterial({ color: 0xf6f6f6 })
   const netM = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.32 })
-  group.add(buildGoal(1, postM, netM), buildGoal(-1, postM, netM))
+  const goals: [GoalBuilt, GoalBuilt] = [buildGoal(1, postM, netM), buildGoal(-1, postM, netM)]
+  group.add(goals[0].group, goals[1].group)
+  // 골망 출렁임 상태 — 충격 시각·자리 (P4)
+  const netHits: { t: number; y: number }[] = [{ t: -10, y: 0 }, { t: -10, y: 0 }]
+  let netClock = 0
 
   // ---- 광고판 띠 — 피치 둘레 (2026-09-15, P0) ----
   const board = boardTexture(0x2c3644)
@@ -389,6 +406,51 @@ export function buildPitch(opts: PitchOptions): Pitch3D {
   return {
     group,
     sun,
+    netHit(dir: number, y: number) {
+      const k = dir > 0 ? 0 : 1
+      netHits[k] = { t: netClock, y }
+    },
+    update(dt: number) {
+      netClock += dt
+      for (let k = 0; k < 2; k++) {
+        const h = netHits[k]
+        const age = netClock - h.t
+        const gb = goals[k]
+        const pos = gb.net.geometry.getAttribute('position') as THREE.BufferAttribute
+        const arr = pos.array as Float32Array
+        if (age > 1.4) {
+          if (arr[0] !== gb.base[0] || arr[arr.length - 1] !== gb.base[arr.length - 1]) {
+            arr.set(gb.base)
+            pos.needsUpdate = true
+          }
+          continue
+        }
+        // 감쇠 진동 — 공이 들어간 자리(y)에서 멀수록 작게, 뒤쪽 그물이 가장 크게
+        const dir = k === 0 ? 1 : -1
+        const amp = 0.55 * Math.exp(-3.2 * age) * Math.sin(age * 14)
+        const xb = dir * (HALF_L + GOAL_DEPTH)
+        for (let i = 0; i < arr.length; i += 3) {
+          const bx = gb.base[i]
+          const by = gb.base[i + 1]
+          const bz = gb.base[i + 2]
+          // 뒤 그물(x ≈ xb)·위 그물(x 사이) 만 — 골대 위치 x0 의 점은 고정
+          const depth = Math.abs(bx - dir * HALF_L) / GOAL_DEPTH // 0 골라인 ~ 1 뒤 그물
+          if (depth < 0.05) {
+            arr[i] = bx
+            arr[i + 1] = by
+            arr[i + 2] = bz
+            continue
+          }
+          const dy = -bz - h.y // three z = −sim y
+          const w = Math.exp(-(dy * dy) / 3.2) * depth * (0.3 + 0.7 * Math.min(1, by / 1.6))
+          arr[i] = bx + dir * amp * w
+          arr[i + 1] = by - Math.abs(amp) * 0.15 * w
+          arr[i + 2] = bz
+        }
+        void xb
+        pos.needsUpdate = true
+      }
+    },
     setHomeColor(hex: number) {
       drawCrowd(crowd.canvas, hex)
       crowd.tex.needsUpdate = true

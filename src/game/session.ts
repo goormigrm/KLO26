@@ -8,7 +8,7 @@ import { synthSquad } from '../core/synth'
 import { clubSquad, squadClub, toSquadConfig, type Squad } from '../cards/squad'
 import { CLUBS } from '../data/pool'
 import { matchKits } from '../render3d/kits'
-import { TICK_MS, type Difficulty, type GameState } from '../core/state'
+import { HALF_L, TICK_MS, type Difficulty, type GameState } from '../core/state'
 import { SLOT_XY } from '../core/formation'
 import { previewRestartKick, type KickPreview } from '../core/rules'
 import type { Lockstep } from '../net/lockstep'
@@ -108,6 +108,8 @@ export class Session {
    */
   private subQueue: { out: number; in: number }[] = []
   private subSentTick = -1
+  /** 하프타임 통계 창이 떠 있다 — 후반 킥오프가 되면 닫는다 (P4) */
+  private halfStatsShown = false
   /** 키 표시용 — 마지막으로 sim 에 보낸 입력 */
   private lastInput: Input = { mx: 0, my: 0, buttons: 0, a: 0, b: 0 }
   /** 온라인: 상대 입력을 기다리기 시작한 시각 (−1 = 안 기다림) */
@@ -388,9 +390,14 @@ export class Session {
     this.renderer.onEvents(ev, this.evSeen)
     this.snd.onEvents(ev, this.sndSeen)
     this.sndSeen = ev.length
+    if (this.halfStatsShown && this.state.phase !== 'halftime') {
+      this.halfStatsShown = false
+      if (!this.overlay.hidden) this.hideOverlay()
+    }
     for (; this.evSeen < ev.length; this.evSeen++) {
       const e = ev[this.evSeen]
       if (e.type === 'end') this.showResult()
+      else if (e.type === 'half') this.showHalfStats()
       else if (e.type === 'sub') this.renderer.rebuildRig(this.state, e.player)
     }
   }
@@ -560,7 +567,11 @@ export class Session {
     capturePose(r.state, r.prevPose)
     applyFrame(r.state, r.frames[i + 1])
     const me = this.meTeam
-    this.renderer.draw(r.prevPose, r.state, r.pos - i, dt, { humanTeam: me, controlled: -1, replay: true })
+    // 앞 절반은 골문 뒤, 뒤 절반은 측면 낮은 컷 (P4). 골문 = 득점 팀이 공격한 쪽
+    const gt = this.state.goalTeam
+    const replayGoalX = gt >= 0 ? this.state.teams[gt].dir * HALF_L : undefined
+    const replayCam = r.pos < r.frames.length * 0.5 ? 'behind' : 'side'
+    this.renderer.draw(r.prevPose, r.state, r.pos - i, dt, { humanTeam: me, controlled: -1, replay: true, replayCam, replayGoalX })
     this.hud.update(this.state, { humanTeam: me, controlled: -1, message: this.message, replay: true })
     return true
   }
@@ -892,13 +903,43 @@ export class Session {
     this.acc = 0
   }
 
-  private showResult(reason = ''): void {
-    const st = this.state
-    const [h, a] = st.teams
-    const S = st.stats
+  /** 통계 표 — 결과 화면과 하프타임이 같이 쓴다 (P4) */
+  private statsTable(): string {
+    const S = this.state.stats
     const pct = (n: number, d: number): string => (d > 0 ? `${Math.round((n / d) * 100)}%` : '—')
     const possT = S[0].poss + S[1].poss
     const row = (label: string, v0: string, v1: string): string => `<tr><td>${v0}</td><th>${label}</th><td>${v1}</td></tr>`
+    return `<table class="stats">
+        ${row('슛', String(S[0].shots), String(S[1].shots))}
+        ${row('유효 슛', String(S[0].onTarget), String(S[1].onTarget))}
+        ${row('점유율', pct(S[0].poss, possT), pct(S[1].poss, possT))}
+        ${row('패스 성공', `${S[0].passOk}/${S[0].passes} (${pct(S[0].passOk, S[0].passes)})`, `${S[1].passOk}/${S[1].passes} (${pct(S[1].passOk, S[1].passes)})`)}
+        ${row('태클', String(S[0].tackles), String(S[1].tackles))}
+        ${row('코너킥', String(S[0].corners), String(S[1].corners))}
+        ${row('선방', String(S[0].saves), String(S[1].saves))}
+        ${row('파울', String(S[0].fouls), String(S[1].fouls))}
+        ${row('경고 · 퇴장', `${S[0].yellows} · ${S[0].reds}`, `${S[1].yellows} · ${S[1].reds}`)}
+        ${row('오프사이드', String(S[0].offsides), String(S[1].offsides))}
+      </table>`
+  }
+
+  /** 하프타임 5 초 동안 전반 통계 (P4, 2026-09-15). 경기는 멈추지 않는다 — 후반 킥오프가 되면 닫힌다 */
+  private showHalfStats(): void {
+    if (this.state.done) return
+    const [h, a] = this.state.teams
+    const box = this.overlay.querySelector('#overlay-box') as HTMLElement
+    box.classList.remove('wide', 'subwide')
+    box.innerHTML = `
+      <h2>전반 종료 — ${h.short} ${h.goals} : ${a.goals} ${a.short}</h2>
+      <p class="hintline">후반은 곧 시작합니다 (진영이 바뀝니다)</p>
+      ${this.statsTable()}`
+    this.overlay.hidden = false
+    this.halfStatsShown = true
+  }
+
+  private showResult(reason = ''): void {
+    const st = this.state
+    const [h, a] = st.teams
     const scorers = st.events
       .filter((e) => e.type === 'goal')
       .map((e) => `${st.teams[e.team].short} ${e.player >= 0 ? st.players[e.player].spec.name : '(자책)'} ${Math.max(1, Math.round((e.tick / 60 / st.halfSec) * 45))}'`)
@@ -915,18 +956,7 @@ export class Session {
       <h2>${h.short} ${h.goals} : ${a.goals} ${a.short}</h2>
       <p><b>${verdict}</b>${reason ? ` · ${reason}` : ''}${scorers ? ` · ${scorers}` : ''}</p>
       ${netLine}
-      <table class="stats">
-        ${row('슛', String(S[0].shots), String(S[1].shots))}
-        ${row('유효 슛', String(S[0].onTarget), String(S[1].onTarget))}
-        ${row('점유율', pct(S[0].poss, possT), pct(S[1].poss, possT))}
-        ${row('패스 성공', `${S[0].passOk}/${S[0].passes} (${pct(S[0].passOk, S[0].passes)})`, `${S[1].passOk}/${S[1].passes} (${pct(S[1].passOk, S[1].passes)})`)}
-        ${row('태클', String(S[0].tackles), String(S[1].tackles))}
-        ${row('코너킥', String(S[0].corners), String(S[1].corners))}
-        ${row('선방', String(S[0].saves), String(S[1].saves))}
-        ${row('파울', String(S[0].fouls), String(S[1].fouls))}
-        ${row('경고 · 퇴장', `${S[0].yellows} · ${S[0].reds}`, `${S[1].yellows} · ${S[1].reds}`)}
-        ${row('오프사이드', String(S[0].offsides), String(S[1].offsides))}
-      </table>
+      ${this.statsTable()}
       <div class="row">
         ${this.cfg.net ? '' : '<button class="btn main" id="ov-again">다시 하기</button>'}
         <button class="btn secondary" id="ov-quit">로비로</button>

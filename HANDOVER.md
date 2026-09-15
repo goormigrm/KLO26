@@ -80,6 +80,7 @@
 | 15 | **전력질주 모션** `AnimInput.sprint` | `render3d/player3d.ts` · `renderer3d.ts animOf(p, fr, st)` | G-45 (브라우저 미확인) |
 | 15 | **GK 다이브 뒤 `ACT_FALLEN` 30틱** — 못 잡고 몸에 맞은 공만 튕김 · 렌더 `rig.wasDive` | `core/sim.ts` · `core/ball.ts gkCatch` · `player3d.ts` | G-46 (DESIGN 4.7 미반영 · 브라우저 미확인) |
 | 16 (9/15) | **개발 계획서** — FC 온라인 대회 영상(FSL SUMMER wonder08 vs Exito) 정지 화면 분석 → 엔진·화면 차이표·로드맵·실사 캐릭터 옵션(Mixamo 권장)·라이선스 확인 | `docs/개발계획-FC온라인-벤치마크.md` | CHANGELOG 9/15 |
+| 23 (9/15) | **P4 연출** — 리플레이 골문 뒤 → 측면 컷(`ViewInfo.replayCam`), 골망 출렁임(`Pitch3D.netHit/update`), 하프타임 통계(`session.showHalfStats/statsTable`), 세레모니 FOV 19 | `render3d/renderer3d.ts` · `pitch3d.ts` · `game/session.ts` | CHANGELOG 9/15 · DESIGN 4.8b |
 | 22 (9/15) | **락 배경음악 2곡 + 관중 응원** — `Sfx.startMusic('lobby'|'match')` 16분음표 시퀀서(드럼·베이스·디스토션 파워코드·리드), `chant()` 북·박수, 슛 swell. 경기 중에도 음악(작게) | `audio/sfx.ts` · `game/session.ts` | CHANGELOG 9/15 · DESIGN 7.3 |
 | 21 (9/15) | **헤딩** — `ACT_HEAD`, `ball.ts tryHeader`(사람 D/S/A · AI 위치), 공중볼 머리 판정(2.45 m, 몸 중심 반경), `markOnTarget` 공유, 렌더 점프 | `core/state.ts` · `core/sim.ts` · `core/ball.ts` · `player3d.ts` · `playerReal.ts` · `render/hud.ts` · `tests/header.test.ts` | CHANGELOG 9/15 · DESIGN 3.1 · 4.6 |
 | 20 (9/15) | **P3 엔진 움직임** — 침투 러닝(`ai.ts` `ot === ti` 분기, 지원 러닝보다 먼저 · `Player.runT` · 소유자 스루 선호), GK 다이브 2종(`gkCatch` 경로 높이 예측 → `diveHigh`, 뻗음 보정), 태클 넘어짐(`contestBall` 확률 · `slideContest` 항상). 봇 30판 골 3.7 · 파울 8.2 · 태클 21.3 · 패스 44% (넘어짐 완화 뒤 — 항상 넘어지게 했을 땐 파울 19.7) | `core/ai.ts` · `core/ball.ts` · `core/state.ts` · `core/sim.ts` · `player3d.ts` · `playerReal.ts` · `tests/p3_movement.test.ts` | CHANGELOG 9/15 · DESIGN 4.7 · 4.8 · 4.10 |
@@ -133,6 +134,7 @@
 | bash heredoc 으로 큰 python 패치 | 따옴표 파싱이 깨졌다 | 스크립트는 **Write 도구로 파일에** 쓰고 실행 |
 | 궤적 미리보기를 1 px `LineDashedMaterial` 로만 | 키커 뒤 시점에서 잔디에 묻혀 안 보였다 | 구슬(`InstancedMesh` 28개)을 등간격으로 얹었다 |
 | 브라우저 검증 중 src 를 고침 | vite 가 전체 리로드해 `__klo` 가 사라지고 경기가 날아갔다 | 검증을 다 끝낸 뒤 src 를 만진다 |
+| 스크린샷이 세 장 연속 같아서 리플레이 버그로 의심 | 브라우저 패널이 가려져 **rAF 가 0회** — sim(워커 틱)은 돌고 그리기만 멈춘 것 | `requestAnimationFrame` 횟수·`document.hasFocus()` 부터 재고 판단한다 |
 | 프리킥 재현 뒤 응답 사이에 시간이 흐름 | 사람 킥커 대기(6.8초)가 지나 AI 가 대신 찼다 | `st.phaseT = 99999` 로 붙잡고 한 배치 안에서 찍는다 |
 | 스로인 테스트에서 공을 라인 밖(34.4)에 놓음 | 첫 틱에 아웃 판정 | 손에 든 공은 라인 안쪽(33.9)에 |
 | 골 강제 재현 (공만 골라인 앞에 놓기) | 골키퍼가 잡았다 | 골키퍼를 14 m 치우고 22 m/s 로 |
@@ -203,7 +205,7 @@
 |---|---|---|
 | 0 | **15차 마무리** — 위 [미반영] 표 네 줄 | skip 해제 · 스크린샷 · DESIGN 4.8e · 가이드 |
 | 0-b | **캐릭터 1순위 (사용자 결정 9/15)** — P1-a PoC(`playerReal.ts`, 토글, Soldier 임시)와 **P1-b 변환 도구**(`npm run char:build`, Samba 샘플로 검증)까지 됐다. **막힌 곳: Mixamo 는 로그인이 필요해 사용자가 직접** 인간 캐릭터 + 축구 클립 FBX 를 받아 `C:\assets\mixamo\` 에 넣어야 한다([docs/캐릭터-교체-절차.md](docs/캐릭터-교체-절차.md) 2장 표). 그 뒤 **P1-c**: `npm run char:build` → `playerReal.ts` 에서 kick/slide/dive/fall/getup/throw/catch/celebrate 클립을 절차적 덧씌우기 자리에 연결 · fps 50+ | 22명 60 fps · GLB ≤ 8 MB · 킥/다이브 클립 |
-| 0-c | 로드맵 — P0 화면 인상 ✅ · **P3 엔진 움직임 ✅**(침투 러닝 · GK 다이브 2종 · 넘어짐 — 9/15). 남은 것: **P2 캐릭터 전면**(Mixamo FBX 가 와야 한다 — 0-b), **드리블 터치 간격**(P3 잔여 — 공이 발에서 떨어지는 틈에 뺏기 판정, 균형 재측정 필요), **P4 연출**(리플레이 2 앵글 · 네트 출렁임 · 하프타임 통계 · 세레모니 클로즈업) | 단계마다 커밋·스크린샷 |
+| 0-c | 로드맵 — P0 화면 인상 ✅ · P3 엔진 움직임 ✅ · **P4 연출 ✅**(리플레이 2 앵글 · 골망 · 하프타임 통계 · 클로즈업 — 9/15) · 헤딩 ✅ · 락 음악 ✅. 남은 것: **P2 캐릭터 전면**(Mixamo FBX 가 와야 한다 — 0-b), **드리블 터치 간격**(P3 잔여 — 균형 재측정 필요), **리플레이 측면 컷 눈으로 확인**(브라우저 패널 rAF 정지로 못 봤다 — 골 넣고 리플레이 뒤 절반이 측면 낮은 카메라인지), 봇 120판 파울·골 재확인 | 단계마다 커밋·스크린샷 |
 | 1 | 2차 피드백 반영 | 사용자가 "됐다" |
 | 2 | **강화가 값을 하게** — 수비 +2.7%p · 공격 +2.0%p (목표 8~15). 강화 +1 = 능력치 40종 +1 인데 스킬 곱셈에 묻힌다. 강화분을 스킬에 직접 얹는 안(레벨당 ×1.02)을 `attrcheck` 방식으로 재 볼 것 | `npm run verify 200` 또는 attrcheck 류에서 +8%p 이상 |
 | 3 | 파울 빈도 — 14차에서 13/판(태클 26)까지 내렸다. 남은 것은 봇의 슬라이딩(`slideContest`)·GK 차징 몫. 사용자 체감이 아직 많으면 그쪽 | `npm run balance -- 120` 에서 ≤ 11 |

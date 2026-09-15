@@ -44,7 +44,7 @@
 | [docs/DESIGN.md](docs/DESIGN.md) | **설계서 정본** — 규칙·조작·시뮬·카드·네트워크·화면·개발 단계·검증 기준 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 갈림길과 근거 — 사용자 결정 3건 · 기본안 17건 · 확인 필요 5건 |
 | [docs/PREP.md](docs/PREP.md) | 사용자가 직접 해야 하는 것 (허락 재확인 · 저장소 · Pages · 기기) |
-| [HANDOVER.md](HANDOVER.md) | 개발 인수인계 **정본** — 현재 상태, 다음 할 일, 작업 규칙 |
+| [HANDOVER.md](HANDOVER.md) · 개선 계획은 [docs/개발계획-FC온라인-벤치마크.md](docs/개발계획-FC온라인-벤치마크.md) | 개발 인수인계 **정본** — 현재 상태, 다음 할 일, 작업 규칙 |
 | [CHANGELOG.md](CHANGELOG.md) | 변경 이력 |
 | [docs/공지글-모음.md](docs/공지글-모음.md) | 공개 때 붙여 넣을 공지 문안 (지금은 틀만) |
 

@@ -79,6 +79,7 @@
 | 15 | **D 압박** — 소유자 0.35초 뒤 자리 · 방향키 25% · 자동 전력질주 | `core/sim.ts step` | G-44 (DESIGN 3.1 미반영) |
 | 15 | **전력질주 모션** `AnimInput.sprint` | `render3d/player3d.ts` · `renderer3d.ts animOf(p, fr, st)` | G-45 (브라우저 미확인) |
 | 15 | **GK 다이브 뒤 `ACT_FALLEN` 30틱** — 못 잡고 몸에 맞은 공만 튕김 · 렌더 `rig.wasDive` | `core/sim.ts` · `core/ball.ts gkCatch` · `player3d.ts` | G-46 (DESIGN 4.7 미반영 · 브라우저 미확인) |
+| 16 (9/15) | **개발 계획서** — FC 온라인 대회 영상(FSL SUMMER wonder08 vs Exito) 정지 화면 분석 → 엔진·화면 차이표·로드맵·실사 캐릭터 옵션(Mixamo 권장)·라이선스 확인 | `docs/개발계획-FC온라인-벤치마크.md` | CHANGELOG 9/15 |
 
 ### 스크린샷·GIF 다시 뜨기
 
@@ -191,6 +192,7 @@
 | 순위 | 작업 | 끝났다의 기준 |
 |---|---|---|
 | 0 | **15차 마무리** — 위 [미반영] 표 네 줄 | skip 해제 · 스크린샷 · DESIGN 4.8e · 가이드 |
+| 0-b | **FC 온라인 벤치마크 계획서 실행** — [docs/개발계획-FC온라인-벤치마크.md](docs/개발계획-FC온라인-벤치마크.md) P0(화면 인상, 렌더 전용) → P1(Mixamo 캐릭터 PoC). P1 첫 작업은 Mixamo 로그인 후 축구 애니메이션 목록 확정 | P0: 영상 옆 스크린샷 비교 · 60 fps. P1: 22명 60 fps · GLB ≤ 8 MB · 찰흙/실사 토글 |
 | 1 | 2차 피드백 반영 | 사용자가 "됐다" |
 | 2 | **강화가 값을 하게** — 수비 +2.7%p · 공격 +2.0%p (목표 8~15). 강화 +1 = 능력치 40종 +1 인데 스킬 곱셈에 묻힌다. 강화분을 스킬에 직접 얹는 안(레벨당 ×1.02)을 `attrcheck` 방식으로 재 볼 것 | `npm run verify 200` 또는 attrcheck 류에서 +8%p 이상 |
 | 3 | 파울 빈도 — 14차에서 13/판(태클 26)까지 내렸다. 남은 것은 봇의 슬라이딩(`slideContest`)·GK 차징 몫. 사용자 체감이 아직 많으면 그쪽 | `npm run balance -- 120` 에서 ≤ 11 |

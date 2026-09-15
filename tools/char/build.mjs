@@ -17,7 +17,10 @@ import { basename, extname, join, resolve, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import { NodeIO } from '@gltf-transform/core'
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions'
-import { dedup, prune, resample, quantize } from '@gltf-transform/functions'
+import { dedup, prune, resample, quantize, textureCompress, simplify } from '@gltf-transform/functions'
+import { MeshoptSimplifier } from 'meshoptimizer'
+import { PNG } from 'pngjs'
+import jpeg from 'jpeg-js'
 
 const require = createRequire(import.meta.url)
 
@@ -98,13 +101,82 @@ for (const f of animFiles) {
 for (const a of root.listAnimations()) if (a.getName() === '__char_clip') a.dispose()
 
 // ---- 3. 줄이기 · 저장 ----
+// 노멀맵은 뺀다 (nonPBR 캐릭터에 20 MB 짜리가 붙어 온다 — 우리 조명에선 차이가 안 보인다). --keep-normal 로 남긴다
+if (!args.includes('--keep-normal')) {
+  for (const m of root.listMaterials()) {
+    m.setNormalTexture(null)
+    m.setOcclusionTexture(null)
+  }
+}
+// 텍스처 1024 · JPEG(알파 없는 것) — 42 MB 를 몇 MB 로. --tex 512 로 더 줄인다
+const texIdx = args.indexOf('--tex')
+const texSize = texIdx >= 0 ? Number(args[texIdx + 1]) : 1024
+// 메시 단순화 — 22명이 뛰니 삼각형 12k 안팎이 목표. --ratio 0.5 로 조절 (1 = 안 줄임)
+const ratioIdx = args.indexOf('--ratio')
+const ratio = ratioIdx >= 0 ? Number(args[ratioIdx + 1]) : 0.3
+await MeshoptSimplifier.ready
 // 양자화는 위치·법선·UV 만 — JOINTS/WEIGHTS 는 건드리지 않는다(스킨을 지킨다)
 await doc.transform(
   dedup(),
   prune(),
   resample(),
-  quantize({ pattern: /^(POSITION|NORMAL|TEXCOORD_\d+)$/, quantizePosition: 14, quantizeNormal: 10, quantizeTexcoord: 12 }),
+  ...(ratio < 1 ? [simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.001, lockBorder: true })] : []),
 )
+// 텍스처는 하나씩 직접 — gltf-transform 의 textureCompress 는 16비트 PNG 에서 sharp 색공간 오류로 멈췄다.
+// 알파가 있으면 PNG(축소만), 없으면 JPEG. 실패한 텍스처는 뺀다(그 재질은 색만 남는다)
+// 순수 JS 로 — pngjs 디코드(8·16비트 PNG) / jpeg-js 디코드 → 박스 다운샘플 → 알파 있으면 PNG, 없으면 JPEG(jpeg-js).
+// (sharp 는 이 환경에서 Mixamo 의 16비트 PNG 에 'colourspace' 오류를 냈다 — 네이티브 의존을 피한다)
+function decodeImage(src, mime) {
+  if (mime === 'image/png' || src[0] === 0x89) {
+    const p = PNG.sync.read(src)
+    const alpha = p.colorType === 4 || p.colorType === 6
+    return { w: p.width, h: p.height, data: p.data, alpha }
+  }
+  const j = jpeg.decode(src, { useTArray: true, formatAsRGBA: true, maxMemoryUsageInMB: 1024 })
+  return { w: j.width, h: j.height, data: j.data, alpha: false }
+}
+function downsample(im, target) {
+  const f = Math.max(1, Math.ceil(Math.max(im.w, im.h) / target))
+  if (f === 1) return im
+  const w = Math.floor(im.w / f)
+  const h = Math.floor(im.h / f)
+  const out = new Uint8Array(w * h * 4)
+  const n = f * f
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let r = 0, g = 0, b = 0, a = 0
+      for (let dy = 0; dy < f; dy++) {
+        let i = ((y * f + dy) * im.w + x * f) * 4
+        for (let dx = 0; dx < f; dx++, i += 4) {
+          r += im.data[i]; g += im.data[i + 1]; b += im.data[i + 2]; a += im.data[i + 3]
+        }
+      }
+      const o = (y * w + x) * 4
+      out[o] = r / n; out[o + 1] = g / n; out[o + 2] = b / n; out[o + 3] = a / n
+    }
+  }
+  return { w, h, data: out, alpha: im.alpha }
+}
+for (const tex of root.listTextures()) {
+  const img = tex.getImage()
+  if (!img) continue
+  try {
+    const src = Buffer.from(img)
+    const im = downsample(decodeImage(src, tex.getMimeType()), texSize)
+    let out
+    if (im.alpha) {
+      const p = new PNG({ width: im.w, height: im.h })
+      p.data = Buffer.from(im.data)
+      out = PNG.sync.write(p, { deflateLevel: 9 })
+    } else out = jpeg.encode({ data: im.data, width: im.w, height: im.h }, 82).data
+    tex.setImage(new Uint8Array(out)).setMimeType(im.alpha ? 'image/png' : 'image/jpeg')
+    console.log(`  텍스처 ${tex.getName() || '?'}: ${(img.byteLength / 1e6).toFixed(1)} → ${(out.byteLength / 1e6).toFixed(2)} MB ${im.alpha ? 'png' : 'jpg'} ${im.w}×${im.h}`)
+  } catch (e) {
+    console.warn(`  텍스처 ${tex.getName() || '?'}: 변환 실패 — 뺀다 (${String(e).slice(0, 100)})`)
+    tex.dispose()
+  }
+}
+await doc.transform(prune(), quantize({ pattern: /^(POSITION|NORMAL|TEXCOORD_\d+)$/, quantizePosition: 14, quantizeNormal: 10, quantizeTexcoord: 12 }))
 mkdirSync(dirname(outPath), { recursive: true })
 await io.write(outPath, doc)
 rmSync(tmp, { recursive: true, force: true })

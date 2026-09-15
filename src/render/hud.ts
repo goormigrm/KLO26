@@ -59,7 +59,7 @@ export class Hud {
       </div>
       <div class="subs" data-k="subs"></div>
       <div class="keys" data-k="keys">
-        <b>방향키</b> 이동 · <b>E</b> 전력질주 · <b>S</b> 패스 / 선수 변경 · <b>W</b> 스루 / GK 돌진 · <b>A</b> 로빙 / 슬라이딩 · <b>D</b> 슛(홀드) / 압박(자동 추격) · 공중볼 <b>D</b> 헤딩 슛 · <b>S</b> 헤딩 패스 ·
+        <b>방향키</b> 이동 · <b>E</b> 전력질주 · <b>S</b> 패스 / 선수 변경 · <b>W</b> 스루 / GK 돌진 · <b>A</b> 로빙 / 슬라이딩 · <b>D</b> 슛(홀드) / 압박(자동 추격) · 공중볼 <b>D</b> 헤딩 슛 · <b>S</b> 헤딩 패스 · GK 공 <b>D</b> 펀트 <b>A</b> 던지기 <b>S</b> 패스 ·
         <b>Space</b> 태클 · <b>C</b> 견제 · <b>Q</b> 팀 압박 · <b>Q+D</b> 칩슛 · <b>Q+A</b> 하이 크로스 · <b>Shift</b> 페이스 컨트롤 · <b>[ ]</b> 전술 · <b>Esc</b> 메뉴·교체
       </div>`
     parent.appendChild(this.root)

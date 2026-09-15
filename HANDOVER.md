@@ -1,8 +1,8 @@
-# HANDOVER — 2026-09-11 (15차 · 중간)
+# HANDOVER — 2026-09-15 (24차)
 
 > **이 문서가 최신입니다.** 단계 1~7 이 전부 들어가 있고, 2026-09-10~11 에 사용자가 직접 해 보고 낸 **제보·요청 42건**을 반영했습니다.
 > 14차(11일 오후)는 **골키퍼 선방 현실화 → 교체 5명/3회 전술판 → 체력 → 스로인 → 프리킥 오프사이드·조준·궤적 → D 압박 파울** 이었습니다. 체력 완화로 속도 A/B 가 다시 올라간 것(79.8)도 **속도 폭 재축소**로 잡았습니다. 이제부터 **커밋·push 는 자동**입니다(사용자 지시).
-> **15차(저녁)는 시간이 끝나 중간에 멈췄습니다** — 패스 방향 · D 압박 · 전력질주 모션 · 골키퍼 다이브 회복 코드는 들어갔고 tsc·테스트 통과(1개 skip). **남은 것: 브라우저 검증, D 압박 테스트 세팅, DESIGN·가이드 문서 반영.** 아래 "다음 세션 0번".
+> **9/15 (16~24차)**: FC 온라인 벤치마크 계획서 → **실사 캐릭터 파이프라인**(glTF 스킨드 메시, `npm run char:build`, 사용자가 받은 Mixamo Ch38 적용) → P0 화면 인상 → P3 엔진 움직임 → 헤딩 → 락 음악 2곡 → P4 연출 → 저녁 제보 11건(GK 조작·시선·세트피스 배치·마킹·스루·크로스). **12번 팀·개인 전술은 다음 세션**(아래 0-d).
 > 남은 것은 **다른 회선 두 대 실제 대전**(PREP B-1), **강화 효과 키우기**, 그리고 공개입니다.
 
 ## 세션 메타데이터
@@ -80,6 +80,7 @@
 | 15 | **전력질주 모션** `AnimInput.sprint` | `render3d/player3d.ts` · `renderer3d.ts animOf(p, fr, st)` | G-45 (브라우저 미확인) |
 | 15 | **GK 다이브 뒤 `ACT_FALLEN` 30틱** — 못 잡고 몸에 맞은 공만 튕김 · 렌더 `rig.wasDive` | `core/sim.ts` · `core/ball.ts gkCatch` · `player3d.ts` | G-46 (DESIGN 4.7 미반영 · 브라우저 미확인) |
 | 16 (9/15) | **개발 계획서** — FC 온라인 대회 영상(FSL SUMMER wonder08 vs Exito) 정지 화면 분석 → 엔진·화면 차이표·로드맵·실사 캐릭터 옵션(Mixamo 권장)·라이선스 확인 | `docs/개발계획-FC온라인-벤치마크.md` | CHANGELOG 9/15 |
+| 24 (9/15) | **저녁 제보 11건** — GK 전용 키(D 펀트·A 던지기·S 패스·0.5 s 자동 배급), GK 배급 패스 길 검사, 공 바라보기, 광고판 회전 순서, 스루 목표·세기·오차, 박스 침투(사이드 크로스), 하이 크로스 머리 위 낙하, 대인마킹 골사이드(`markOf`)·커버 골문 쪽, 세트피스 배치(`setPieceAttack/Defend` — 박스 여섯 자리·벽·대인), Ch38 캐릭터(부위별 킷·킥/패스 클립·walk 대체) | `core/sim.ts` · `core/ball.ts` · `core/ai.ts` · `core/state.ts` · `render3d/pitch3d.ts` · `playerReal.ts` · `tools/char/build.mjs` · `public/models/player.glb` | CHANGELOG 9/15 · DESIGN 3.1 · 4.5 · 4.7 · 4.10 · 가이드 |
 | 23 (9/15) | **P4 연출** — 리플레이 골문 뒤 → 측면 컷(`ViewInfo.replayCam`), 골망 출렁임(`Pitch3D.netHit/update`), 하프타임 통계(`session.showHalfStats/statsTable`), 세레모니 FOV 19 | `render3d/renderer3d.ts` · `pitch3d.ts` · `game/session.ts` | CHANGELOG 9/15 · DESIGN 4.8b |
 | 22 (9/15) | **락 배경음악 2곡 + 관중 응원** — `Sfx.startMusic('lobby'|'match')` 16분음표 시퀀서(드럼·베이스·디스토션 파워코드·리드), `chant()` 북·박수, 슛 swell. 경기 중에도 음악(작게) | `audio/sfx.ts` · `game/session.ts` | CHANGELOG 9/15 · DESIGN 7.3 |
 | 21 (9/15) | **헤딩** — `ACT_HEAD`, `ball.ts tryHeader`(사람 D/S/A · AI 위치), 공중볼 머리 판정(2.45 m, 몸 중심 반경), `markOnTarget` 공유, 렌더 점프 | `core/state.ts` · `core/sim.ts` · `core/ball.ts` · `player3d.ts` · `playerReal.ts` · `render/hud.ts` · `tests/header.test.ts` | CHANGELOG 9/15 · DESIGN 3.1 · 4.6 |
@@ -135,6 +136,9 @@
 | 궤적 미리보기를 1 px `LineDashedMaterial` 로만 | 키커 뒤 시점에서 잔디에 묻혀 안 보였다 | 구슬(`InstancedMesh` 28개)을 등간격으로 얹었다 |
 | 브라우저 검증 중 src 를 고침 | vite 가 전체 리로드해 `__klo` 가 사라지고 경기가 날아갔다 | 검증을 다 끝낸 뒤 src 를 만진다 |
 | 스크린샷이 세 장 연속 같아서 리플레이 버그로 의심 | 브라우저 패널이 가려져 **rAF 가 0회** — sim(워커 틱)은 돌고 그리기만 멈춘 것 | `requestAnimationFrame` 횟수·`document.hasFocus()` 부터 재고 판단한다 |
+| 세트피스 배치가 안 되는 줄 알았다 | 코너를 JS 로 강제한 순간 선수들이 반대편(90 m)에 있어 3.5 초로는 못 온 것 | 목표 좌표(`p.tx/ty`)부터 찍고, 선수를 근처에 옮겨 놓고 본다 |
+| sharp 로 Mixamo 텍스처 축소 | 16비트 PNG 에서 libvips `colourspace` 오류 — 단독 테스트는 됐다 | 순수 JS(pngjs·jpeg-js·박스 다운샘플)로 바꿨다. 네이티브 의존은 피한다 |
+| npm install 중 브라우저 검증 | vite 가 리로드해 경기가 날아갔다 | 설치는 검증 전후로 |
 | 프리킥 재현 뒤 응답 사이에 시간이 흐름 | 사람 킥커 대기(6.8초)가 지나 AI 가 대신 찼다 | `st.phaseT = 99999` 로 붙잡고 한 배치 안에서 찍는다 |
 | 스로인 테스트에서 공을 라인 밖(34.4)에 놓음 | 첫 틱에 아웃 판정 | 손에 든 공은 라인 안쪽(33.9)에 |
 | 골 강제 재현 (공만 골라인 앞에 놓기) | 골키퍼가 잡았다 | 골키퍼를 14 m 치우고 22 m/s 로 |
@@ -205,6 +209,7 @@
 |---|---|---|
 | 0 | **15차 마무리** — 위 [미반영] 표 네 줄 | skip 해제 · 스크린샷 · DESIGN 4.8e · 가이드 |
 | 0-b | **캐릭터 1순위 (사용자 결정 9/15)** — P1-a PoC(`playerReal.ts`, 토글, Soldier 임시)와 **P1-b 변환 도구**(`npm run char:build`, Samba 샘플로 검증)까지 됐다. **막힌 곳: Mixamo 는 로그인이 필요해 사용자가 직접** 인간 캐릭터 + 축구 클립 FBX 를 받아 `C:\assets\mixamo\` 에 넣어야 한다([docs/캐릭터-교체-절차.md](docs/캐릭터-교체-절차.md) 2장 표). 그 뒤 **P1-c**: `npm run char:build` → `playerReal.ts` 에서 kick/slide/dive/fall/getup/throw/catch/celebrate 클립을 절차적 덧씌우기 자리에 연결 · fps 50+ | 22명 60 fps · GLB ≤ 8 MB · 킥/다이브 클립 |
+| 0-d | **팀 전술 · 개인 전술 (사용자 12번, 영상 "FC온라인 잘하는 법, 세팅부터 전개까지" — 강준호)** — 지금은 프리셋 3개(수비·균형·공격 = line·press·width·mentality). 설계: 팀 전술 = 수비 라인·압박·폭·템포·빌드업(짧게/길게)·공격 폭·수비 스타일(대인/지역), 개인 전술 = 선수별 역할(공격수 침투형/포스트형 · MF 박스투박스/홀딩 · 풀백 오버랩/스테이 · 윙 안으로/밖으로) → `Squad` 에 저장(온라인은 스쿼드 데이터로 전달), 스쿼드 전술판에서 칩 클릭 → 개인 전술, 로비/스쿼드에 팀 전술 슬라이더, 경기 중 `[ ]` 프리셋은 유지. sim 은 `ai.ts` 앵커·침투·마킹·패스 선호에 역할 계수 | 스쿼드 화면에 전술 탭 · 저장/불러오기 · `tests/tactics.test.ts` |
 | 0-c | 로드맵 — P0 화면 인상 ✅ · P3 엔진 움직임 ✅ · **P4 연출 ✅**(리플레이 2 앵글 · 골망 · 하프타임 통계 · 클로즈업 — 9/15) · 헤딩 ✅ · 락 음악 ✅. 남은 것: **P2 캐릭터 전면**(Mixamo FBX 가 와야 한다 — 0-b), **드리블 터치 간격**(P3 잔여 — 균형 재측정 필요), **리플레이 측면 컷 눈으로 확인**(브라우저 패널 rAF 정지로 못 봤다 — 골 넣고 리플레이 뒤 절반이 측면 낮은 카메라인지), 봇 120판 파울·골 재확인 | 단계마다 커밋·스크린샷 |
 | 1 | 2차 피드백 반영 | 사용자가 "됐다" |
 | 2 | **강화가 값을 하게** — 수비 +2.7%p · 공격 +2.0%p (목표 8~15). 강화 +1 = 능력치 40종 +1 인데 스킬 곱셈에 묻힌다. 강화분을 스킬에 직접 얹는 안(레벨당 ×1.02)을 `attrcheck` 방식으로 재 볼 것 | `npm run verify 200` 또는 attrcheck 류에서 +8%p 이상 |

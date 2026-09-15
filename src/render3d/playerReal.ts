@@ -17,8 +17,12 @@ import { BASE_H, numberTexture, type AnimInput, type Kit, type Rig } from './pla
 export interface CharacterLib {
   scene: THREE.Group
   idle: THREE.AnimationClip
-  walk: THREE.AnimationClip
+  /** 없으면 run 을 느리게 튼다 */
+  walk: THREE.AnimationClip | null
   run: THREE.AnimationClip
+  /** 있으면 절차적 킥 대신 클립 (Mixamo "Strike"·"Soccer Pass") */
+  kick: THREE.AnimationClip | null
+  pass: THREE.AnimationClip | null
   /** 바인드 포즈 높이 (m) */
   height: number
   /** 클립이 원래 만들어진 이동 속도 (m/s) — 재생 속도를 sim 속도에 맞출 때 */
@@ -39,8 +43,9 @@ let libPromise: Promise<CharacterLib> | null = null
 export function loadCharacterLib(): Promise<CharacterLib> {
   if (!libPromise) {
     libPromise = new GLTFLoader().loadAsync(MODEL_URL).then((g) => {
+      const opt = (name: string): THREE.AnimationClip | null => g.animations.find((a) => a.name.toLowerCase() === name) ?? null
       const find = (name: string): THREE.AnimationClip => {
-        const c = g.animations.find((a) => a.name.toLowerCase() === name)
+        const c = opt(name)
         if (!c) throw new Error(`player.glb 에 '${name}' 클립이 없다: ${g.animations.map((a) => a.name).join(', ')}`)
         return c
       }
@@ -48,7 +53,7 @@ export function loadCharacterLib(): Promise<CharacterLib> {
       scene.updateMatrixWorld(true)
       const box = new THREE.Box3().setFromObject(scene)
       const height = Math.max(0.5, box.max.y - box.min.y)
-      return { scene, idle: find('idle'), walk: find('walk'), run: find('run'), height, walkSpeed: 1.6, runSpeed: 5.0 }
+      return { scene, idle: find('idle'), walk: opt('walk'), run: find('run'), kick: opt('kick'), pass: opt('pass'), height, walkSpeed: 1.6, runSpeed: 5.0 }
     })
     libPromise.catch(() => {
       libPromise = null // 다음에 다시 시도할 수 있게
@@ -178,12 +183,22 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
       m.visible = false
       return
     }
+    // 부위별 킷 (2026-09-15) — Mixamo 캐릭터는 셔츠·반바지·양말·몸·신발·머리가 따로 메시다. 이름으로 색을 정한다.
+    // 이름을 모르는 한 덩어리 메시(Soldier 같은)는 예전처럼 피부 빼고 상의 색
+    const nm = m.name.toLowerCase()
+    let col: number | null = kit.shirt
+    if (/shirt|jersey|top|torso|sleeve/.test(nm)) col = kit.shirt
+    else if (/short|pant|trouser/.test(nm)) col = kit.shorts
+    else if (/sock|stocking/.test(nm)) col = kit.socks
+    else if (/body|skin|head|face|hair|eye|lash|brow|beard|shoe|boot|foot|teeth|tongue/.test(nm)) col = null
     const mats = Array.isArray(m.material) ? m.material : [m.material]
     const out = mats.map((mat) => {
       const std = mat as THREE.MeshStandardMaterial
       const cl = std.clone()
-      if (std.map) cl.map = tintTexture(std.map, kit.shirt)
-      else cl.color = new THREE.Color(kit.shirt)
+      if (col !== null) {
+        if (std.map) cl.map = tintTexture(std.map, col)
+        else cl.color = new THREE.Color(col)
+      }
       cl.roughness = 0.75
       cl.metalness = 0
       disposables.push(cl)
@@ -216,7 +231,8 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
 
   const mixer = new THREE.AnimationMixer(model)
   const idle = mixer.clipAction(lib.idle)
-  const walk = mixer.clipAction(lib.walk)
+  // walk 클립이 없으면 run 을 느리게 — 두 번째 액션으로 같은 클립을 쓴다
+  const walk = lib.walk ? mixer.clipAction(lib.walk) : mixer.clipAction(lib.run, undefined, THREE.NormalAnimationBlendMode)
   const run = mixer.clipAction(lib.run)
   for (const a of [idle, walk, run]) {
     a.enabled = true
@@ -225,6 +241,19 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
     a.play()
   }
   idle.setEffectiveWeight(1)
+  const walkSpeed = lib.walk ? lib.walkSpeed : lib.runSpeed * 0.55
+  // 킥·패스 클립 (있으면) — 한 번 재생, 끝나면 멈춘다
+  const kickAct = lib.kick ? mixer.clipAction(lib.kick) : null
+  const passAct = lib.pass ? mixer.clipAction(lib.pass) : null
+  for (const a of [kickAct, passAct]) {
+    if (!a) continue
+    a.setLoop(THREE.LoopOnce, 1)
+    a.clampWhenFinished = true
+    a.enabled = true
+    a.setEffectiveWeight(0)
+  }
+  let clipKick: THREE.AnimationAction | null = null
+  let clipT = 0
 
   const bones: Bones = {
     hips: bone(model, 'Hips'),
@@ -257,7 +286,27 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
     mixer,
     height: lib.height * scale,
     animate(a: AnimInput, dt: number): void {
-      if (a.action === ACT_KICK && lastAction !== ACT_KICK) kickT = 0.36
+      if (a.action === ACT_KICK && lastAction !== ACT_KICK) {
+        kickT = 0.36
+        // 클립이 있으면 절차적 킥 대신 — 슛은 kick, 패스는 pass. 클립을 0.55 초에 맞춰 돌린다
+        const want = a.shot ? kickAct ?? passAct : passAct ?? kickAct
+        if (want) {
+          if (clipKick) clipKick.setEffectiveWeight(0)
+          clipKick = want
+          clipT = 0.55
+          const dur = want.getClip().duration
+          want.reset().setEffectiveTimeScale(Math.max(0.5, dur / 0.55)).setEffectiveWeight(1).play()
+          kickT = 0 // 절차적 킥은 끈다
+        }
+      }
+      if (clipKick) {
+        clipT -= dt
+        if (clipT <= 0) {
+          clipKick.setEffectiveWeight(0)
+          clipKick.stop()
+          clipKick = null
+        }
+      }
       if (a.action === ACT_HEAD && lastAction !== ACT_HEAD) headT = 0.3
       lastAction = a.action
       kickT = Math.max(0, kickT - dt)
@@ -289,10 +338,12 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
       wIdle += (tIdle - wIdle) * k
       wWalk += (tWalk - wWalk) * k
       wRun += (tRun - wRun) * k
-      idle.setEffectiveWeight(wIdle)
-      walk.setEffectiveWeight(wWalk)
-      run.setEffectiveWeight(wRun)
-      walk.setEffectiveTimeScale(Math.max(0.6, a.speed / lib.walkSpeed))
+      // 킥 클립 재생 중엔 이동 클립을 눌러 준다
+      const clipK = clipKick ? 0.25 : 1
+      idle.setEffectiveWeight(wIdle * clipK)
+      walk.setEffectiveWeight(wWalk * clipK)
+      run.setEffectiveWeight(wRun * clipK)
+      walk.setEffectiveTimeScale(Math.max(0.6, a.speed / walkSpeed))
       run.setEffectiveTimeScale(Math.max(0.7, (a.speed / lib.runSpeed) * (a.sprint ? 1.12 : 1)))
       mixer.update(dt)
 

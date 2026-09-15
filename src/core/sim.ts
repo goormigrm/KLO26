@@ -1,12 +1,12 @@
 // 시뮬레이션 본체 — createState / step / hashState / snapshot (DESIGN 4장).
 // step 은 두 팀의 Input 을 받아 한 틱을 진행한다. 렌더·DOM·시간 함수를 모른다.
 
-import { atan2A, clamp, cosA, len, sinA } from './fixedmath'
+import { atan2A, clamp, cosA, len, sinA, angleDiff } from './fixedmath'
 import { FORMATIONS } from './formation'
 import { makeRng } from './rng'
 import { skillsOf } from './skills'
 import { aiDecide, ballOwnerTeam, nearestToBall, updateAnchors } from './ai'
-import { interceptPoint } from './ball'
+import { interceptPoint, gkPunt } from './ball'
 import {
   attachBall, contestBall, doClear, doPass, doShoot, gkCatch, gkDistribute, pickPassTarget, slideContest, tryControl,
   type PassKind,
@@ -36,7 +36,7 @@ function mkPlayer(idx: number, team: number, spec: PlayerSpec, slot: string, ban
     ax: 0, ay: 0, tx: 0, ty: 0,
     sprint: false, press: false, lastKick: -100, holdT: 0, yellow: 0, sentOff: false,
     dribX: 0, dribY: 0, gotT: -100, tackleT: 0, clearNext: false,
-    offside: false, throwing: false, subbedIn: false, runT: -1000, diveHigh: false,
+    offside: false, throwing: false, subbedIn: false, runT: -1000, diveHigh: false, markOf: -1, markT: -1000,
   }
 }
 
@@ -195,6 +195,20 @@ function handleInput(st: GameState, t: number, inp: Input): void {
   const recent = st.tick - team.aimT < 15
   const dx = team.inX !== 0 || team.inY !== 0 ? team.inX : recent ? team.aimX : 0
   const dy = team.inX !== 0 || team.inY !== 0 ? team.inY : recent ? team.aimY : 0
+  // 골키퍼가 공을 가졌다 (2026-09-15 제보 — "잡은 뒤 가만히 있다 뺏긴다" · "D 를 누르면 상대 골대까지 찬다").
+  // 손에 들었든(holdT) 발에 있든(백패스·트래핑) 골키퍼 전용: **D 펀트 · A 손 던지기(롱볼) · S 짧은 패스**.
+  // 0.5 초 안에 아무 키도 없으면 AI 가 알아서 배급한다 — 예전엔 조작이 골키퍼로 넘어온 채 서 있었다
+  if (hasBall && b.owner === c.idx && c.sk.isGK && st.phase === 'play') {
+    const gkDx = dx !== 0 || dy !== 0 ? dx : team.dir
+    if (edge & BTN_D) gkPunt(st, c, dy * 30)
+    else if (edge & BTN_A) doPass(st, c, 'lob', -1, gkDx, dy, 1)
+    else if (edge & BTN_S) doPass(st, c, 'ground', pickPassTarget(st, c, gkDx, dy, false), gkDx, dy, 0.3)
+    else if (c.holdT === 0 && st.tick - c.gotT > 30) gkDistribute(st, c)
+    team.holdPass = 0
+    team.holdShoot = 0
+    team.prevButtons = held
+    return
+  }
   if (hasBall && b.owner === c.idx && c.holdT === 0 && st.phase === 'play') {
     if (held & BTN_S) team.holdPass++
     else if (prev & BTN_S) {
@@ -366,6 +380,14 @@ export function step(st: GameState, inputs: [Input, Input]): void {
     if (p.action === ACT_HEAD) speedK *= 0.3 // 점프 중
     if (p.holdT > 0) speedK *= 0.3
     movePlayer(p, dvx, dvy, speedK)
+    // 공을 본다 (2026-09-15 제보 "골키퍼가 공 쪽을 안 본다"): 거의 서 있는 선수는 공 쪽으로 몸을 돌리고,
+    // 골키퍼는 움직이면서도 늘 공을 본다. 공을 가진 선수·킥 중·리스타트 킥커는 제외(찰 방향을 본다)
+    if (b.owner !== p.idx && p.action === ACT_RUN && !isKicker && (p.sk.isGK || len(p.vx, p.vy) < 0.9)) {
+      const want = atan2A(b.y - p.y, b.x - p.x)
+      const dfa = angleDiff(want, p.facing)
+      const maxT = p.sk.isGK ? p.sk.turn : p.sk.turn * 0.6
+      p.facing = (p.facing + clamp(dfa, -maxT, maxT)) & 1023
+    }
     // 견제 — 공(소유자)을 마주 본다
     if (faceBall) p.facing = atan2A(b.y - p.y, b.x - p.x)
     drainStamina(p, sprint && speedK > 1, staK)

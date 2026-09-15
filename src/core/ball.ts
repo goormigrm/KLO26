@@ -621,7 +621,8 @@ export function pickPassTarget(st: GameState, p: Player, dx: number, dy: number,
       const deg = dd / DEG
       if (deg > cone) continue
       // 각도만 보면 정면의 먼 선수가 옆의 가까운 선수를 이겼다 — 거리 가중(−0.035/m · 각도는 절반 무게)으로 **방향키 쪽 가까운 선수**가 먼저다 (제보 2026-09-11)
-      let s = 1 - 0.5 * (deg / cone) - d * 0.035 - (d > 40 ? 0.4 : d > 25 ? 0.15 : 0)
+      // 스루(through)는 먼 동료도 좋다 — 거리 가중을 절반으로 (2026-09-15 "스루 성공률 0")
+      let s = 1 - 0.5 * (deg / cone) - d * (through ? 0.015 : 0.035) - (d > 40 ? 0.4 : d > 25 ? 0.15 : 0)
       // 오프사이드 위치의 동료에게는 보내지 않는다
       const dir = st.teams[p.team].dir
       const line = offsideLineX(st, p.team) * dir
@@ -675,8 +676,19 @@ export function doPass(
     ax = q.x + q.vx * t
     ay = q.y + q.vy * t
     if (kind === 'through') {
-      ax += dir * (4 + 3 * hold)
-      ay += (0 - q.y) * 0.1
+      // 스루 — 동료가 **달리는 방향** 앞 2~4 m 로 (예전엔 무조건 골문 쪽 4~7 m 앞이라 동료를 지나쳐 수비수 발에 갔다, 2026-09-15)
+      const qs = len(q.vx, q.vy)
+      const rx = qs > 1 ? q.vx / qs : dir
+      const ry = qs > 1 ? q.vy / qs : 0
+      const lead = 2 + 2 * hold
+      ax = q.x + rx * lead + dir * 1.0
+      ay = q.y + ry * lead
+    }
+    if (kind === 'highcross' && target >= 0) {
+      // 하이 크로스 — 받을 선수 **머리 위**에 오게 낙하점을 공 쪽으로 0.9 m 당긴다 (낙하점은 z 0, 그 1 m 앞이 머리 높이)
+      const l0 = Math.max(0.5, dist(bx, by, ax, ay))
+      ax += ((bx - ax) / l0) * 0.9
+      ay += ((by - ay) / l0) * 0.9
     }
     d = dist(bx, by, ax, ay)
   } else {
@@ -708,7 +720,7 @@ export function doPass(
   } else {
     // 땅볼: 8~18 m/s (마찰 4 m/s² 로 18 m/s 면 40 m 굴러간다)
     speed = clamp(7 + 0.55 * d, 8, 18) * (1 + hold * 0.2)
-    if (kind === 'through') speed *= 1.15
+    if (kind === 'through') speed *= 1.05 // 1.15 → 1.05 (2026-09-15: "갑자기 세게 찬다")
   }
   // 오차
   const acc = aerial || kind === 'lowcross' ? p.sk.crs : p.sk.pas
@@ -718,7 +730,7 @@ export function doPass(
   if (nearestOppDist(st, p) < 1.5) sigma += 2
   if (st.tick - p.gotT < 12) sigma *= 1.3
   if (p.stamina < 0.3) sigma *= 1.25
-  if (kind === 'through') sigma *= 1.4
+  if (kind === 'through') sigma *= 1.15 // 1.4 → 1.15
   const a = atan2A(ay - by, ax - bx) + Math.round(randN(st.rng) * sigma * DEG)
   speed *= 1 + randN(st.rng) * (0.03 + 0.16 * (1 - acc))
   releaseBall(st, p)
@@ -1119,17 +1131,33 @@ export function gkPunt(st: GameState, gk: Player, aimY: number): void {
   st.stats[gk.team].passes++
 }
 
-/** GK 가 손에 든 공을 내보낸다 — 열린 수비수에게 짧게, 없으면 **펀트로 멀리** */
+/**
+ * GK 가 공을 내보낸다 — **열려 있고 길이 비어 있는** 수비수에게 짧게(20 m 안), 없으면 펀트로 멀리.
+ * 2026-09-15 제보 "뜬금없이 상대 쪽으로 준다": 예전엔 받을 선수 주변만 봤지 **패스 길**을 안 봐서 사이에 선 상대가 가로챘다.
+ */
 export function gkDistribute(st: GameState, gk: Player): void {
+  const dir = st.teams[gk.team].dir
   let best = -1
-  let bestOpen = 6
+  let bestS = 0
   for (const q of st.players) {
     if (q.team !== gk.team || q.idx === gk.idx || q.sentOff) continue
     const d = dist(gk.x, gk.y, q.x, q.y)
-    if (d > 28 || d < 4) continue
+    if (d > 20 || d < 4) continue
     const open = nearestOppDist(st, q)
-    if (open > bestOpen) {
-      bestOpen = open
+    if (open < 6) continue
+    // 길 — 골키퍼와 받을 선수 사이 2.5 m 안에 상대가 있으면 안 준다
+    let blocked = false
+    for (const o of st.players) {
+      if (o.team === gk.team || o.sentOff) continue
+      if (distToSegment(o.x, o.y, gk.x, gk.y, q.x, q.y) < 2.5) {
+        blocked = true
+        break
+      }
+    }
+    if (blocked) continue
+    const s = open + (q.x - gk.x) * dir * 0.08 + (Math.abs(q.y) > 15 ? 1 : 0) // 열림 · 전방 · 사이드
+    if (s > bestS) {
+      bestS = s
       best = q.idx
     }
   }

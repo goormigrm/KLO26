@@ -307,11 +307,15 @@ export function buildPitch(opts: PitchOptions): Pitch3D {
     const face = boardMat.clone()
     face.map = tex
     const m = new THREE.Mesh(geo, [boardBack, boardBack, boardBack, boardBack, face, boardBack])
-    m.position.set(x, BOARD_H / 2, z)
-    m.rotation.y = rotY
+    // 회전은 그룹(y) → 판(x) 순서로 — 한 오브젝트에 x·y 를 같이 주면 오일러 순서 때문에 골문 뒤 판이 옆으로 삐뚤어졌다 (2026-09-15 제보)
+    const holder = new THREE.Group()
+    holder.position.set(x, 0, z)
+    holder.rotation.y = rotY
+    m.position.set(0, BOARD_H / 2, 0)
     m.rotation.x = -0.12 // 살짝 뒤로 기울여 카메라를 본다
     m.castShadow = true
-    group.add(m)
+    holder.add(m)
+    group.add(holder)
   }
   mkBoard(HALF_L * 2 + 2, 0, -(HALF_W + BOARD_OFF), 0)
   mkBoard(HALF_L * 2 + 2, 0, HALF_W + BOARD_OFF, Math.PI)

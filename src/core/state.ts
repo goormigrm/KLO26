@@ -132,6 +132,9 @@ export interface Player {
   runT: number
   /** 골키퍼 다이브 종류 — true 면 뛰어오르는 하이 다이브, false 면 낮게 눕는 로우 다이브 (P3) */
   diveHigh: boolean
+  /** 대인마크 상대 idx (−1 없음) · 잡은 틱 — 두 수비수가 같은 상대를 잡지 않게 (2026-09-15) */
+  markOf: number
+  markT: number
 }
 
 export interface Ball {

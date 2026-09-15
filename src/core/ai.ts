@@ -335,6 +335,108 @@ function celebrate(st: GameState, p: Player): void {
   p.sprint = t < 240 && dist(p.x, p.y, s.x, s.y) > 6
 }
 
+/** 코너·직접 프리킥(골문 36 m 안)인가 — 박스 안 배치를 쓰는 세트피스 */
+function boxSetPiece(st: GameState): boolean {
+  const r = st.restart
+  if (!r) return false
+  if (st.phase === 'corner') return true
+  if (st.phase !== 'freekick') return false
+  const tm = st.teams[r.team]
+  return dist(r.x, r.y, goalX(tm), 0) < 36
+}
+
+/**
+ * 세트피스 공격 배치 (2026-09-15 제보 "코너·프리킥에 박스 안에 아무도 없다") — 킥커를 뺀 아군 중
+ * 골문에 가까운 순으로 여섯 명(FW·AM·MF 먼저, 그다음 DF)이 박스 안 여섯 자리(니어·파포스트·PK 스팟·6야드 앞·엣지 둘)로,
+ * 나머지는 하프라인 근처에 남는다(역습 대비). 오프사이드 라인은 rules 가 따로 지킨다
+ */
+function setPieceAttack(st: GameState, p: Player): boolean {
+  if (!boxSetPiece(st) || p.sk.isGK) return false
+  const r = st.restart!
+  const team = st.teams[p.team]
+  const dir = team.dir
+  const gx = goalX(team)
+  const side = r.y >= 0 ? 1 : -1
+  const spots: [number, number][] = [
+    [gx - dir * 5.5, -side * 3],
+    [gx - dir * 6, side * 4],
+    [gx - dir * 11, 0],
+    [gx - dir * 8.5, -side * 7],
+    [gx - dir * 16, side * 6],
+    [gx - dir * 18, -side * 8],
+  ]
+  // 순위: 밴드(FW/AM/MF 0 · DF/WB 1) → idx
+  const rankOf = (q: Player): number => (q.band === 'FW' || q.band === 'AM' || q.band === 'MF' ? 0 : 1) * 100 + q.idx
+  let k = 0
+  for (const q of st.players) {
+    if (q.team !== p.team || q.sk.isGK || q.sentOff || q.idx === r.kicker) continue
+    if (rankOf(q) < rankOf(p)) k++
+  }
+  if (k >= spots.length) {
+    // 뒤에 남는다 — 하프라인 근처 자기 자리
+    goAnchor(p, -6, dir)
+    p.tx = clamp(Math.min(p.tx * dir, 10) * dir, -HALF_L + 1, HALF_L - 1)
+    return true
+  }
+  const [sx, sy] = spots[k]
+  p.tx = clamp(sx, -HALF_L + 1, HALF_L - 1)
+  p.ty = clamp(sy, -HALF_W + 1, HALF_W - 1)
+  return true
+}
+
+/**
+ * 세트피스 수비 배치 — 프리킥이면 **벽**(공과 골문 사이 9.15 m, 3~4명 어깨를 맞대고), 나머지는 박스 안 상대를 **골사이드에서 대인마크**,
+ * 남는 사람은 골문 앞 지대. 골키퍼는 gkDecide 가 따로 본다
+ */
+function setPieceDefend(st: GameState, p: Player): boolean {
+  if (!boxSetPiece(st) || p.sk.isGK) return false
+  const r = st.restart!
+  const atk = st.teams[r.team]
+  const ti = p.team
+  const dir = st.teams[ti].dir
+  const ownX = -dir * HALF_L // 우리 골문 = 상대가 공격하는 골문
+  const dGoal = dist(r.x, r.y, ownX, 0)
+  const wallN = st.phase === 'freekick' ? (dGoal < 22 ? 4 : 3) : 0
+  // 내 순번 — idx 순 (결정론)
+  let k = 0
+  for (const q of st.players) {
+    if (q.team !== ti || q.sk.isGK || q.sentOff) continue
+    if (q.idx < p.idx) k++
+  }
+  if (k < wallN) {
+    // 벽 — 공→골문 선 위 9.15 m, 선에 수직으로 0.65 m 간격
+    const ux = (ownX - r.x) / Math.max(1, dGoal)
+    const uy = (0 - r.y) / Math.max(1, dGoal)
+    const cx = r.x + ux * (CIRCLE_R + 0.3)
+    const cy = r.y + uy * (CIRCLE_R + 0.3)
+    const off = (k - (wallN - 1) / 2) * 0.65
+    p.tx = clamp(cx + -uy * off, -HALF_L + 1, HALF_L - 1)
+    p.ty = clamp(cy + ux * off, -HALF_W + 1, HALF_W - 1)
+    return true
+  }
+  // 대인 — 박스 근처 상대(킥커 제외)를 골문 가까운 순으로, 내 순번(벽 제외)에 맞춰
+  const targets: Player[] = []
+  for (const q of st.players) {
+    if (q.team !== r.team || q.sk.isGK || q.sentOff || q.idx === r.kicker) continue
+    if (dist(q.x, q.y, ownX, 0) < 30) targets.push(q)
+  }
+  targets.sort((a, b2) => dist(a.x, a.y, ownX, 0) - dist(b2.x, b2.y, ownX, 0) || a.idx - b2.idx)
+  const m = k - wallN
+  if (m < targets.length) {
+    const q = targets[m]
+    const dq = Math.max(1, dist(q.x, q.y, ownX, 0))
+    p.tx = clamp(q.x + ((ownX - q.x) / dq) * 1.3, -HALF_L + 1, HALF_L - 1)
+    p.ty = clamp(q.y + ((0 - q.y) / dq) * 1.3, -HALF_W + 1, HALF_W - 1)
+    return true
+  }
+  // 남는 사람 — 골문 앞 지대 (6야드 라인 앞, 좌우로 벌려)
+  const z = m - targets.length
+  p.tx = clamp(ownX + dir * (7 + (z % 2) * 4), -HALF_L + 1, HALF_L - 1)
+  p.ty = clamp((z % 3 - 1) * 6, -HALF_W + 1, HALF_W - 1)
+  void atk
+  return true
+}
+
 export function aiDecide(st: GameState, p: Player): void {
   const ti = p.team
   const team = st.teams[ti]
@@ -359,6 +461,7 @@ export function aiDecide(st: GameState, p: Player): void {
   }
   // 리스타트 중 상대 팀: 자리로 가되 규정 거리만큼 떨어진다 (스로인 2 m · 나머지 9.15 m)
   if (st.phase !== 'play' && st.restart && st.restart.team !== ti) {
+    if (setPieceDefend(st, p)) return
     goAnchor(p, -2, dir)
     const clear = st.phase === 'throwin' ? THROWIN_CLEAR + 0.5 : CIRCLE_R + 0.5
     const d = dist(p.x, p.y, b.x, b.y)
@@ -370,6 +473,7 @@ export function aiDecide(st: GameState, p: Player): void {
   }
   // 우리 팀 리스타트인데 내가 킥커가 아니면 자리로 (킥오프는 자기 진영·서클 밖을 rules 가 강제한다)
   if (st.phase !== 'play' && st.restart && st.restart.kicker !== p.idx) {
+    if (setPieceAttack(st, p)) return
     goAnchor(p, st.phase === 'corner' || st.phase === 'freekick' ? 4 : 0, dir)
     if (st.phase === 'kickoff') {
       if (p.tx * dir > -1.5) p.tx = -dir * 1.5
@@ -408,6 +512,34 @@ export function aiDecide(st: GameState, p: Player): void {
   if (ot === ti) {
     const o = st.players[b.owner]
     const rank = rankByDist(st, ti, o.x, o.y, p, true, b.owner)
+    // 박스 침투 (2026-09-15 제보 "크로스 올릴 때 헤딩할 선수가 없다") — 소유자가 사이드 깊숙이(|y| > 16 · 상대 진영 20 m 안)면
+    // 공격수·AM 셋이 니어포스트·PK 스팟·파포스트로 달려 들어간다. 오프사이드 라인은 넘지 않는다
+    if ((p.band === 'FW' || p.band === 'AM' || p.band === 'MF') && Math.abs(o.y) > 16 && o.x * dir > 20 && p.idx !== b.owner) {
+      const gx = goalX(team)
+      const far = o.y > 0 ? -1 : 1
+      const spots: [number, number][] = [
+        [gx - dir * 5.5, -far * 2.5],
+        [gx - dir * 11, 0],
+        [gx - dir * 7, far * 5],
+      ]
+      // 골문에 가까운 순으로 세 자리 — 같은 자리를 둘이 안 잡게 idx 순
+      let k = 0
+      for (const q of st.players) {
+        if (q.team !== ti || q.sk.isGK || q.sentOff || q.idx === b.owner) continue
+        if (q.band !== 'FW' && q.band !== 'AM' && q.band !== 'MF') continue
+        if (q.idx === p.idx) break
+        if (dist(q.x, q.y, gx, 0) < 30) k++
+      }
+      if (k < 3 && dist(p.x, p.y, gx, 0) < 32) {
+        const [sx, sy] = spots[k]
+        const line = offsideLineX(st, ti) * dir
+        p.tx = clamp(Math.min(sx * dir, line - LINE_MARGIN) * dir, -HALF_L + 1, HALF_L - 1)
+        p.ty = clamp(sy, -HALF_W + 1, HALF_W - 1)
+        p.sprint = p.stamina > 0.25
+        p.runT = st.tick
+        return
+      }
+    }
     // 침투 러닝 (P3, 2026-09-15 — 지원 러닝보다 먼저 본다 · FC 온라인 영상: 받을 선수가 패스 **전에** 빈 공간으로 뛴다).
     // 공격수·공격형 미드필더가 소유자보다 앞에 있고, 소유자가 전진 중이거나 상대 진영이며, 내 앞 7 m 가 비었으면
     // 오프사이드 라인 바로 뒤까지 사선으로 달린다. 소유자 AI 는 `runT` 를 보고 이 선수에게 스루를 선호한다
@@ -503,29 +635,62 @@ export function aiDecide(st: GameState, p: Player): void {
     return
   }
   if (rank === 1) {
-    p.tx = clamp(c.x - dir * 5, -HALF_L + 1, HALF_L - 1)
-    p.ty = c.y * 0.8
+    // 커버 — 소유자와 **우리 골문 사이**에 선다 (2026-09-15: 소유자 뒤 5 m 는 빠른 드리블러를 못 따라갔다).
+    // 소유자가 우리 진영 35 m 안이면 골문 쪽 8 m, 아니면 6 m
+    const ownX = -dir * HALF_L
+    const dOwn = dist(c.x, c.y, ownX, 0)
+    const back = dOwn < 35 ? 8 : 6
+    const ux = (ownX - c.x) / Math.max(1, dOwn)
+    const uy = (0 - c.y) / Math.max(1, dOwn)
+    p.tx = clamp(c.x + ux * back, -HALF_L + 1, HALF_L - 1)
+    p.ty = clamp(c.y + uy * back, -HALF_W + 1, HALF_W - 1)
     p.press = team.assist
-    p.sprint = d > 10 && p.stamina > 0.25
+    p.sprint = d > 8 && p.stamina > 0.25
     return
   }
-  // 대인 마크 — 마크(mark)가 좋을수록 더 멀리서 찾아 더 바짝 붙는다 (수비 강화 2026-09-10)
+  // 대인 마크 (2026-09-15 개정 — "수비수들이 정면으로 달려오는 공격수를 안 막는다"):
+  // 상대 필드 선수 중 **우리 골문 쪽으로 달려오거나 우리 진영에 있는** 사람을, 다른 아군이 이미 잡지 않은 순으로 잡아
+  // **골사이드**(상대와 우리 골문 사이 1.2~2 m)에 선다. 마크(mark)가 좋을수록 더 멀리서 찾고, 봇 난이도가 높을수록 넓게(press 배수)
   let mk = -1
-  let mkd = 8 + 4 * p.sk.mark
+  let mkScore = -1
+  const reach = (8 + 4 * p.sk.mark) * params.press
   for (const q of st.players) {
     if (q.team === ti || q.idx === b.owner || q.sk.isGK || q.sentOff) continue
     const dq = dist(p.x, p.y, q.x, q.y)
-    if (dq < mkd && q.x * dir < 5) {
-      mkd = dq
+    if (dq > reach) continue
+    const coming = q.vx * dir < -1.5 // 우리 골문 쪽으로 달린다
+    const inOur = q.x * dir < 5
+    if (!coming && !inOur) continue
+    // 다른 아군이 최근 30틱 안에 잡은 상대는 건너뛴다 (내가 잡은 사람이면 계속)
+    let taken = false
+    for (const m of st.players) {
+      if (m.team !== ti || m.idx === p.idx || m.sentOff) continue
+      if (m.markOf === q.idx && st.tick - m.markT < 30) {
+        taken = true
+        break
+      }
+    }
+    if (taken) continue
+    const dangerous = dist(q.x, q.y, -dir * HALF_L, 0) < 30
+    const sc = (coming ? 2 : 0) + (dangerous ? 1.5 : 0) + (p.markOf === q.idx ? 1 : 0) - dq * 0.08
+    if (sc > mkScore) {
+      mkScore = sc
       mk = q.idx
     }
   }
   if (mk >= 0) {
     const q = st.players[mk]
-    p.tx = clamp(q.x - dir * (1.8 - 0.8 * p.sk.mark), -HALF_L + 1, HALF_L - 1)
-    p.ty = q.y
+    p.markOf = mk
+    p.markT = st.tick
+    const ownX = -dir * HALF_L
+    const dq = Math.max(1, dist(q.x, q.y, ownX, 0))
+    const gap = 2.0 - 0.8 * p.sk.mark
+    p.tx = clamp(q.x + ((ownX - q.x) / dq) * gap, -HALF_L + 1, HALF_L - 1)
+    p.ty = clamp(q.y + ((0 - q.y) / dq) * gap, -HALF_W + 1, HALF_W - 1)
+    p.sprint = dist(p.x, p.y, p.tx, p.ty) > 6 && p.stamina > 0.25
     return
   }
+  p.markOf = -1
   goAnchor(p, -2, dir)
 }
 

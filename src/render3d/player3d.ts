@@ -245,6 +245,8 @@ export interface AnimInput {
   celebrate: boolean
   /** GK 하이 다이브 — 몸이 떠오른다 (P3) */
   diveHigh: boolean
+  /** 이번 킥이 슛이다 (킥 클립 고르기용, 2026-09-15) */
+  shot: boolean
 }
 
 /** 코드 애니메이션 — 걷기/달리기 · 킥 · 슬라이딩 · 넘어짐 · GK 다이브 */

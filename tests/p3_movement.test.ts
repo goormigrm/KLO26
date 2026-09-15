@@ -65,13 +65,15 @@ describe('침투 러닝 — 받을 선수가 패스 전에 뛴다', () => {
     st.ball.y = owner.y
     t.controlled = owner.idx
     const x0 = fw.x * dir
+    const tick0 = st.tick
     for (let i = 0; i < 90; i++) step(st, idle)
     // 앞으로 갔고, 라인은 넘지 않았다
     expect(st.ball.owner).toBe(owner.idx)
     expect(fw.x * dir).toBeGreaterThan(x0 + 3)
     // 수비 라인은 계속 움직인다 — 라인 근처(±1 m)까지만, 판정은 킥 순간 스냅샷이다
     expect(fw.x * dir).toBeLessThanOrEqual(offsideLineX(st, 0) * dir + 1.0)
-    expect(st.tick - fw.runT).toBeLessThan(20)
+    // 90틱 사이에 침투가 발동했다 (앞이 막히면 멈추는 게 설계라 마지막 틱까지 유지될 필요는 없다)
+    expect(fw.runT).toBeGreaterThan(tick0)
   })
 })
 

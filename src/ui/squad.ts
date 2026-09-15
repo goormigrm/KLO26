@@ -8,10 +8,11 @@
 // 규칙 검사는 화면이 아니라 `cards/squad.ts` 가 한다 — 받는 쪽도 같은 함수로 다시 센다.
 
 import { FORMATIONS, FORMATION_LIST, SLOT_FAM, SLOT_XY } from '../core/formation'
+import { PRESET_NAMES, ROLES, ROLE_GROUP_NAMES, TEAM_TACTICS, defaultPresets, levelLabel, roleGroupOf } from '../core/tactics'
 import { SIX_FIELD, SIX_GK, famColor, ovrStars, sixGKOf, sixOf, statStars } from '../cards/cards'
 import {
   ENH_BUDGET, ENH_MAX, OUT_BENCH_MAX, OUT_XI_MAX, SQUAD_SIZE, START_SIZE, cardOvr, cardSalary, checkSquad, clubHandicap,
-  clubById, clubSquad, computeCap, countOutside, homeClubOf, payOf,
+  clubById, clubSquad, computeCap, countOutside, homeClubOf, normalizeSquad, payOf,
   teamworkBonus, type Squad,
 } from '../cards/squad'
 import { CLUBS, POOL, POOL_HASH, POOL_SIZE, cardById } from '../data/pool'
@@ -44,7 +45,8 @@ export function loadSquad(): Squad | null {
     // 규칙이 바뀌어 급여·영입 인원이 어긋난 스쿼드는 **버리지 않는다** — 화면에서 고칠 수 있다.
     // 못 고치는 문제(선수 수·골키퍼·중복·지문)만 버린다.
     if (checkSquad(s, CAP).hard.length > 0) return null
-    return s
+    // 슬라이더 4종 시절 저장본은 템포·빌드업·수비 방식을 2, 역할을 0 으로 채운다 (2026-09-15)
+    return normalizeSquad(s)
   } catch {
     return null
   }
@@ -121,6 +123,9 @@ export class SquadScreen {
   private original: Squad | null
   private autoBy: AutoBy
   private snd = sfx()
+  /** 팀 전술 패널에서 편집 중인 프리셋 (0 수비 · 1 균형 · 2 공격) · 패널 펼침 (2026-09-15) */
+  private tacPreset = 1
+  private tacOpen = false
 
   constructor(
     host: HTMLElement,
@@ -262,10 +267,12 @@ export class SquadScreen {
       if (!c) return `<button class="chip empty${on}" data-slot="${i}" style="${style}"><b>${slot}</b></button>`
       const fam = this.famAt(c, i)
       const enh = sq.enh[i] ?? 0
-      return `<button class="chip${on}" data-slot="${i}" draggable="true" style="${style};--fam:${famColor(fam)}">
+      const role = i > 0 ? sq.roles?.[i] ?? 0 : 0
+      const roleName = role > 0 ? ROLES[roleGroupOf(slot)][role]?.name ?? '' : ''
+      return `<button class="chip${on}${role > 0 ? ' hasrole' : ''}" data-slot="${i}" draggable="true" style="${style};--fam:${famColor(fam)}">
         <b>${c.name}</b>
         <span class="ov">${starHtml(ovrStars(cardOvr(c, enh + tw.bonus)), true)}</span>
-        <small>${slot} · ${c.no}번${enh ? ` · +${enh}` : ''}</small>
+        <small>${slot} · ${c.no}번${enh ? ` · +${enh}` : ''}${roleName ? ` · <em>${roleName}</em>` : ''}</small>
       </button>`
     }
     const pitch = Array.from({ length: START_SIZE }, (_, i) => chip(i)).join('')
@@ -323,6 +330,7 @@ export class SquadScreen {
           <div class="help">같은 구단 선수끼리 오래 맞춰 왔다는 뜻입니다. 붙은 만큼 <b>선발 전원의 모든 능력치</b>가 올라갑니다 (후보는 빼고). 약체 가산은 뭉쳤을 때만 얹힙니다.</div>
         </div>
       </div>
+      ${this.tacticsHtml()}
       ${check.errors.length ? `<div class="errs">${check.errors.map((e) => `<span>${e}</span>`).join('')}</div>` : ''}
       ${this.msg ? `<div class="okmsg">${this.msg}</div>` : ''}
       <div class="sq-body">
@@ -516,6 +524,58 @@ export class SquadScreen {
       .join('')}</div>`
   }
 
+  /**
+   * 팀 전술 패널 (2026-09-15, 사용자 12번) — 프리셋 3벌 × 7종 슬라이더. 경기 중 `[ ]` 로 프리셋을 바꾸면 그 벌이 통째로 먹는다.
+   * 접힌 상태로 시작한다 — 전술판이 먼저 보여야 하므로. 슬라이더를 움직이면 즉시 저장, 화면은 다시 그리지 않는다(포커스 유지).
+   */
+  private tacticsHtml(): string {
+    const tp = this.tacPreset
+    const preset = this.sq.presets[tp]
+    const rows = TEAM_TACTICS.map((t) => {
+      const v = preset[t.key] ?? 2
+      return `<div class="tac-row">
+        <label><b>${t.name}</b><em>${t.desc}</em></label>
+        <span class="lo">${t.lo}</span>
+        <input type="range" min="0" max="4" step="1" value="${v}" data-tac="${t.key}" aria-label="${t.name}" />
+        <span class="hi">${t.hi}</span>
+        <b class="val">${levelLabel(t, v)}</b>
+      </div>`
+    }).join('')
+    const summary = PRESET_NAMES.map((n, i) => {
+      const p = this.sq.presets[i]
+      const d = defaultPresets()[i]
+      const changed = TEAM_TACTICS.some((t) => (p[t.key] ?? 2) !== d[t.key])
+      return `<span class="${i === tp ? 'on' : ''}">${n}${changed ? '*' : ''}</span>`
+    }).join(' · ')
+    return `<details class="tac-box"${this.tacOpen ? ' open' : ''}>
+      <summary><span class="t">⚙ 팀 전술</span> <small>프리셋 ${summary} — 경기 중 <b>[ ]</b> 로 바꿉니다 · 개인 전술은 전술판에서 선수를 고르면 나옵니다</small></summary>
+      <div class="tac-head">
+        <span class="lab">편집할 프리셋</span>
+        <div class="seg" id="tac-preset">${PRESET_NAMES.map((n, i) => `<button data-v="${i}"${i === tp ? ' class="on"' : ''}>${n}</button>`).join('')}</div>
+        <button class="btn secondary" id="tac-reset">이 프리셋 기본값으로</button>
+        <small>* 표시는 기본값에서 바꾼 프리셋. 경기는 <b>균형</b>으로 시작합니다.</small>
+      </div>
+      <div class="tac-grid">${rows}</div>
+    </details>`
+  }
+
+  /** 개인 전술 상자 — 고른 자리가 선발 필드 자리(1~10)일 때 (2026-09-15) */
+  private roleHtml(): string {
+    const i = this.sel
+    if (i <= 0 || i >= START_SIZE) return ''
+    const slot = this.slotName(i)
+    const g = roleGroupOf(slot)
+    const list = ROLES[g]
+    const cur = this.sq.roles?.[i] ?? 0
+    const meta = list[cur] ?? list[0]
+    return `<div class="enh-box role-box">
+      <div class="t">개인 전술 — ${slot} · ${ROLE_GROUP_NAMES[g]}</div>
+      <div class="seg wide" id="role-seg">${list.map((r, k) => `<button data-v="${k}"${k === cur ? ' class="on"' : ''}>${r.name}</button>`).join('')}</div>
+      <div class="exp">${meta.desc}</div>
+      <small>역할은 <b>자리</b>에 붙습니다 — 선수를 바꿔도 남고, 포메이션을 바꾸면 전부 기본으로 돌아갑니다.</small>
+    </div>`
+  }
+
   private detailHtml(enhTotal: number): string {
     if (this.sel < 0) return '<p class="hintline">전술판에서 자리를 고르면 그 선수를 보고 바꿀 수 있습니다.</p>'
     const c = cardById(this.sq.ids[this.sel])
@@ -540,6 +600,7 @@ export class SquadScreen {
         <div class="dhead"><b>${c.name}</b> <span class="ov">${starHtml(now)}</span></div>
         <small>${clubById(c.club)?.name ?? ''} · ${c.pos} · ${c.h}cm ${c.w}kg · ${c.foot === 'R' ? '오른발' : c.foot === 'L' ? '왼발' : '양발'} · 급여 ${cardSalary(c)}</small>
         <div class="fam" style="color:${famColor(fam)}">${this.slotName(this.sel)} 능숙도 ${fam}</div>
+        ${this.roleHtml()}
         ${bars}
         <div class="row swaprow">
           <button class="btn secondary wide" id="quick-swap"${partner < 0 ? ' disabled' : ''}>
@@ -909,9 +970,63 @@ export class SquadScreen {
 
     $<HTMLSelectElement>('#sq-form').onchange = (e) => {
       this.sq.formation = (e.target as HTMLSelectElement).value
+      // 자리군이 바뀌므로 개인 전술은 전부 기본으로 (같은 숫자가 다른 뜻이 되는 것을 막는다)
+      if (this.sq.roles?.some((r) => r > 0)) {
+        this.sq.roles = new Array(START_SIZE).fill(0) as number[]
+        this.msg = '포메이션을 바꿔 개인 전술을 전부 기본으로 되돌렸습니다.'
+      }
       saveSquad(this.sq)
       this.draw()
     }
+    // ---- 팀 전술 패널 ----
+    const tac = $<HTMLDetailsElement>('.tac-box')
+    if (tac) {
+      tac.ontoggle = () => {
+        this.tacOpen = tac.open
+      }
+      tac.querySelectorAll<HTMLButtonElement>('#tac-preset button').forEach((b) => {
+        b.onclick = () => {
+          this.tacPreset = Number(b.dataset.v)
+          this.snd.ui('click')
+          this.draw()
+        }
+      })
+      tac.querySelectorAll<HTMLInputElement>('input[data-tac]').forEach((inp) => {
+        const key = inp.dataset.tac as (typeof TEAM_TACTICS)[number]['key']
+        const meta = TEAM_TACTICS.find((t) => t.key === key)
+        inp.oninput = () => {
+          const v = Math.max(0, Math.min(4, Math.round(Number(inp.value))))
+          this.sq.presets[this.tacPreset][key] = v
+          const val = inp.parentElement?.querySelector<HTMLElement>('.val')
+          if (val && meta) val.textContent = levelLabel(meta, v)
+          saveSquad(this.sq)
+        }
+        inp.onchange = () => {
+          this.snd.ui('click')
+          this.draw()
+        }
+      })
+      const reset = tac.querySelector<HTMLButtonElement>('#tac-reset')
+      if (reset) {
+        reset.onclick = () => {
+          this.sq.presets[this.tacPreset] = defaultPresets()[this.tacPreset]
+          saveSquad(this.sq)
+          this.snd.ui('ok')
+          this.draw()
+        }
+      }
+    }
+    // ---- 개인 전술 ----
+    this.root.querySelectorAll<HTMLButtonElement>('#role-seg button').forEach((b) => {
+      b.onclick = () => {
+        if (this.sel <= 0 || this.sel >= START_SIZE) return
+        if (!this.sq.roles || this.sq.roles.length !== START_SIZE) this.sq.roles = new Array(START_SIZE).fill(0) as number[]
+        this.sq.roles[this.sel] = Number(b.dataset.v)
+        saveSquad(this.sq)
+        this.snd.ui('click')
+        this.draw()
+      }
+    })
     const scope = $<HTMLElement>('#scope')
     scope.querySelectorAll<HTMLButtonElement>('button').forEach((b) => {
       b.onclick = () => {
@@ -1004,7 +1119,7 @@ export class SquadScreen {
       b.onclick = () => {
         const s = slots[Number(b.dataset.load)]
         if (s) {
-          this.sq = JSON.parse(JSON.stringify(s)) as Squad
+          this.sq = normalizeSquad(JSON.parse(JSON.stringify(s)) as Squad)
           this.sel = -1
           saveSquad(this.sq)
           this.msg = `슬롯 ${Number(b.dataset.load) + 1} 을 불러왔습니다.`
@@ -1080,7 +1195,7 @@ export class SquadScreen {
         const c = checkSquad(s, CAP)
         // 못 고치는 문제만 막는다. 급여·영입 인원은 불러와서 고칠 수 있게 둔다
         if (c.hard.length > 0) throw new Error(`규칙 위반: ${c.hard[0]}`)
-        this.sq = { ...s, hash: POOL_HASH, club: teamworkBonus(s.ids.slice(0, START_SIZE)).club }
+        this.sq = normalizeSquad({ ...s, hash: POOL_HASH, club: teamworkBonus(s.ids.slice(0, START_SIZE)).club })
         this.sel = -1
         saveSquad(this.sq)
         this.msg = c.ok

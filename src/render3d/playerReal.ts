@@ -145,6 +145,8 @@ const DIR_KICK = new THREE.Vector3(0.05, -0.55, 1)
 const DIR_KICK_BACK = new THREE.Vector3(0.05, -0.7, -0.7)
 const DIR_CHEER_L = new THREE.Vector3(0.45, 1, 0.15)
 const DIR_CHEER_R = new THREE.Vector3(-0.45, 1, 0.15)
+const DIR_WING_L = new THREE.Vector3(1, 0.12, 0.05)
+const DIR_WING_R = new THREE.Vector3(-1, 0.12, 0.05)
 
 // ---------------------------------------------------------------- 리그
 
@@ -358,7 +360,9 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
       // 하이 다이브는 몸이 떠오른다 (P3) · 헤딩은 점프 (2026-09-15)
       const jump = a.action === ACT_DIVE && a.diveHigh ? 0.5 * Math.sin(Math.min(1, lie) * Math.PI) : 0
       const headJump = headT > 0 ? 0.3 * Math.sin((1 - headT / 0.3) * Math.PI) : 0
-      body.position.y = pivotY * (1 - lie) + 0.18 * lie + jump + headJump
+      // 세레모니 1(주먹)은 깡충, 2(비행기)는 살짝 — cheerT 는 아래 팔 오버레이가 센다
+      const hop = a.celebrate ? (a.celeStyle === 1 ? Math.abs(Math.sin(cheerT * 5.5)) * 0.08 : a.celeStyle === 2 ? Math.abs(Math.sin(cheerT * 2.2)) * 0.02 : 0) : 0
+      body.position.y = pivotY * (1 - lie) + 0.18 * lie + jump + headJump + hop
 
       // ---- 절차적 덧씌우기 (믹서 뒤, 월드 방향으로 겨눈다) ----
       const wantArm = a.throwing || a.holding || a.celebrate || (a.action === ACT_DIVE && a.diveHigh)
@@ -384,13 +388,28 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
       if (armPose > 0.01 && bones.lArm && bones.rArm) {
         if (a.celebrate) {
           cheerT += dt
-          const sway = Math.sin(cheerT * 6) * 0.25
-          DIR_CHEER_L.set(0.45 + sway, 1, 0.15)
-          DIR_CHEER_R.set(-0.45 + sway, 1, 0.15)
-          aimBone(bones.lArm, root, DIR_CHEER_L, armPose)
-          aimBone(bones.rArm, root, DIR_CHEER_R, armPose)
-          if (bones.lForeArm) aimBone(bones.lForeArm, root, DIR_UP, armPose)
-          if (bones.rForeArm) aimBone(bones.rForeArm, root, DIR_UP, armPose)
+          if (a.celeStyle === 1) {
+            // 한 팔 주먹 — 오른팔만 위로 흔들고 왼팔은 클립(idle) 그대로
+            const sway = Math.sin(cheerT * 7) * 0.2
+            DIR_CHEER_R.set(-0.2 + sway, 1, 0.1)
+            aimBone(bones.rArm, root, DIR_CHEER_R, armPose)
+            if (bones.rForeArm) aimBone(bones.rForeArm, root, DIR_UP, armPose)
+          } else if (a.celeStyle === 2) {
+            // 비행기 — 두 팔을 옆으로 쭉, 상체는 앞으로
+            aimBone(bones.lArm, root, DIR_WING_L, armPose)
+            aimBone(bones.rArm, root, DIR_WING_R, armPose)
+            if (bones.lForeArm) aimBone(bones.lForeArm, root, DIR_WING_L, armPose)
+            if (bones.rForeArm) aimBone(bones.rForeArm, root, DIR_WING_R, armPose)
+            if (bones.spine) bones.spine.rotation.x += 0.4 * armPose
+          } else {
+            const sway = Math.sin(cheerT * 6) * 0.25
+            DIR_CHEER_L.set(0.45 + sway, 1, 0.15)
+            DIR_CHEER_R.set(-0.45 + sway, 1, 0.15)
+            aimBone(bones.lArm, root, DIR_CHEER_L, armPose)
+            aimBone(bones.rArm, root, DIR_CHEER_R, armPose)
+            if (bones.lForeArm) aimBone(bones.lForeArm, root, DIR_UP, armPose)
+            if (bones.rForeArm) aimBone(bones.rForeArm, root, DIR_UP, armPose)
+          }
         } else if (a.action === ACT_DIVE && a.diveHigh) {
           // 하이 다이브 — 두 팔을 위로 뻗는다
           aimBone(bones.lArm, root, DIR_UP, armPose)

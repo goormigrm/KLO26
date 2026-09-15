@@ -51,6 +51,8 @@ export interface PlayerRig extends Rig {
     wasDive: boolean
   /** 헤딩 남은 시간(초) — 점프하며 상체를 젖혔다 앞으로 */
   headT: number
+  /** 세레모니 경과 시간(초) — 흔들기·깡충 위상 */
+  cheer: number
   dispose(): void
 }
 
@@ -211,7 +213,7 @@ export function buildPlayer(spec: PlayerSpec, kit: Kit): PlayerRig {
     root, body, head, legL, legR, armL, armR,
     height: 1.03 * scale,
     scale,
-    walk: 0, kickT: 0, lie: 0, lieSide: 1, lastAction: 0, wasDive: false, headT: 0,
+    walk: 0, kickT: 0, lie: 0, lieSide: 1, lastAction: 0, wasDive: false, headT: 0, cheer: 0,
     animate(a: AnimInput, dt: number) {
       animateRig(rig, a, dt)
     },
@@ -241,8 +243,10 @@ export interface AnimInput {
   throwing: boolean
   /** 전력질주 중 — 보폭이 빠르고 팔을 크게 굽혀 흔들며 상체를 앞으로 (사용자 요청 2026-09-11) */
   sprint: boolean
-  /** 골 세레모니 — 득점 팀 필드 선수가 두 팔을 든다 (2026-09-15) */
+  /** 골 세레모니 — 득점 팀 필드 선수 (2026-09-15). 리플레이 중에는 false */
   celebrate: boolean
+  /** 세레모니 종류 0 두 팔 흔들기 · 1 한 팔 주먹 + 깡충 · 2 비행기(두 팔 옆으로, 상체 앞으로) */
+  celeStyle: number
   /** GK 하이 다이브 — 몸이 떠오른다 (P3) */
   diveHigh: boolean
   /** 이번 킥이 슛이다 (킥 클립 고르기용, 2026-09-15) */
@@ -322,16 +326,36 @@ export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
     armL = -2.7
     armR = -2.7
   }
-  // 골 세레모니 — 두 팔을 위로 흔든다
+  // 골 세레모니 3종 (2026-09-15) — 0 두 팔 흔들기 · 1 한 팔 주먹 + 깡충 · 2 비행기
+  let armZL = 0.12
+  let armZR = -0.12
+  let hop = 0
   if (a.celebrate) {
-    const sw = Math.sin(rig.walk * 0.7) * 0.3
-    armL = -2.9 + sw
-    armR = -2.9 - sw
-  }
+    rig.cheer += dt
+    const c = rig.cheer
+    if (a.celeStyle === 1) {
+      armR = -2.95 + Math.sin(c * 7) * 0.25
+      armL = 0.45
+      hop = Math.abs(Math.sin(c * 5.5)) * 0.07
+    } else if (a.celeStyle === 2) {
+      armL = 0
+      armR = 0
+      armZL = -1.45
+      armZR = 1.45
+      leanX += 0.38
+      hop = Math.abs(Math.sin(c * 2.2)) * 0.02
+    } else {
+      const sw = Math.sin(c * 6) * 0.3
+      armL = -2.9 + sw
+      armR = -2.9 - sw
+    }
+  } else rig.cheer = 0
   rig.legL.rotation.x = legL * (1 - lie)
   rig.legR.rotation.x = legR * (1 - lie) + 0.35 * lie
   rig.armL.rotation.x = (armL - armFwd) * (1 - lie) + (sideways ? -2.6 : -0.6) * lie
   rig.armR.rotation.x = (armR - armFwd) * (1 - lie) + (sideways ? -2.6 : -0.6) * lie
+  rig.armL.rotation.z = armZL
+  rig.armR.rotation.z = armZR
 
   if (sideways || (lie > 0.01 && rig.lie > 0 && a.action === ACT_DIVE)) {
     rig.body.rotation.x = 0
@@ -342,6 +366,6 @@ export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
   } else {
     rig.body.rotation.z = 0
     rig.body.rotation.x = leanX * (1 - lie) - 1.35 * lie
-    rig.body.position.set(0, bob + 0.12 * lie + jumpH, 0.12 * lie)
+    rig.body.position.set(0, bob + 0.12 * lie + jumpH + hop, 0.12 * lie)
   }
 }

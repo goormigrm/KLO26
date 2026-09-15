@@ -1,19 +1,21 @@
 // 스쿼드 코드 — 공유·검증 규격 (DESIGN 5.9). `KLO26-<Base64url>`.
 //
-// 비트 배치 (KMD26 대전 코드와 같은 방식):
+// 비트 배치 (KMD26 대전 코드와 같은 방식) — v2 (2026-09-15 팀·개인 전술):
 //   버전 6 · 데이터 해시 16 · 포메이션 4 · 18명 × (id 11 + 강화 3) = 252 ·
-//   프리셋 3 × 슬라이더 4 × 3 = 36 · 키커 3 × 5 = 15 · 체크섬 10  → 339비트 = 43바이트
+//   프리셋 3 × 슬라이더 7 × 3 = 63 · 역할 10자리 × 2 = 20 · 키커 3 × 5 = 15 · 체크섬 10  → 386비트 = 49바이트
+//   (v1 은 슬라이더 4 × 3 = 36 · 역할 없음 · 339비트. v1 코드는 "규격이 다릅니다"로 거부된다)
 //
 // **체크섬이 핵심이다.** 잘린 코드가 조용히 "다른 스쿼드"로 해석되는 것이 최악이다 (KMD26 4-2).
 
 import { FORMATION_LIST } from '../core/formation'
-import type { Sliders } from '../core/state'
+import { SLIDER_KEYS, type Sliders } from '../core/state'
 import { POOL_HASH } from '../data/pool'
-import { SQUAD_SIZE, type Squad } from './squad'
+import { SQUAD_SIZE, START_SIZE, type Squad } from './squad'
 
-export const CODE_VERSION = 1
+export const CODE_VERSION = 2
 export const CODE_PREFIX = 'KLO26-'
-const TOTAL_BITS = 6 + 16 + 4 + SQUAD_SIZE * 14 + 36 + 15 + 10
+const ROLE_BITS = 2
+const TOTAL_BITS = 6 + 16 + 4 + SQUAD_SIZE * 14 + 3 * SLIDER_KEYS.length * 3 + (START_SIZE - 1) * ROLE_BITS + 15 + 10
 const BYTES = Math.ceil(TOTAL_BITS / 8)
 
 class BitWriter {
@@ -96,7 +98,7 @@ function fromBase64Url(s: string): Uint8Array | null {
   }
 }
 
-const SL: (keyof Sliders)[] = ['line', 'press', 'width', 'mentality']
+const SL: readonly (keyof Sliders)[] = SLIDER_KEYS
 
 export function encodeSquad(sq: Squad): string {
   const fi = FORMATION_LIST.indexOf(sq.formation)
@@ -109,7 +111,9 @@ export function encodeSquad(sq: Squad): string {
     w.write((sq.ids[i] ?? 0) & 0x7ff, 11)
     w.write(Math.max(0, Math.min(7, sq.enh[i] ?? 0)), 3)
   }
-  for (const p of sq.presets) for (const k of SL) w.write(Math.max(0, Math.min(7, p[k])), 3)
+  for (const p of sq.presets) for (const k of SL) w.write(Math.max(0, Math.min(7, p[k] ?? 2)), 3)
+  // 역할 — 자리 1~10 (골키퍼 0 은 없다)
+  for (let i = 1; i < START_SIZE; i++) w.write(Math.max(0, Math.min(3, sq.roles?.[i] ?? 0)), ROLE_BITS)
   for (const k of sq.kickers) w.write((k < 0 ? 31 : k) & 31, 5)
   const bits = w.length
   const sum = checksum(w.bytesSoFar(), bits)
@@ -150,6 +154,8 @@ export function decodeSquad(text: string): DecodeResult {
     for (const k of SL) s[k] = r.read(3)
     presets.push(s)
   }
+  const roles: number[] = [0]
+  for (let i = 1; i < START_SIZE; i++) roles.push(r.read(ROLE_BITS))
   const kickers = [0, 0, 0].map(() => {
     const v = r.read(5)
     return v === 31 ? -1 : v
@@ -167,7 +173,7 @@ export function decodeSquad(text: string): DecodeResult {
   if (!formation) {
     return { ok: false, reason: 'formation', message: '포메이션 값이 잘못되었습니다.' }
   }
-  return { ok: true, squad: { name: '받은 스쿼드', formation, ids, enh, presets, kickers } }
+  return { ok: true, squad: { name: '받은 스쿼드', formation, ids, enh, presets, kickers, roles } }
 }
 
 /** 코드 길이 (문자) — 문서·테스트가 본다 */

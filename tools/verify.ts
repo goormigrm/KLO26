@@ -12,7 +12,7 @@ import { createState, hashState, step } from '../src/core/sim'
 import { synthSquad } from '../src/core/synth'
 import { boostSpec } from '../src/cards/cards'
 import { POOL, type Card } from '../src/data/pool'
-import type { PlayerSpec, Sliders, SquadConfig } from '../src/core/state'
+import { DEFAULT_SLIDERS, SLIDER_KEYS, type PlayerSpec, type Sliders, type SquadConfig } from '../src/core/state'
 
 const N = Number(process.argv[2] ?? 120)
 const HALF = 180
@@ -42,7 +42,7 @@ interface Result {
 }
 
 function withSliders(sq: SquadConfig, s: Partial<Sliders>): SquadConfig {
-  const base: Sliders = { line: 2, press: 2, width: 2, mentality: 2, ...s }
+  const base: Sliders = { ...DEFAULT_SLIDERS, ...s }
   return { ...sq, presets: [base, base, base], sliders: base }
 }
 
@@ -81,7 +81,7 @@ function pct(a: number, b: number): string {
 
 // ---------------------------------------------------------------- 1 · 슬라이더 지문
 console.log('=== 1. 슬라이더 지문 (같은 시드로 값만 바꿔 지문이 달라지는가)')
-const SLIDERS: (keyof Sliders)[] = ['line', 'press', 'width', 'mentality']
+const SLIDERS: readonly (keyof Sliders)[] = SLIDER_KEYS
 const fpSeeds = [101, 202, 303, 404, 505]
 for (const key of SLIDERS) {
   let differ = 0

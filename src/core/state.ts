@@ -3,6 +3,7 @@
 
 import type { Rng } from './rng'
 import type { Skills } from './skills'
+import type { RoleTraits } from './tactics'
 
 export const PITCH_L = 105
 export const PITCH_W = 68
@@ -132,6 +133,9 @@ export interface Player {
   runT: number
   /** 골키퍼 다이브 종류 — true 면 뛰어오르는 하이 다이브, false 면 낮게 눕는 로우 다이브 (P3) */
   diveHigh: boolean
+  /** 개인 전술 — 역할 번호(0 기본, 자리군마다 뜻이 다르다)와 AI 가 보는 계수 (2026-09-15, core/tactics.ts) */
+  role: number
+  rt: RoleTraits
   /** 대인마크 상대 idx (−1 없음) · 잡은 틱 — 두 수비수가 같은 상대를 잡지 않게 (2026-09-15) */
   markOf: number
   markT: number
@@ -212,9 +216,18 @@ export interface Sliders {
   width: number
   /** 멘탈리티 0~4 */
   mentality: number
+  /** 템포 0 침착 ~ 4 빠르게 — 받은 공을 내보내는 속도 (2026-09-15 팀 전술) */
+  tempo: number
+  /** 빌드업 0 짧게 ~ 4 길게 — 골키퍼·수비 배급 */
+  buildup: number
+  /** 수비 방식 0 지역 ~ 4 대인 — 마크를 찾는 거리 */
+  defStyle: number
 }
 
-export const DEFAULT_SLIDERS: Sliders = { line: 2, press: 2, width: 2, mentality: 2 }
+/** 팀 전술 7종의 키 (코드 인코딩 순서이기도 하다 — 바꾸면 스쿼드 코드 규격이 바뀐다) */
+export const SLIDER_KEYS = ['line', 'press', 'width', 'mentality', 'tempo', 'buildup', 'defStyle'] as const
+
+export const DEFAULT_SLIDERS: Sliders = { line: 2, press: 2, width: 2, mentality: 2, tempo: 2, buildup: 2, defStyle: 2 }
 
 /** 봇 난이도. 0 = 봇 아님(사람) */
 export type Difficulty = 0 | 1 | 2 | 3
@@ -354,6 +367,8 @@ export interface SquadConfig {
   players: PlayerSpec[]
   sliders?: Sliders
   presets?: [Sliders, Sliders, Sliders]
+  /** 개인 전술 — 선발 자리별 역할 0~3 ([0] 은 골키퍼, 안 쓴다). 없으면 전부 기본 (2026-09-15) */
+  roles?: number[]
 }
 
 export interface MatchConfig {

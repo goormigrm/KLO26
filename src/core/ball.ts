@@ -1137,14 +1137,18 @@ export function gkPunt(st: GameState, gk: Player, aimY: number): void {
  */
 export function gkDistribute(st: GameState, gk: Player): void {
   const dir = st.teams[gk.team].dir
+  // 빌드업(팀 전술 2026-09-15): 짧게(0~1)는 덜 열려도·더 멀어도 발밑으로, 길게(3~4)는 아주 열린 사람이 없으면 펀트
+  const bu = st.teams[gk.team].sliders.buildup
+  const minOpen = bu <= 1 ? 4.5 : bu >= 3 ? 8.5 : 6
+  const maxD = bu <= 1 ? 26 : 20
   let best = -1
   let bestS = 0
   for (const q of st.players) {
     if (q.team !== gk.team || q.idx === gk.idx || q.sentOff) continue
     const d = dist(gk.x, gk.y, q.x, q.y)
-    if (d > 20 || d < 4) continue
+    if (d > maxD || d < 4) continue
     const open = nearestOppDist(st, q)
-    if (open < 6) continue
+    if (open < minOpen) continue
     // 길 — 골키퍼와 받을 선수 사이 2.5 m 안에 상대가 있으면 안 준다
     let blocked = false
     for (const o of st.players) {

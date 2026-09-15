@@ -215,5 +215,7 @@ KM26 → KMD26v1.0 → KLD26 의 결. 배포 주소 `https://goormigrm.github.io
 | G-44 (9/11) | D 를 눌러도 공 가진 상대에게 잘 안 간다 | 목표를 소유자의 0.35초 뒤 자리로 · 방향키 45% → 25% · 압박 중 자동 전력질주 | `core/sim.ts step` |
 | G-45 (9/11) | 전력질주 모션을 다르게 | `AnimInput.sprint` — 보폭·팔 스윙·팔 굽힘·상체 기울기·흔들림. 사람 조작 선수는 `team.sprint`, 나머지는 `p.sprint` | `render3d/player3d.ts` · `renderer3d.ts animOf` |
 | G-46 (9/11) | 골키퍼가 좌우 다이빙을 순간이동처럼 — 일어나는 시간을 | 다이브 뒤 `ACT_FALLEN` 30틱, 그동안 못 잡고 몸에 맞은 공만 튕김. 잡았으면 바로 선다. 렌더는 옆으로 누운 채 일어남 | `core/sim.ts` · `core/ball.ts gkCatch` · `player3d.ts` |
+| G-47 (9/15) | 영상처럼 팀 전술·개인 전술을 설정하고 경기에 적용되게 | 팀 전술은 슬라이더 4 → **7**(템포·빌드업·수비 방식 추가), 개인 전술은 **선발 자리별 역할 0~3**(자리군마다 뜻이 다름). sim 은 역할 이름이 아니라 **계수 7개**(`RoleTraits`)만 본다 — AI 분기가 늘지 않고 새 역할은 표에 한 줄. 역할은 자리에 붙고 포메이션을 바꾸면 전부 기본. 스쿼드 코드 v2(386비트). 영상은 자막·캡처를 못 얻어 FC 온라인 공개 항목으로 설계 | `core/tactics.ts` · `core/ai.ts` · `core/ball.ts gkDistribute` · `cards/squad.ts normalizeSquad` · `cards/squadcode.ts` · `ui/squad.ts` · DESIGN 4.10a · 5.9 · `tests/tactics.test.ts` |
+| G-48 (9/15) | 리플레이에 이미 세레모니 자세, 세레모니를 다양하게 | 원인은 리플레이가 `phase === 'goal'` 프레임을 되돌리는데 `animOf` 가 phase 만 봐서. `view.replay` 면 세레모니 없음. 자세 3종은 렌더 전용, 득점자 = 골 수 % 3 · 동료 = idx 기반(결정론, sim 무관) | `render3d/renderer3d.ts animOf` · `player3d.ts` · `playerReal.ts` · DESIGN 4.8b |
 
 앞으로 생기는 갈림길은 이 문서에 번호를 이어 적는다.

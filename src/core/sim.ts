@@ -5,6 +5,7 @@ import { atan2A, clamp, cosA, len, sinA, angleDiff } from './fixedmath'
 import { FORMATIONS } from './formation'
 import { makeRng } from './rng'
 import { skillsOf } from './skills'
+import { defaultPresets, normalizeSliders, roleTraits } from './tactics'
 import { aiDecide, ballOwnerTeam, nearestToBall, updateAnchors } from './ai'
 import { interceptPoint, gkPunt } from './ball'
 import {
@@ -23,13 +24,13 @@ import {
   type GameState, type MatchConfig, type Player, type PlayerSpec, type Sliders, type SquadConfig, type Team,
 } from './state'
 
-function copySliders(s: Sliders): Sliders {
-  return { line: s.line, press: s.press, width: s.width, mentality: s.mentality }
+function copySliders(s: Partial<Sliders>): Sliders {
+  return normalizeSliders(s)
 }
 
-function mkPlayer(idx: number, team: number, spec: PlayerSpec, slot: string, band: string): Player {
+function mkPlayer(idx: number, team: number, spec: PlayerSpec, slot: string, band: string, role: number): Player {
   return {
-    idx, team, spec, slot, band,
+    idx, team, spec, slot, band, role, rt: roleTraits(band, slot, role),
     x: 0, y: 0, vx: 0, vy: 0, facing: 0, stamina: 1,
     action: ACT_RUN, actT: 0,
     sk: skillsOf(spec, slot, band as never),
@@ -43,7 +44,7 @@ function mkPlayer(idx: number, team: number, spec: PlayerSpec, slot: string, ban
 function mkTeam(t: number, sq: SquadConfig, human: boolean, bot: number): Team {
   const presets: [Sliders, Sliders, Sliders] = sq.presets
     ? [copySliders(sq.presets[0]), copySliders(sq.presets[1]), copySliders(sq.presets[2])]
-    : [{ line: 1, press: 1, width: 2, mentality: 1 }, copySliders(sq.sliders ?? DEFAULT_SLIDERS), { line: 3, press: 3, width: 3, mentality: 3 }]
+    : [defaultPresets()[0], copySliders(sq.sliders ?? DEFAULT_SLIDERS), defaultPresets()[2]]
   return {
     name: sq.name, short: sq.short, human, bot: (human ? 0 : bot) as Team['bot'],
     dir: t === 0 ? 1 : -1, formation: sq.formation,
@@ -69,10 +70,11 @@ export function createState(cfg: MatchConfig): GameState {
     if (sq.players.length < 11) throw new Error(`선수가 11명이 안 된다: ${sq.name}`)
     const human = cfg.human?.[t] ?? false
     teams[t] = mkTeam(t, sq, human, cfg.bots?.[t] ?? 2)
-    players.push(mkPlayer(t * 11, t, sq.players[0], 'GK', 'GK'))
+    players.push(mkPlayer(t * 11, t, sq.players[0], 'GK', 'GK', 0))
     for (let i = 0; i < 10; i++) {
       const [band, slot] = shape[i]
-      players.push(mkPlayer(t * 11 + 1 + i, t, sq.players[i + 1], slot, band))
+      const role = sq.roles?.[i + 1] ?? 0
+      players.push(mkPlayer(t * 11 + 1 + i, t, sq.players[i + 1], slot, band, Number.isInteger(role) && role >= 0 && role <= 3 ? role : 0))
     }
   }
   const st: GameState = {

@@ -6,7 +6,7 @@
 //   3. 둘 다 준비되면 방장이 `start`(시드 · 지연 · 시간)를 보내고 동시에 경기를 연다.
 // 시드는 두 스쿼드 코드와 방 코드로 만든다 — 누구도 고를 수 없다 (DESIGN 4.11).
 
-import { START_SIZE, cardOvr, checkSquad, computeCap, squadClub, type Squad } from '../cards/squad'
+import { START_SIZE, cardOvr, checkSquad, computeCap, normalizeSquad, squadClub, type Squad } from '../cards/squad'
 import { ovrStars } from '../cards/cards'
 import { cardById } from '../data/pool'
 import { starHtml } from './stars'
@@ -109,7 +109,7 @@ export class WaitRoom {
     if (!res.ok) return { ok: false, why: `상대 스쿼드 코드 오류 — ${res.message}` }
     const c = checkSquad(res.squad, CAP)
     if (!c.ok) return { ok: false, why: `상대 스쿼드가 규칙 위반입니다 — ${c.errors[0]}` }
-    return { ok: true, why: '', squad: res.squad }
+    return { ok: true, why: '', squad: normalizeSquad(res.squad) }
   }
 
   private maybeStart(): void {

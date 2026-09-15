@@ -2,7 +2,8 @@
 // **받는 쪽이 전부 다시 센다** — 서버가 없으니 상대가 보낸 스쿼드를 그대로 믿지 않는다 (DESIGN 5.8).
 
 import { FORMATIONS } from '../core/formation'
-import type { SquadConfig, Sliders } from '../core/state'
+import { SLIDER_KEYS, type SquadConfig, type Sliders } from '../core/state'
+import { ROLE_MAX, defaultPresets, normalizeSliders } from '../core/tactics'
 import { CLUBS, POOL, cardById, type Club } from '../data/pool'
 import { boostSpec, calibrateOvr, ovrOf, salaryOf, type Card, type OvrFit } from './cards'
 
@@ -46,9 +47,26 @@ export interface Squad {
   ids: number[]
   /** 18명 강화 (0~5) */
   enh: number[]
+  /** 팀 전술 프리셋 3벌(수비·균형·공격) × 7종 0~4 (core/tactics.ts TEAM_TACTICS) */
   presets: [Sliders, Sliders, Sliders]
   /** PK · FK · CK 키커 (선발 인덱스 0~10, −1 = 자동) */
   kickers: [number, number, number]
+  /**
+   * 개인 전술 — 선발 **자리**(0~10, [0] 골키퍼는 안 씀)마다 역할 0~3. 역할은 자리에 붙는다: 선수를 바꿔도 남고,
+   * 포메이션을 바꾸면 전부 기본(0)으로 돌아간다(자리군이 달라져 뜻이 바뀌므로). 없으면 전부 기본 (2026-09-15)
+   */
+  roles?: number[]
+}
+
+/**
+ * 예전 저장본·받은 스쿼드를 지금 규격으로 — 빠진 슬라이더 키는 2(보통), 역할은 0. 값은 고치지 않고 채우기만 한다.
+ * (슬라이더 4종 시절의 localStorage · JSON 파일이 그대로 열리게)
+ */
+export function normalizeSquad(sq: Squad): Squad {
+  const presets = [0, 1, 2].map((i) => normalizeSliders(sq.presets?.[i])) as [Sliders, Sliders, Sliders]
+  const roles = new Array(START_SIZE).fill(0) as number[]
+  if (Array.isArray(sq.roles)) for (let i = 1; i < START_SIZE; i++) roles[i] = Number.isInteger(sq.roles[i]) ? Math.max(0, Math.min(ROLE_MAX, sq.roles[i])) : 0
+  return { ...sq, presets, roles }
 }
 
 /** OVR 보정은 카드 풀에서 한 번만 뽑는다 (DESIGN 5.3 — 손으로 정하지 않는다) */
@@ -263,10 +281,16 @@ export function checkSquad(sq: Squad, cap: number): SquadCheck {
   if (outside.xi > OUT_XI_MAX) soft.push(`선발 영입은 ${OUT_XI_MAX}명까지입니다 (${outside.xi}명)`)
   if (outside.bench > OUT_BENCH_MAX) soft.push(`후보 영입은 ${OUT_BENCH_MAX}명까지입니다 (${outside.bench}명)`)
   for (const p of sq.presets) {
-    for (const k of ['line', 'press', 'width', 'mentality'] as const) {
+    for (const k of SLIDER_KEYS) {
+      // 빠진 키(예전 저장본)는 normalizeSquad 가 채운다 — 있는데 범위 밖인 것만 거절
       const v = p[k]
+      if (v === undefined) continue
       if (!Number.isInteger(v) || v < 0 || v > 4) errors.push('슬라이더는 0~4 입니다')
     }
+  }
+  if (sq.roles) {
+    if (sq.roles.length > START_SIZE) errors.push('개인 전술은 선발 11자리까지입니다')
+    for (const r of sq.roles) if (!Number.isInteger(r) || r < 0 || r > ROLE_MAX) errors.push(`개인 전술 역할은 0~${ROLE_MAX} 입니다`)
   }
   for (const k of sq.kickers) if (k < -1 || k > 10) errors.push('키커는 선발 인덱스여야 합니다')
   const hard = errors.slice()
@@ -294,18 +318,15 @@ export function toSquadConfig(sq: Squad, name: string, short: string): SquadConf
     const plus = (sq.enh[i] ?? 0) + (i < START_SIZE ? color.bonus : 0)
     return boostSpec(c, plus)
   })
-  return { name, short, formation: sq.formation, players, presets: sq.presets }
+  const norm = normalizeSquad(sq)
+  return { name, short, formation: sq.formation, players, presets: norm.presets, roles: norm.roles }
 }
 
 export function clubById(id: number): Club | undefined {
   return CLUBS[id]
 }
 
-const DEFAULT_PRESETS = (): [Sliders, Sliders, Sliders] => [
-  { line: 1, press: 1, width: 2, mentality: 1 },
-  { line: 2, press: 2, width: 2, mentality: 2 },
-  { line: 3, press: 3, width: 3, mentality: 3 },
-]
+const DEFAULT_PRESETS = defaultPresets
 
 function bandPos(band: string): string {
   return band === 'DF' || band === 'WB' ? 'DF' : band === 'FW' ? 'FW' : 'MF'
@@ -347,6 +368,7 @@ export function clubSquad(clubId: number, formation = '4-3-3', name?: string): S
     enh: new Array(SQUAD_SIZE).fill(0),
     presets: DEFAULT_PRESETS(),
     kickers: [-1, -1, -1],
+    roles: new Array(START_SIZE).fill(0) as number[],
   }
 }
 

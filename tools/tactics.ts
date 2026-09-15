@@ -8,15 +8,17 @@ import { EMPTY_INPUT, type Input } from '../src/core/input'
 import { createState, hashState, step } from '../src/core/sim'
 import { synthSquad } from '../src/core/synth'
 import { ownGoalX, type GameState, type SquadConfig, type Sliders } from '../src/core/state'
+import { defaultPresets } from '../src/core/tactics'
 
 const idle: [Input, Input] = [EMPTY_INPUT, EMPTY_INPUT]
 const HALF = 180
 const N = Number(process.argv[2] ?? 24)
 
+const [DEF, BAL, ATK] = defaultPresets()
 const PRESETS: { name: string; s: Sliders }[] = [
-  { name: '수비', s: { line: 1, press: 1, width: 2, mentality: 1 } },
-  { name: '균형', s: { line: 2, press: 2, width: 2, mentality: 2 } },
-  { name: '공격', s: { line: 3, press: 3, width: 3, mentality: 3 } },
+  { name: '수비', s: DEF },
+  { name: '균형', s: BAL },
+  { name: '공격', s: ATK },
 ]
 
 function withPresets(sq: SquadConfig, s: Sliders): SquadConfig {

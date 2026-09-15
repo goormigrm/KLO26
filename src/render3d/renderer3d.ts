@@ -417,7 +417,7 @@ export class Renderer3D {
       rig.root.visible = !p.sentOff
       rig.root.position.set(x, 0, -y)
       rig.root.rotation.y = facingToRotY(fr)
-      rig.animate(this.animOf(p, fr, curr), dt)
+      rig.animate(this.animOf(p, fr, curr, view), dt)
     }
     // ---- 공 ----
     const b = curr.ball
@@ -706,7 +706,7 @@ export class Renderer3D {
     this.gl.render(this.scene, this.camera)
   }
 
-  private animOf(p: Player, facingRad: number, st: GameState) {
+  private animOf(p: Player, facingRad: number, st: GameState, view: ViewInfo) {
     const speed = Math.hypot(p.vx, p.vy)
     // 전력질주 — 사람 조작 선수는 E 홀드, 나머지는 AI 의 sprint. 체력이 바닥이면 sim 도 안 빨라지니 모션도 보통으로
     const tm = st.teams[p.team]
@@ -719,9 +719,13 @@ export class Renderer3D {
       const l = p.vx * rx + p.vy * ry
       lateral = l > 0.05 ? 1 : l < -0.05 ? -1 : 0
     }
-    const celebrate = st.phase === 'goal' && st.goalTeam === p.team && !p.sk.isGK
+    // 세레모니는 **리플레이가 아닐 때만** — 리플레이는 골 장면 프레임을 되돌려 보는 것인데 phase 가 'goal' 이라
+    // 팔을 든 채로 슛하는 그림이 나왔다 (사용자 제보 2026-09-15). 종류(0~2)는 골마다·선수마다 달라지되 결정론(idx·득점 수)
+    const celebrate = st.phase === 'goal' && st.goalTeam === p.team && !p.sk.isGK && !view.replay
+    const goals = st.teams[0].goals + st.teams[1].goals
+    const celeStyle = p.idx === st.goalScorer ? goals % 3 : (p.idx * 7 + goals * 5 + st.goalScorer) % 3
     const shot = st.ball.shotBy === p.idx && st.tick - p.lastKick < 12
-    return { action: p.action, actT: p.actT, speed, holding: p.holdT > 0, lateral, throwing: p.throwing, sprint, celebrate, diveHigh: p.diveHigh, shot }
+    return { action: p.action, actT: p.actT, speed, holding: p.holdT > 0, lateral, throwing: p.throwing, sprint, celebrate, celeStyle, diveHigh: p.diveHigh, shot }
   }
 
   /** 프레임 시간(ms) 계측용 */

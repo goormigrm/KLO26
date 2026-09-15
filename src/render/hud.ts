@@ -18,7 +18,7 @@ export interface HudView {
   message: string
 }
 
-const PRESET_NAMES = ['수비', '균형', '공격']
+import { PRESET_NAMES } from '../core/tactics'
 
 /** '#rrggbb' 가 밝은 색인가 (글씨 색을 뒤집는 기준) */
 function isLight(css: string): boolean {

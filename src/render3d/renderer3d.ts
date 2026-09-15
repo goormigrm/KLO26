@@ -692,7 +692,7 @@ export class Renderer3D {
       lateral = l > 0.05 ? 1 : l < -0.05 ? -1 : 0
     }
     const celebrate = st.phase === 'goal' && st.goalTeam === p.team && !p.sk.isGK
-    return { action: p.action, actT: p.actT, speed, holding: p.holdT > 0, lateral, throwing: p.throwing, sprint, celebrate }
+    return { action: p.action, actT: p.actT, speed, holding: p.holdT > 0, lateral, throwing: p.throwing, sprint, celebrate, diveHigh: p.diveHigh }
   }
 
   /** 프레임 시간(ms) 계측용 */

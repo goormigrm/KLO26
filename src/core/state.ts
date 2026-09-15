@@ -126,6 +126,10 @@ export interface Player {
   throwing: boolean
   /** 이 선수가 교체로 들어온 사람인가 (결과 화면 표시용) */
   subbedIn: boolean
+  /** 침투 러닝 중인 마지막 틱 — 소유자 AI 가 이 선수에게 패스를 선호한다 (P3, 2026-09-15) */
+  runT: number
+  /** 골키퍼 다이브 종류 — true 면 뛰어오르는 하이 다이브, false 면 낮게 눕는 로우 다이브 (P3) */
+  diveHigh: boolean
 }
 
 export interface Ball {

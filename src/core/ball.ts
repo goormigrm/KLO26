@@ -367,6 +367,13 @@ export function contestBall(st: GameState, o: Player): void {
       q.lastKick = st.tick - 6
       st.stats[q.team].tackles++
       st.events.push({ tick: st.tick, type: 'tackle', team: q.team, player: q.idx, x: b.x, y: b.y })
+      // 뺏긴 선수는 몸싸움에 밀려 **넘어질 수 있다** (P3, 2026-09-15 — FC 온라인 영상의 태클 뒤 넘어짐).
+      // 힘(str)이 센 수비수·스탠딩 태클(Space)일수록 자주(10~50%). 넘어지면 14틱(0.23 초) 못 움직인다
+      const fallP = 0.1 + 0.25 * (q.sk.str / (q.sk.str + o.sk.str + 0.0001)) + (q.tackleT > 0 ? 0.15 : 0)
+      if (rand(st.rng) < fallP && o.action === ACT_RUN) {
+        o.action = ACT_FALLEN
+        o.actT = 14
+      }
       return
     }
     // 실패 — 뒤에서 밀었으면 파울 (스탠딩 태클은 더 거칠다).
@@ -419,6 +426,11 @@ export function slideContest(st: GameState, q: Player): void {
     o.lastKick = st.tick
     st.stats[q.team].tackles++
     st.events.push({ tick: st.tick, type: 'tackle', team: q.team, player: q.idx, x: b.x, y: b.y })
+    // 슬라이딩에 걸린 선수는 열에 일곱은 넘어진다 (P3 — 항상이면 소유 전환이 잦아 파울이 두 배로 늘었다)
+    if (o.action === ACT_RUN && rand(st.rng) < 0.7) {
+      o.action = ACT_FALLEN
+      o.actT = 18
+    }
   } else if (d > 0.7 || b.z > 0.8) return
   const fromRestart = b.restartBy
   b.owner = -1
@@ -889,7 +901,11 @@ export function gkCatch(st: GameState, gk: Player): void {
         // 손이 안 닿는다 — 도달 거리 근처면 몸을 날린다(시도는 넉넉히, 닿을지는 **실제 거리·시간**으로)
         if (lat > gk.sk.gkReach + 1.0) return
         // 다이브 속도 — 도달(gkReach: 반사·공중장악·민첩·점프·키)이 주, 핸들링이 부
-        const diveSpeed = 3.4 + 1.2 * gk.sk.gkReach + 1.2 * gk.sk.gkHand
+        // 다이브 2종 (P3, 2026-09-15): 공이 손 높이(1.1 m) 위로 오면 **뛰어오르고**(하이), 아니면 **낮게 눕는다**(로우).
+        // 하이는 발밑 공을, 로우는 머리 위 공을 놓친다 — 잡기 판정의 뻗음(stretch)에 걸린다
+        const zAt = b.z + b.vz * t - 0.5 * G * t * t
+        gk.diveHigh = zAt > 1.1
+        const diveSpeed = (3.4 + 1.2 * gk.sk.gkReach + 1.2 * gk.sk.gkHand) * (gk.diveHigh ? 0.9 : 1)
         gk.action = ACT_DIVE
         gk.actT = 24
         gk.vx = ((px - gk.x) / lat) * diveSpeed
@@ -904,7 +920,14 @@ export function gkCatch(st: GameState, gk: Player): void {
   let chance: number
   // 뻗은 정도 0(몸 정면) ~ 1(손끝). 다이브 중 상단(z > 1.8)으로 오는 공은 손이 더 멀다
   let stretch = clamp(d / hand, 0, 1)
-  if (gk.action === ACT_DIVE && b.z > 1.8) stretch = Math.min(1, stretch + 0.4)
+  if (gk.action === ACT_DIVE) {
+    // 다이브 종류와 공 높이가 안 맞으면 손이 멀다 (P3)
+    if (gk.diveHigh) {
+      if (b.z < 0.5) stretch = Math.min(1, stretch + 0.5)
+    } else if (b.z > 1.3) stretch = Math.min(1, stretch + 0.6)
+    else if (b.z > 1.0) stretch = Math.min(1, stretch + 0.25)
+    if (b.z > 2.0) stretch = Math.min(1, stretch + 0.3)
+  }
   const fast = clamp((speed - 14) / 26, 0, 0.36)
   if (speed < 6) chance = 0.95
   else {

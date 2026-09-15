@@ -301,10 +301,12 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
         body.rotation.z = 0
         body.rotation.x = -1.4 * lie
       }
-      body.position.y = pivotY * (1 - lie) + 0.18 * lie
+      // 하이 다이브는 몸이 떠오른다 (P3)
+      const jump = a.action === ACT_DIVE && a.diveHigh ? 0.5 * Math.sin(Math.min(1, lie) * Math.PI) : 0
+      body.position.y = pivotY * (1 - lie) + 0.18 * lie + jump
 
       // ---- 절차적 덧씌우기 (믹서 뒤, 월드 방향으로 겨눈다) ----
-      const wantArm = a.throwing || a.holding || a.celebrate
+      const wantArm = a.throwing || a.holding || a.celebrate || (a.action === ACT_DIVE && a.diveHigh)
       armPose += ((wantArm ? 1 : 0) - armPose) * Math.min(1, dt * 8)
       const needWorld = kickT > 0 || armPose > 0.01 || (a.sprint && moving)
       if (needWorld) root.updateMatrixWorld(true)
@@ -327,6 +329,12 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
           DIR_CHEER_R.set(-0.45 + sway, 1, 0.15)
           aimBone(bones.lArm, root, DIR_CHEER_L, armPose)
           aimBone(bones.rArm, root, DIR_CHEER_R, armPose)
+          if (bones.lForeArm) aimBone(bones.lForeArm, root, DIR_UP, armPose)
+          if (bones.rForeArm) aimBone(bones.rForeArm, root, DIR_UP, armPose)
+        } else if (a.action === ACT_DIVE && a.diveHigh) {
+          // 하이 다이브 — 두 팔을 위로 뻗는다
+          aimBone(bones.lArm, root, DIR_UP, armPose)
+          aimBone(bones.rArm, root, DIR_UP, armPose)
           if (bones.lForeArm) aimBone(bones.lForeArm, root, DIR_UP, armPose)
           if (bones.rForeArm) aimBone(bones.rForeArm, root, DIR_UP, armPose)
         } else if (a.throwing) {

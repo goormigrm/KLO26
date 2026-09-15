@@ -241,6 +241,8 @@ export interface AnimInput {
   sprint: boolean
   /** 골 세레모니 — 득점 팀 필드 선수가 두 팔을 든다 (2026-09-15) */
   celebrate: boolean
+  /** GK 하이 다이브 — 몸이 떠오른다 (P3) */
+  diveHigh: boolean
 }
 
 /** 코드 애니메이션 — 걷기/달리기 · 킥 · 슬라이딩 · 넘어짐 · GK 다이브 */
@@ -319,7 +321,9 @@ export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
   if (sideways || (lie > 0.01 && rig.lie > 0 && a.action === ACT_DIVE)) {
     rig.body.rotation.x = 0
     rig.body.rotation.z = 1.35 * lie * rig.lieSide
-    rig.body.position.set(0, bob + 0.1 * lie, 0)
+    // 하이 다이브는 몸이 떠오른다
+    const jump = a.action === ACT_DIVE && a.diveHigh ? 0.45 * Math.sin(Math.min(1, lie) * Math.PI) : 0
+    rig.body.position.set(0, bob + 0.1 * lie + jump, 0)
   } else {
     rig.body.rotation.z = 0
     rig.body.rotation.x = leanX * (1 - lie) - 1.35 * lie

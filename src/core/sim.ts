@@ -36,7 +36,7 @@ function mkPlayer(idx: number, team: number, spec: PlayerSpec, slot: string, ban
     ax: 0, ay: 0, tx: 0, ty: 0,
     sprint: false, press: false, lastKick: -100, holdT: 0, yellow: 0, sentOff: false,
     dribX: 0, dribY: 0, gotT: -100, tackleT: 0, clearNext: false,
-    offside: false, throwing: false, subbedIn: false,
+    offside: false, throwing: false, subbedIn: false, runT: -1000, diveHigh: false,
   }
 }
 

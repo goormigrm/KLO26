@@ -202,9 +202,13 @@ function carrierDecide(st: GameState, p: Player, noise: number): void {
     // 시야(vis)가 좋을수록 "열린 동료"를 정확히 본다 — 낮으면 open·lane 판단에 잡음이 는다 (2026-09-11)
     const eye = 0.6 + 0.4 * p.sk.vis
     let s = 0.2 + 0.3 * gain * fwdK + (0.25 * open + 0.25 * lane) * eye + 0.15 * p.sk.pas - (dq > 35 ? 0.3 : dq > 25 ? 0.1 : 0) + randN(r) * noise * (1.6 - 0.6 * p.sk.vis)
+    // 침투 중인 동료(P3) — 앞으로 뛰는 선수에게 준다
+    const running = st.tick - q.runT < 20 && gain > 0.15
+    if (running) s += 0.22
     if (justGot) s -= 0.35
     let kind: PassKind = 'ground'
-    if (gain > 0.2 && spaceAhead(st, q, dir) > 5) {
+    // 침투 중인 동료에게는 스루 (P3)
+    if (running || (gain > 0.2 && spaceAhead(st, q, dir) > 5)) {
       s += 0.12
       kind = 'through'
     }
@@ -404,6 +408,33 @@ export function aiDecide(st: GameState, p: Player): void {
   if (ot === ti) {
     const o = st.players[b.owner]
     const rank = rankByDist(st, ti, o.x, o.y, p, true, b.owner)
+    // 침투 러닝 (P3, 2026-09-15 — 지원 러닝보다 먼저 본다 · FC 온라인 영상: 받을 선수가 패스 **전에** 빈 공간으로 뛴다).
+    // 공격수·공격형 미드필더가 소유자보다 앞에 있고, 소유자가 전진 중이거나 상대 진영이며, 내 앞 7 m 가 비었으면
+    // 오프사이드 라인 바로 뒤까지 사선으로 달린다. 소유자 AI 는 `runT` 를 보고 이 선수에게 스루를 선호한다
+    if ((p.band === 'FW' || p.band === 'AM') && (o.vx * dir > 1.2 || o.x * dir > 0)) {
+      const ahead = (p.x - o.x) * dir
+      const gx = goalX(team)
+      if (ahead > 2 && ahead < 26 && dist(p.x, p.y, gx, 0) < 40) {
+        let clear = true
+        for (const q of st.players) {
+          if (q.team === ti || q.sk.isGK || q.sentOff) continue
+          const dx = (q.x - p.x) * dir
+          if (dx > -0.5 && dx < 7 && Math.abs(q.y - p.y) < 2.2) {
+            clear = false
+            break
+          }
+        }
+        if (clear) {
+          const line = offsideLineX(st, ti) * dir
+          const want = Math.min(line - LINE_MARGIN, p.x * dir + 9)
+          p.tx = clamp(want * dir, -HALF_L + 1, HALF_L - 1)
+          p.ty = clamp(p.y + (0 - p.y) * 0.25, -HALF_W + 1, HALF_W - 1)
+          p.sprint = p.stamina > 0.3
+          p.runT = st.tick
+          return
+        }
+      }
+    }
     const n = 2 + (team.sliders.mentality >= 3 ? 1 : 0) + (team.sliders.mentality === 4 ? 1 : 0)
     if (rank < n) {
       const side = p.y >= o.y ? 1 : -1

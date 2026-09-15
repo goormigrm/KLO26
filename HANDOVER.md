@@ -80,6 +80,7 @@
 | 15 | **전력질주 모션** `AnimInput.sprint` | `render3d/player3d.ts` · `renderer3d.ts animOf(p, fr, st)` | G-45 (브라우저 미확인) |
 | 15 | **GK 다이브 뒤 `ACT_FALLEN` 30틱** — 못 잡고 몸에 맞은 공만 튕김 · 렌더 `rig.wasDive` | `core/sim.ts` · `core/ball.ts gkCatch` · `player3d.ts` | G-46 (DESIGN 4.7 미반영 · 브라우저 미확인) |
 | 16 (9/15) | **개발 계획서** — FC 온라인 대회 영상(FSL SUMMER wonder08 vs Exito) 정지 화면 분석 → 엔진·화면 차이표·로드맵·실사 캐릭터 옵션(Mixamo 권장)·라이선스 확인 | `docs/개발계획-FC온라인-벤치마크.md` | CHANGELOG 9/15 |
+| 20 (9/15) | **P3 엔진 움직임** — 침투 러닝(`ai.ts` `ot === ti` 분기, 지원 러닝보다 먼저 · `Player.runT` · 소유자 스루 선호), GK 다이브 2종(`gkCatch` 경로 높이 예측 → `diveHigh`, 뻗음 보정), 태클 넘어짐(`contestBall` 확률 · `slideContest` 항상). 봇 30판 골 3.7 · 파울 8.2 · 태클 21.3 · 패스 44% (넘어짐 완화 뒤 — 항상 넘어지게 했을 땐 파울 19.7) | `core/ai.ts` · `core/ball.ts` · `core/state.ts` · `core/sim.ts` · `player3d.ts` · `playerReal.ts` · `tests/p3_movement.test.ts` | CHANGELOG 9/15 · DESIGN 4.7 · 4.8 · 4.10 |
 | 19 (9/15) | **P0 화면 인상** — 카메라 32/24 + 낮은 컷(`CamTarget.near`), 그림자 공 주변, 잔디 격자, 광고판·2단 관중석(카메라 쪽 1단), 팀색 삼각형+이름, 도움 표시 설정, 발밑 파워 바, 스코어보드 좌상단, 레이더 반투명, 배너 접기. 실사 모션: 모델 180°, 뼈 월드 겨누기(`aimBone`), 세레모니 | `render3d/camera.ts` · `pitch3d.ts` · `renderer3d.ts` · `playerReal.ts` · `player3d.ts` · `render/hud.ts` · `radar.ts` · `ui/settings.ts` · `style.css` | CHANGELOG 9/15 · DESIGN 7.1 |
 | 18 (9/15) | **P1-b 변환 도구** `tools/char/build.mjs` — fbx2gltf + @gltf-transform, 파일 이름 = 클립 이름, 뼈 이름 이식, 스킨 보존 양자화. Samba 샘플 검증 | `tools/char/build.mjs` · `package.json char:build` · devDeps | `docs/캐릭터-교체-절차.md` 3장 |
 | 17 (9/15) | **실사 선수 그래픽 P1-a** — `Rig` 인터페이스로 찰흙/실사 통일, `playerReal.ts`(GLTF · SkeletonUtils.clone · AnimationMixer · 유니폼 텍스처 물들이기 · 절차적 덧씌우기), 설정 "선수 그래픽", 로비 preload, 그림자맵 2048. 임시 캐릭터 Soldier | `src/render3d/playerReal.ts` · `player3d.ts Rig` · `renderer3d.ts makeRig/setCharacterLib/setGraphics` · `ui/settings.ts` · `game/session.ts ensureCharacter` · `ui/lobby.ts` · `public/models/player.glb` | CHANGELOG 9/15 · DESIGN 7.1 · `docs/캐릭터-교체-절차.md` |
@@ -200,7 +201,7 @@
 |---|---|---|
 | 0 | **15차 마무리** — 위 [미반영] 표 네 줄 | skip 해제 · 스크린샷 · DESIGN 4.8e · 가이드 |
 | 0-b | **캐릭터 1순위 (사용자 결정 9/15)** — P1-a PoC(`playerReal.ts`, 토글, Soldier 임시)와 **P1-b 변환 도구**(`npm run char:build`, Samba 샘플로 검증)까지 됐다. **막힌 곳: Mixamo 는 로그인이 필요해 사용자가 직접** 인간 캐릭터 + 축구 클립 FBX 를 받아 `C:\assets\mixamo\` 에 넣어야 한다([docs/캐릭터-교체-절차.md](docs/캐릭터-교체-절차.md) 2장 표). 그 뒤 **P1-c**: `npm run char:build` → `playerReal.ts` 에서 kick/slide/dive/fall/getup/throw/catch/celebrate 클립을 절차적 덧씌우기 자리에 연결 · fps 50+ | 22명 60 fps · GLB ≤ 8 MB · 킥/다이브 클립 |
-| 0-c | 로드맵 — **P0 화면 인상은 됐다**(9/15 저녁 커밋). 다음 **P2 캐릭터 전면**(Mixamo FBX 가 와야 한다 — 0-b) → **P3 엔진 움직임**(침투 러닝 · 드리블 터치 · GK 다이브 2종 · 넘어짐, 개발계획 2장) → P4 연출(리플레이 2 앵글 · 네트 출렁임 · 하프타임 통계). FBX 가 없으면 P3 부터 | 단계마다 커밋·스크린샷 |
+| 0-c | 로드맵 — P0 화면 인상 ✅ · **P3 엔진 움직임 ✅**(침투 러닝 · GK 다이브 2종 · 넘어짐 — 9/15). 남은 것: **P2 캐릭터 전면**(Mixamo FBX 가 와야 한다 — 0-b), **드리블 터치 간격**(P3 잔여 — 공이 발에서 떨어지는 틈에 뺏기 판정, 균형 재측정 필요), **P4 연출**(리플레이 2 앵글 · 네트 출렁임 · 하프타임 통계 · 세레모니 클로즈업) | 단계마다 커밋·스크린샷 |
 | 1 | 2차 피드백 반영 | 사용자가 "됐다" |
 | 2 | **강화가 값을 하게** — 수비 +2.7%p · 공격 +2.0%p (목표 8~15). 강화 +1 = 능력치 40종 +1 인데 스킬 곱셈에 묻힌다. 강화분을 스킬에 직접 얹는 안(레벨당 ×1.02)을 `attrcheck` 방식으로 재 볼 것 | `npm run verify 200` 또는 attrcheck 류에서 +8%p 이상 |
 | 3 | 파울 빈도 — 14차에서 13/판(태클 26)까지 내렸다. 남은 것은 봇의 슬라이딩(`slideContest`)·GK 차징 몫. 사용자 체감이 아직 많으면 그쪽 | `npm run balance -- 120` 에서 ≤ 11 |

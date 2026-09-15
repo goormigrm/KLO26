@@ -21,7 +21,7 @@ export interface Kit {
   number: number
 }
 
-/** 렌더러가 보는 선수 리그 — 찰흙(`buildPlayer`)과 실사(`playerReal.ts`)가 같은 모양이다 (2026-09-15) */
+/** 렌더러가 보는 선수 리그 — 찰흙(`buildPlayer`). 실사 glTF 리그는 2026-09-15 저녁 뺐다(G-49) — 인터페이스는 남겨 두어 다른 리그를 붙일 수 있다 */
 export interface Rig {
   root: THREE.Group
   /** 월드 높이 (배율 뒤) — 머리 위 표시 위치 */

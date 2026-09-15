@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 2026-09-15 — 🗑 실사 그래픽 삭제 (찰흙만) — 경기성에 집중
+
+사용자 결정 "실사 그래픽 그냥 삭제해, 버그가 심해 못 봐줄 정도. 찰흙만 남기고 경기성을 살리자" (DECISIONS G-49).
+
+- 뺀 것: `src/render3d/playerReal.ts` · `public/models/player.glb`(2.9 MB) · `tools/char/`(build·inspect) · `docs/캐릭터-교체-절차.md` · 설정 "선수 그래픽" · 로비 preload · `npm run char:build` · devDeps 8개(fbx2gltf · @gltf-transform ×3 · sharp · meshoptimizer · pngjs · jpeg-js).
+- 남긴 것: `Rig` 인터페이스(찰흙이 유일한 구현) · `AnimInput.shot/celeStyle` · `.gitignore` 의 `assets/`(로컬 FBX 가 올라가지 않게).
+- 예전 저장 설정의 `graphics` 키는 무시된다(로더가 알려진 키만 쓴다).
+
 ## 2026-09-15 — 🧍 실사 캐릭터 "완전 난리" 수정 — T포즈 · 루트 모션 · 뼈 이름 접두어
 
 사용자 제보 "실사로 하면 거의 못할 정도, 찰흙은 정상". 원인 셋이 겹쳐 있었다 (`tools/char/inspect.mjs` 와 브라우저 리그 검사로 계측).

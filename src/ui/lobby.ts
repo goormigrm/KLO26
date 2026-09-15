@@ -11,7 +11,6 @@ import type { LobbyLink, RoomInfo } from '../net/room'
 import { makeRoomCode } from '../net/room'
 import { loadSquadOrDefault } from './squad'
 import { bindSettingsPanel, loadSettings, saveSettings, settingsPanelHtml, type Settings } from './settings'
-import { loadCharacterLib } from '../render3d/playerReal'
 
 /** 테스트 모드는 주소에 `?test=1` 이 있을 때만 보인다 — 배포에서는 링크를 안 걸면 끝이다 */
 export function testEnabled(): boolean {
@@ -40,8 +39,6 @@ export class Lobby {
   ) {
     this.host = host
     this.s = loadSettings()
-    // 실사 캐릭터 파일(약 2 MB)을 로비에서 미리 받아 둔다 — 경기 시작 때 바로 뜨게 (2026-09-15)
-    if (this.s.graphics === 'real') loadCharacterLib().catch(() => {})
     const sq = loadSquadOrDefault()
     const cap = computeCap().cap
     const chk = checkSquad(sq, cap)

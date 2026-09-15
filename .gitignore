@@ -8,5 +8,5 @@ Thumbs.db
 docs/img/
 # Python 캐시
 __pycache__/
-# 원본 캐릭터·애니 FBX (Mixamo) — 변환된 public/models/player.glb 만 올린다 (2026-09-15)
+# 로컬에 남아 있을 수 있는 Mixamo FBX (실사 그래픽은 2026-09-15 뺐다 — 저장소에 올리지 않는다)
 assets/

@@ -21,7 +21,16 @@ export interface Kit {
   number: number
 }
 
-export interface PlayerRig {
+/** 렌더러가 보는 선수 리그 — 찰흙(`buildPlayer`)과 실사(`playerReal.ts`)가 같은 모양이다 (2026-09-15) */
+export interface Rig {
+  root: THREE.Group
+  /** 월드 높이 (배율 뒤) — 머리 위 표시 위치 */
+  height: number
+  animate(a: AnimInput, dt: number): void
+  dispose(): void
+}
+
+export interface PlayerRig extends Rig {
   root: THREE.Group
   body: THREE.Group
   head: THREE.Group
@@ -83,7 +92,7 @@ function capsuleDown(r: number, len: number, m: THREE.Material): THREE.Mesh {
 }
 
 /** 등번호 텍스처 */
-function numberTexture(no: number, color: number): THREE.CanvasTexture {
+export function numberTexture(no: number, color: number): THREE.CanvasTexture {
   const c = document.createElement('canvas')
   c.width = 96
   c.height = 96
@@ -201,6 +210,9 @@ export function buildPlayer(spec: PlayerSpec, kit: Kit): PlayerRig {
     height: 1.03 * scale,
     scale,
     walk: 0, kickT: 0, lie: 0, lieSide: 1, lastAction: 0, wasDive: false,
+    animate(a: AnimInput, dt: number) {
+      animateRig(rig, a, dt)
+    },
     dispose() {
       for (const g of disposables) g.dispose()
       numTex.dispose()

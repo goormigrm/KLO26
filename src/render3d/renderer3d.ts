@@ -9,7 +9,8 @@ import { kickerView, type KickPreview } from '../core/rules'
 import { FOV_WIDE, broadcastTarget, cameraLookAt, cameraPosition, fovForAspect } from './camera'
 import { buildPitch, type Pitch3D } from './pitch3d'
 import { Referees } from './referee3d'
-import { animateRig, buildPlayer, facingToRotY, type Kit, type PlayerRig } from './player3d'
+import { buildPlayer, facingToRotY, type Kit, type Rig } from './player3d'
+import { buildRealPlayer, type CharacterLib } from './playerReal'
 
 /** 보간에 필요한 만큼만 — 매 틱 22명 pose 와 공을 복사한다 (상태 전체 JSON 복사는 무겁다) */
 export interface Pose {
@@ -37,10 +38,14 @@ export function capturePose(st: GameState, out?: PrevPose): PrevPose {
   return o
 }
 
+export type GraphicsMode = 'clay' | 'real'
+
 export interface RenderOptions {
   shadows: boolean
   /** 렌더 해상도 배율 (1 또는 0.75) */
   resScale: number
+  /** 선수 그래픽 — 찰흙(프리미티브) · 실사(glTF 스킨드 메시, 2026-09-15). 실사 파일이 아직 안 왔으면 찰흙으로 그리다 바꾼다 */
+  graphics?: GraphicsMode
 }
 
 export interface ViewInfo {
@@ -117,7 +122,11 @@ export class Renderer3D {
   private camera: THREE.PerspectiveCamera
   private pitch: Pitch3D
   private refs: Referees
-  private rigs: PlayerRig[] = []
+  private rigs: Rig[] = []
+  private graphics: GraphicsMode = 'clay'
+  private charLib: CharacterLib | null = null
+  private lastState: GameState | null = null
+  private disposed = false
   private ball: THREE.Mesh
   private ballTex: THREE.CanvasTexture
   private ballShadow: THREE.Mesh
@@ -163,6 +172,7 @@ export class Renderer3D {
     opts: RenderOptions,
   ) {
     this.opts = opts
+    this.graphics = opts.graphics ?? 'clay'
     this.canvas = document.createElement('canvas')
     this.canvas.className = 'gl'
     container.appendChild(this.canvas)
@@ -262,13 +272,37 @@ export class Renderer3D {
     this.resize()
   }
 
+  /** 선수 하나의 리그 — 설정과 캐릭터 파일 유무에 따라 찰흙/실사 */
+  private makeRig(p: Player): Rig {
+    const kit = p.sk.isGK ? this.gkKits![p.team] : this.kits![p.team]
+    if (this.graphics === 'real' && this.charLib) return buildRealPlayer(this.charLib, p.spec, kit)
+    return buildPlayer(p.spec, kit)
+  }
+
+  /** 실사 캐릭터 파일이 도착했다 — 실사 모드면 22명을 다시 만든다 */
+  setCharacterLib(lib: CharacterLib): void {
+    if (this.disposed) return
+    this.charLib = lib
+    if (this.graphics === 'real' && this.lastState) this.setMatch(this.lastState, this.kits!, this.gkKits!)
+  }
+
+  /** 설정 "선수 그래픽" — 경기 도중에도 바꾼다 */
+  setGraphics(mode: GraphicsMode): void {
+    if (mode === this.graphics) return
+    this.graphics = mode
+    if (this.lastState && this.kits && this.gkKits) this.setMatch(this.lastState, this.kits, this.gkKits)
+  }
+
   /** 경기 시작 — 22명 리그를 만든다. GK 는 팀 GK 킷 */
   setMatch(st: GameState, kits: [Kit, Kit], gkKits: [Kit, Kit]): void {
+    this.lastState = st
     for (const r of this.rigs) {
       this.scene.remove(r.root)
       r.dispose()
     }
-    this.rigs = st.players.map((p) => buildPlayer(p.spec, p.sk.isGK ? gkKits[p.team] : kits[p.team]))
+    this.kits = kits
+    this.gkKits = gkKits
+    this.rigs = st.players.map((p) => this.makeRig(p))
     for (const r of this.rigs) this.scene.add(r.root)
     this.kits = kits
     this.gkKits = gkKits
@@ -286,7 +320,7 @@ export class Renderer3D {
     const old = this.rigs[idx]
     this.scene.remove(old.root)
     old.dispose()
-    const rig = buildPlayer(p.spec, p.sk.isGK ? this.gkKits[p.team] : this.kits[p.team])
+    const rig = this.makeRig(p)
     this.rigs[idx] = rig
     this.scene.add(rig.root)
     if (this.nameFor === idx) this.nameFor = -1
@@ -351,7 +385,7 @@ export class Renderer3D {
       rig.root.visible = !p.sentOff
       rig.root.position.set(x, 0, -y)
       rig.root.rotation.y = facingToRotY(fr)
-      animateRig(rig, this.animOf(p, fr, curr), dt)
+      rig.animate(this.animOf(p, fr, curr), dt)
     }
     // ---- 공 ----
     const b = curr.ball
@@ -611,6 +645,7 @@ export class Renderer3D {
   }
 
   dispose(): void {
+    this.disposed = true
     for (const r of this.rigs) r.dispose()
     this.rigs = []
     this.refs.dispose()

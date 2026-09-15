@@ -278,7 +278,7 @@ export function buildPitch(opts: PitchOptions): Pitch3D {
   const sun = new THREE.DirectionalLight(0xfff1dc, 2.1)
   sun.position.set(-30, 70, 40)
   sun.castShadow = opts.shadows
-  sun.shadow.mapSize.set(4096, 4096)
+  sun.shadow.mapSize.set(2048, 2048) // 4096 → 2048 (2026-09-15): 실사 22명은 그림자 패스가 삼각형을 두 번 그린다 — P0 에서 공 주변으로 범위를 좁힐 때 다시 본다
   sun.shadow.camera.near = 10
   sun.shadow.camera.far = 220
   sun.shadow.camera.left = -66

@@ -80,6 +80,7 @@
 | 15 | **전력질주 모션** `AnimInput.sprint` | `render3d/player3d.ts` · `renderer3d.ts animOf(p, fr, st)` | G-45 (브라우저 미확인) |
 | 15 | **GK 다이브 뒤 `ACT_FALLEN` 30틱** — 못 잡고 몸에 맞은 공만 튕김 · 렌더 `rig.wasDive` | `core/sim.ts` · `core/ball.ts gkCatch` · `player3d.ts` | G-46 (DESIGN 4.7 미반영 · 브라우저 미확인) |
 | 16 (9/15) | **개발 계획서** — FC 온라인 대회 영상(FSL SUMMER wonder08 vs Exito) 정지 화면 분석 → 엔진·화면 차이표·로드맵·실사 캐릭터 옵션(Mixamo 권장)·라이선스 확인 | `docs/개발계획-FC온라인-벤치마크.md` | CHANGELOG 9/15 |
+| 17 (9/15) | **실사 선수 그래픽 P1-a** — `Rig` 인터페이스로 찰흙/실사 통일, `playerReal.ts`(GLTF · SkeletonUtils.clone · AnimationMixer · 유니폼 텍스처 물들이기 · 절차적 덧씌우기), 설정 "선수 그래픽", 로비 preload, 그림자맵 2048. 임시 캐릭터 Soldier | `src/render3d/playerReal.ts` · `player3d.ts Rig` · `renderer3d.ts makeRig/setCharacterLib/setGraphics` · `ui/settings.ts` · `game/session.ts ensureCharacter` · `ui/lobby.ts` · `public/models/player.glb` | CHANGELOG 9/15 · DESIGN 7.1 · `docs/캐릭터-교체-절차.md` |
 
 ### 스크린샷·GIF 다시 뜨기
 
@@ -120,6 +121,8 @@
 | 속도 폭만 현실 수준으로 축소 | 81% — 아직 지배적 | 어디서 이기는지를 막아야 (교훈 63) |
 | 세레모니 카메라가 공을 따라감 | 공은 골망 속, 모임은 20 m 밖이라 화면 밖 | 득점자를 따라간다 |
 | 브라우저 도구의 `key` 액션으로 Esc/방향키 | 페이지에 안 닿았다 | `window.dispatchEvent(new KeyboardEvent)` (교훈 62) |
+| 실사 리그가 `this.kits` 를 읽는데 `setMatch` 가 킷을 나중에 저장 | 첫 경기에서 null → 검은 화면 | 킷 저장을 리그 생성 **앞**으로 |
+| 유니폼 물들이기를 원본 밝기 그대로 곱함 | 군복처럼 어두운 텍스처는 팀색이 갈색으로 죽었다 | 옷 픽셀 평균 밝기로 정규화 |
 | bash heredoc 으로 큰 python 패치 | 따옴표 파싱이 깨졌다 | 스크립트는 **Write 도구로 파일에** 쓰고 실행 |
 | 궤적 미리보기를 1 px `LineDashedMaterial` 로만 | 키커 뒤 시점에서 잔디에 묻혀 안 보였다 | 구슬(`InstancedMesh` 28개)을 등간격으로 얹었다 |
 | 브라우저 검증 중 src 를 고침 | vite 가 전체 리로드해 `__klo` 가 사라지고 경기가 날아갔다 | 검증을 다 끝낸 뒤 src 를 만진다 |
@@ -192,7 +195,8 @@
 | 순위 | 작업 | 끝났다의 기준 |
 |---|---|---|
 | 0 | **15차 마무리** — 위 [미반영] 표 네 줄 | skip 해제 · 스크린샷 · DESIGN 4.8e · 가이드 |
-| 0-b | **FC 온라인 벤치마크 계획서 실행** — [docs/개발계획-FC온라인-벤치마크.md](docs/개발계획-FC온라인-벤치마크.md) P0(화면 인상, 렌더 전용) → P1(Mixamo 캐릭터 PoC). P1 첫 작업은 Mixamo 로그인 후 축구 애니메이션 목록 확정 | P0: 영상 옆 스크린샷 비교 · 60 fps. P1: 22명 60 fps · GLB ≤ 8 MB · 찰흙/실사 토글 |
+| 0-b | **캐릭터 1순위 (사용자 결정 9/15)** — P1-a PoC 는 됐다(`playerReal.ts`, 설정 토글, Soldier 임시). 다음: **P1-b** `tools/char/build.mjs`(fbx2gltf + @gltf-transform 4.5 — 둘 다 npm 에 있다) · **사용자가 Mixamo 에서 인간 캐릭터 + 축구 클립 FBX 를 받아 `C:\assets\mixamo\` 에** ([docs/캐릭터-교체-절차.md](docs/캐릭터-교체-절차.md)) · 클립을 `playerReal.ts` 의 절차적 덧씌우기 자리에 연결 · fps 50+ (그림자 범위 공 주변) | 22명 60 fps · GLB ≤ 8 MB · 찰흙/실사 토글 · 킥/다이브 클립 |
+| 0-c | 그 다음 로드맵 순서 — **P0 화면 인상**(카메라·잔디·조명·광고판·표시 정리·스코어보드·파워 바·레이더·배너) → P2 캐릭터 전면 → P3 엔진 움직임 → P4 연출 ([docs/개발계획-FC온라인-벤치마크.md](docs/개발계획-FC온라인-벤치마크.md) 4장) | 단계마다 커밋·스크린샷 |
 | 1 | 2차 피드백 반영 | 사용자가 "됐다" |
 | 2 | **강화가 값을 하게** — 수비 +2.7%p · 공격 +2.0%p (목표 8~15). 강화 +1 = 능력치 40종 +1 인데 스킬 곱셈에 묻힌다. 강화분을 스킬에 직접 얹는 안(레벨당 ×1.02)을 `attrcheck` 방식으로 재 볼 것 | `npm run verify 200` 또는 attrcheck 류에서 +8%p 이상 |
 | 3 | 파울 빈도 — 14차에서 13/판(태클 26)까지 내렸다. 남은 것은 봇의 슬라이딩(`slideContest`)·GK 차징 몫. 사용자 체감이 아직 많으면 그쪽 | `npm run balance -- 120` 에서 ≤ 11 |

@@ -17,6 +17,7 @@ import { sfx } from '../audio/sfx'
 import { Hud } from '../render/hud'
 import { KeyView } from '../render/keyview'
 import { Renderer3D, capturePose, type PrevPose } from '../render3d/renderer3d'
+import { loadCharacterLib } from '../render3d/playerReal'
 import type { Kit } from '../render3d/player3d'
 import { bindSettingsPanel, settingsPanelHtml, type Settings } from '../ui/settings'
 import { LocalInput } from './localInput'
@@ -172,8 +173,10 @@ export class Session {
     const stage = host.querySelector('#stage') as HTMLElement
     this.overlay = host.querySelector('#overlay') as HTMLElement
     this.fpsEl = host.querySelector('#fps') as HTMLElement
-    this.renderer = new Renderer3D(stage, { shadows: cfg.settings.shadows, resScale: cfg.settings.resScale })
+    this.renderer = new Renderer3D(stage, { shadows: cfg.settings.shadows, resScale: cfg.settings.resScale, graphics: cfg.settings.graphics })
     this.renderer.setMatch(this.state, this.kits, this.gkKits)
+    // 실사 캐릭터 파일 — 로비에서 미리 받아 두었으면 즉시, 아니면 찰흙으로 그리다 도착하면 바꾼다
+    if (cfg.settings.graphics === 'real') this.ensureCharacter()
     this.hud = new Hud(stage, this.radarColors, this.keysShown)
     // 입력 키 표시 — 설정(기본 켜짐) 또는 테스트 모드 (2026-09-11 사용자 요청: Q+D 가 실제로 들어가는지 보고 싶다)
     if (cfg.settings.keyView || cfg.test?.keyView) this.keyView = new KeyView(stage)
@@ -426,6 +429,15 @@ export class Session {
       })
     }
     this.raf = requestAnimationFrame(this.frame)
+  }
+
+  /** 실사 캐릭터 파일을 (한 번만) 받아 렌더러에 준다. 실패하면 찰흙으로 남는다 */
+  private ensureCharacter(): void {
+    loadCharacterLib()
+      .then((lib) => {
+        if (!this.disposed) this.renderer.setCharacterLib(lib)
+      })
+      .catch((e: unknown) => console.warn('[char] 실사 캐릭터를 못 받았다 — 찰흙으로', e))
   }
 
   /** 세트피스 궤적 미리보기 — 내가 킥커이고 D 또는 A 를 홀드 중일 때 (렌더 전용, 2026-09-11) */
@@ -685,6 +697,10 @@ export class Session {
           setMuted: (m) => this.snd.setMuted(m),
           setShadows: (on) => this.renderer.setShadows(on),
           setResScale: (v) => this.renderer.setResScale(v),
+          setGraphics: (mode) => {
+            this.renderer.setGraphics(mode)
+            if (mode === 'real') this.ensureCharacter()
+          },
           setKeysHint: (on) => {
             this.keysShown = on
             this.hud.setKeysShown(on)

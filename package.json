@@ -21,6 +21,7 @@
     "shots": "vite-node tools/shots.ts",
     "stamina": "vite-node tools/stamina.ts",
     "throwin": "vite-node tools/throwin.ts",
+    "audit": "vite-node tools/audit.ts",
     "build:cards": "python tools/build_cards.py"
   },
   "dependencies": {

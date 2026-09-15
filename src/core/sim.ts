@@ -83,7 +83,7 @@ export function createState(cfg: MatchConfig): GameState {
     players,
     ball: {
       x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, owner: -1, lastTouch: -1, lastTeam: -1, kickTick: -100,
-      shotBy: -1, shotQ: 0, passTo: -1, onTarget: false, fromThrow: false, restartBy: -1, passLive: false,
+      shotBy: -1, shotQ: 0, passTo: -1, onTarget: false, fromThrow: false, restartBy: -1, passLive: false, passKind: '',
     },
     teams,
     rng: makeRng(cfg.seed),
@@ -387,7 +387,7 @@ export function step(st: GameState, inputs: [Input, Input]): void {
     if (b.owner !== p.idx && p.action === ACT_RUN && !isKicker && (p.sk.isGK || len(p.vx, p.vy) < 0.9)) {
       const want = atan2A(b.y - p.y, b.x - p.x)
       const dfa = angleDiff(want, p.facing)
-      const maxT = p.sk.isGK ? p.sk.turn : p.sk.turn * 0.6
+      const maxT = p.sk.isGK ? p.sk.turn : p.sk.turn * 0.9
       p.facing = (p.facing + clamp(dfa, -maxT, maxT)) & 1023
     }
     // 견제 — 공(소유자)을 마주 본다
@@ -404,7 +404,8 @@ export function step(st: GameState, inputs: [Input, Input]): void {
     }
     if (b.owner === o.idx) {
       attachBall(st, o)
-      if (st.phase === 'play' || o.holdT > 0) contestBall(st, o)
+      // play 에서만 — 하프타임·세트피스 대기 중에 골키퍼가 든 공에 압박 선수가 붙어 있으면 GK 차징 파울이 틱마다 '통계만' 올랐다 (재검증 2026-09-15: 한 판 94회)
+      if (st.phase === 'play') contestBall(st, o)
     }
     if (o.clearNext && b.owner === o.idx && o.holdT === 0) {
       o.clearNext = false

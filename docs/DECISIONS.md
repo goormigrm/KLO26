@@ -219,5 +219,6 @@ KM26 → KMD26v1.0 → KLD26 의 결. 배포 주소 `https://goormigrm.github.io
 | G-48 (9/15) | 리플레이에 이미 세레모니 자세, 세레모니를 다양하게 | 원인은 리플레이가 `phase === 'goal'` 프레임을 되돌리는데 `animOf` 가 phase 만 봐서. `view.replay` 면 세레모니 없음. 자세 3종은 렌더 전용, 득점자 = 골 수 % 3 · 동료 = idx 기반(결정론, sim 무관) | `render3d/renderer3d.ts animOf` · `player3d.ts` · `playerReal.ts` · DESIGN 4.8b |
 | G-49 (9/15) | 실사 그래픽 그냥 삭제 — 버그가 심해 못 봐줄 정도, 찰흙만 남기고 경기성을 살리자 | 26차에 T포즈·루트 모션·뼈 접두어를 고쳤지만 사용자 판단은 "삭제". 파일·설정·도구·devDeps 를 전부 뺐고 `Rig` 인터페이스만 남겼다. 되살리려면 `c1a8f27` 의 `playerReal.ts` | 렌더·설정·세션·로비 · CHANGELOG 9/15 · DESIGN 7.2 |
 | G-50 (9/15) | 골키퍼와 1:1 인 공격수를 뒤에서 온 수비수가 태클로 뺏는다 — 규칙에 안 맞고, 경고·퇴장감이다 | `fromBehind` 가 뒤집혀 있어 뒤 도전이 정면으로 취급됐다(버그). 고치고 규칙을 넣었다: 뒤 도전은 뺏기 ×0.25 · 파울 잦음 · 최소 경고 · 명백한 기회면 퇴장. **AI 는 뒤에서 덤비지 않고**(봇끼리 퇴장 2.3/판이 나와서) 골사이드로 앞지른다; 사람만 뒤에서 도전할 수 있다. 파울 14.4 → 6.3/판 | `core/ball.ts fromBehind/tackleFromBack/clearChance/foul(minCard)` · `core/ai.ts` · `tests/tackle_behind.test.ts` · DESIGN 4.8 |
+| G-51 (9/15) | 이전 요구사항이 제대로 반영되는지 전부 다시 확인 — 축구 게임 디테일 부족 | 눈으로 하나씩 보는 대신 **세는 도구**(`npm run audit`)를 만들어 저녁 목록 항목마다 목표치를 두고 봇 12판을 쟀다. 찾은 것: 세트피스 배치가 1.5 초 안에 못 선다(→ 5 초), 하프타임 GK 차징이 통계만 올린다(한 판 94회), 크로스 때 박스가 빈다(수비 라인이 조깅으로 4 초 걸려 내려온다 → 전력 복귀·마커 후퇴), 시선 80%. 남은 WARN 은 백로그 | `tools/audit.ts` · `tools/foulprobe.ts` · `tools/crossprobe.ts` · CHANGELOG 9/15 표 |
 
 앞으로 생기는 갈림길은 이 문서에 번호를 이어 적는다.

@@ -429,7 +429,7 @@ function foul(st: GameState, offender: Player, x: number, y: number, cardChance:
   if (rand(st.rng) < cardChance) card = 1
   card = Math.max(card, minCard)
   if (card === 1 && offender.yellow >= 1) card = 2
-  st.stats[offender.team].fouls++
+  // 통계는 rules 가 판정을 **적용할 때** 센다 — 같은 틱의 두 번째 호출이나 play 밖의 호출은 버려지므로
   call(st, { kind, team: victimTeam, by: offender.idx, x, y, card, penalty: pk })
 }
 
@@ -708,6 +708,7 @@ export function doPass(
   aim?: { x: number; y: number },
 ): void {
   const b = st.ball
+  b.passKind = kind
   const team = st.teams[p.team]
   const dir = team.dir
   let ax: number
@@ -856,6 +857,7 @@ export function doThrow(st: GameState, p: Player, target: number, dx: number, dy
   b.vz = (0.3 - b.z) / T + 0.5 * G * T
   b.passTo = target
   b.passLive = true
+  b.passKind = 'throw'
   b.fromThrow = true
   b.restartBy = p.idx
   p.action = ACT_RUN
@@ -1173,6 +1175,7 @@ export function gkPunt(st: GameState, gk: Player, aimY: number): void {
   const sigma = (1 - gk.sk.gkKick) * 7 + 2
   const a = atan2A(ty - b.y, tx - b.x) + Math.round(randN(st.rng) * sigma * DEG)
   releaseBall(st, gk)
+  b.passKind = 'punt'
   b.vx = cosA(a) * speed
   b.vy = sinA(a) * speed
   b.vz = 0.5 * G * T * 1.06

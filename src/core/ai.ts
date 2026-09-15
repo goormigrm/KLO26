@@ -7,7 +7,7 @@ import { rand } from './rng'
 import {
   dist, doClear, doPass, doShoot, fromBehind, inOwnBox, interceptPoint, nearestOppDist, offsideLineX, randN, type PassKind,
 } from './ball'
-import { CIRCLE_R, HALF_L, HALF_W, THROWIN_CLEAR, goalX, type GameState, type Player, GOAL_TICKS } from './state'
+import { BOX_SETPIECE_DIST, CIRCLE_R, HALF_L, HALF_W, THROWIN_CLEAR, goalX, type GameState, type Player, GOAL_TICKS } from './state'
 
 const tmp = { x: 0, y: 0 }
 
@@ -358,7 +358,7 @@ function boxSetPiece(st: GameState): boolean {
   if (st.phase === 'corner') return true
   if (st.phase !== 'freekick') return false
   const tm = st.teams[r.team]
-  return dist(r.x, r.y, goalX(tm), 0) < 36
+  return dist(r.x, r.y, goalX(tm), 0) < BOX_SETPIECE_DIST
 }
 
 /**
@@ -401,6 +401,7 @@ function setPieceAttack(st: GameState, p: Player): boolean {
   const [sx, sy] = spots[k]
   p.tx = clamp(sx, -HALF_L + 1, HALF_L - 1)
   p.ty = clamp(sy, -HALF_W + 1, HALF_W - 1)
+  p.sprint = dist(p.x, p.y, p.tx, p.ty) > 6 && p.stamina > 0.2
   return true
 }
 
@@ -432,6 +433,7 @@ function setPieceDefend(st: GameState, p: Player): boolean {
     const off = (k - (wallN - 1) / 2) * 0.65
     p.tx = clamp(cx + -uy * off, -HALF_L + 1, HALF_L - 1)
     p.ty = clamp(cy + ux * off, -HALF_W + 1, HALF_W - 1)
+    p.sprint = dist(p.x, p.y, p.tx, p.ty) > 6 && p.stamina > 0.2
     return true
   }
   // 대인 — 박스 근처 상대(킥커 제외)를 골문 가까운 순으로, 내 순번(벽 제외)에 맞춰
@@ -447,12 +449,14 @@ function setPieceDefend(st: GameState, p: Player): boolean {
     const dq = Math.max(1, dist(q.x, q.y, ownX, 0))
     p.tx = clamp(q.x + ((ownX - q.x) / dq) * 1.3, -HALF_L + 1, HALF_L - 1)
     p.ty = clamp(q.y + ((0 - q.y) / dq) * 1.3, -HALF_W + 1, HALF_W - 1)
+    p.sprint = dist(p.x, p.y, p.tx, p.ty) > 6 && p.stamina > 0.2
     return true
   }
   // 남는 사람 — 골문 앞 지대 (6야드 라인 앞, 좌우로 벌려)
   const z = m - targets.length
   p.tx = clamp(ownX + dir * (7 + (z % 2) * 4), -HALF_L + 1, HALF_L - 1)
   p.ty = clamp((z % 3 - 1) * 6, -HALF_W + 1, HALF_W - 1)
+  p.sprint = dist(p.x, p.y, p.tx, p.ty) > 6 && p.stamina > 0.2
   void atk
   return true
 }
@@ -527,6 +531,7 @@ export function aiDecide(st: GameState, p: Player): void {
       return
     }
     goAnchor(p, 0, dir)
+    p.sprint = dist(p.x, p.y, p.tx, p.ty) > 14 && p.stamina > 0.3
     return
   }
   if (ot === ti) {
@@ -542,15 +547,17 @@ export function aiDecide(st: GameState, p: Player): void {
         [gx - dir * 5.5, -far * 2.5],
         [gx - dir * 11, 0],
         [gx - dir * 7, far * 5],
+        [gx - dir * 15, -far * 6],
       ]
-      // 세 자리 — box 가 큰 순, 같으면 idx 순 (같은 자리를 둘이 안 잡게)
+      // 네 자리(니어·PK·파포스트·컷백) — box 가 큰 순, 같으면 idx 순 (같은 자리를 둘이 안 잡게).
+      // 재검증(2026-09-15 저녁): 32 m 안에 있는 사람만 뛰게 했더니 사이드 소유 때 박스 안 동료가 평균 0.24명 — 45 m 로 넓혔다
       let k = 0
       for (const q of st.players) {
         if (q.team !== ti || q.sk.isGK || q.sentOff || q.idx === b.owner || q.idx === p.idx || q.rt.box === 0) continue
         if (!(q.rt.box > p.rt.box || (q.rt.box === p.rt.box && q.idx < p.idx))) continue
         if (dist(q.x, q.y, gx, 0) < 30) k++
       }
-      if (k < 3 && dist(p.x, p.y, gx, 0) < 32) {
+      if (k < 4 && dist(p.x, p.y, gx, 0) < 45) {
         const [sx, sy] = spots[k]
         const line = offsideLineX(st, ti) * dir
         p.tx = clamp(Math.min(sx * dir, line - LINE_MARGIN) * dir, -HALF_L + 1, HALF_L - 1)
@@ -663,9 +670,10 @@ export function aiDecide(st: GameState, p: Player): void {
       p.sprint = d > 4 && p.stamina > 0.2 && sl >= 2
       return
     }
-    // 너무 멀면 물러나 자리를 지킨다 (낮은 압박)
+    // 너무 멀면 물러나 자리를 지킨다 (낮은 압박) — 멀면 전력으로 되돌아간다
     p.tx = clamp((c.x + p.ax) / 2, -HALF_L + 1, HALF_L - 1)
     p.ty = (c.y + p.ay) / 2
+    p.sprint = dist(p.x, p.y, p.tx, p.ty) > 12 && p.stamina > 0.25
     return
   }
   if (rank < pressN && d < dPress) {
@@ -731,13 +739,21 @@ export function aiDecide(st: GameState, p: Player): void {
     const ownX = -dir * HALF_L
     const dq = Math.max(1, dist(q.x, q.y, ownX, 0))
     const gap = 2.0 - 0.8 * p.sk.mark
-    p.tx = clamp(q.x + ((ownX - q.x) / dq) * gap, -HALF_L + 1, HALF_L - 1)
+    let mx = q.x + ((ownX - q.x) / dq) * gap
+    // 공이 우리 진영 3분의 1 에 있으면 마커도 **앵커보다 앞에 서지 않는다** — 라인이 공과 함께 내려와야 크로스 때 박스가 찬다
+    // (재검증 2026-09-15: 사이드 깊숙이 공이 있어도 마커가 상대를 붙들고 서서 오프사이드 라인이 27 m 에 머물렀다)
+    if (b.x * dir < -17 && mx * dir > p.ax * dir) mx = p.ax
+    p.tx = clamp(mx, -HALF_L + 1, HALF_L - 1)
     p.ty = clamp(q.y + ((0 - q.y) / dq) * gap, -HALF_W + 1, HALF_W - 1)
     p.sprint = dist(p.x, p.y, p.tx, p.ty) > 6 && p.stamina > 0.25
     return
   }
   p.markOf = -1
   goAnchor(p, -2, dir)
+  // 자리에서 멀면 **전력으로 복귀** — 재검증(2026-09-15): 공이 사이드 깊숙이 갔을 때 수비 라인이 조깅으로 내려와
+  // 38 → 13 m 까지 4 초가 걸렸고, 그동안 박스가 비어 크로스가 갈 데가 없었다
+  // (12 m 넘게 · 공이 우리 진영일 때만 — 8 m 로 하니 하프타임 체력이 35% 아래로 떨어졌다)
+  p.sprint = b.x * dir < 0 && dist(p.x, p.y, p.tx, p.ty) > 12 && p.stamina > 0.25
   // 지역을 지키다 소유자가 앞에서 3 m 안으로 오면 맞선다 (뒤에서는 안 덤빈다)
   if (d < 3 && fromBehind(c, p) <= 0.6) p.press = true
 }

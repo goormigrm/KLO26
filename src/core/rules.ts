@@ -13,7 +13,7 @@ import { G, aimShot, clearOffside, dist, doPass, doShoot, doThrow, gkPunt, lobVe
 import { crossedGoalLine } from './physics'
 import { skillsOf } from './skills'
 import {
-  ACT_RUN, ADDED_MAX_MIN, BALL_R, BOX_HALF_W, BOX_L, CIRCLE_R, CLOCK_SCALE, DT, END_GRACE_SEC, FOUL_TICKS, GOAL_SKIP_TICKS, GOAL_TICKS,
+  ACT_RUN, ADDED_MAX_MIN, BALL_R, BOX_HALF_W, BOX_L, CIRCLE_R, CLOCK_SCALE, DT, END_GRACE_SEC, BOX_SETPIECE_DIST, BOX_SETPIECE_TICKS, FOUL_TICKS, GOAL_SKIP_TICKS, GOAL_TICKS,
   HALFTIME_TICKS, HALF_L, HALF_W, KICKOFF_TICKS, PENALTY_TICKS, PEN_SPOT, RESTART_TICKS, THROWIN_CLEAR,
   goalX, ownGoalX, type GameState, type PendingCall, type Phase, type Player, type Team,
 } from './state'
@@ -148,7 +148,7 @@ export function setupRestart(st: GameState, type: 'throwin' | 'corner' | 'goalki
   // 넣어 둔 교체는 **아무 데드볼에서나** 들어간다 (DESIGN 2장). 골·하프타임만 보다가 놓쳤다 (2026-09-09)
   applyPendingSubs(st)
   st.phase = type
-  st.phaseT = RESTART_TICKS
+  st.phaseT = type === 'corner' ? BOX_SETPIECE_TICKS : RESTART_TICKS
   resetBall(st, x, y)
   clearOffside(st)
   let kicker: number
@@ -169,9 +169,10 @@ export function setupRestart(st: GameState, type: 'throwin' | 'corner' | 'goalki
 export function setupFreeKick(st: GameState, team: number, x: number, y: number): void {
   applyPendingSubs(st)
   st.phase = 'freekick'
-  st.phaseT = FOUL_TICKS
   const px = clamp(x, -HALF_L + 2, HALF_L - 2)
   const py = clamp(y, -HALF_W + 1.5, HALF_W - 1.5)
+  // 골문 36 m 안 직접 프리킥은 벽·박스 배치가 서게 5 초 (ai.ts boxSetPiece 와 같은 기준)
+  st.phaseT = Math.hypot(px - goalX(st.teams[team]), py) < BOX_SETPIECE_DIST ? BOX_SETPIECE_TICKS : FOUL_TICKS
   resetBall(st, px, py)
   clearOffside(st)
   const dir = st.teams[team].dir
@@ -251,6 +252,7 @@ export function resolvePending(st: GameState): void {
   const offender = c.by >= 0 ? st.players[c.by] : null
   let text = CALL_TEXT[c.kind]
   if (c.kind !== 'offside' && c.kind !== 'twice' && offender) {
+    st.stats[offender.team].fouls++
     st.events.push({ tick: st.tick, type: 'foul', team: 1 - c.team, player: offender.idx, x: c.x, y: c.y })
     if (c.card > 0) {
       let card = c.card

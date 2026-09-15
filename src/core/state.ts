@@ -40,6 +40,9 @@ export const GOAL_TICKS = 540
 export const GOAL_SKIP_TICKS = 30
 export const HALFTIME_TICKS = 300
 export const FOUL_TICKS = 110
+/** 코너·직접 프리킥(골문 36 m 안) 은 배치가 서게 5 초 기다린다 — 1.5~1.8 초로는 박스 안 인원·벽이 못 선다 (재검증 2026-09-15) */
+export const BOX_SETPIECE_TICKS = 300
+export const BOX_SETPIECE_DIST = 36
 export const PENALTY_TICKS = 150
 
 /** 센터 서클 반지름 = 프리킥 벽 거리 = 코너킥 거리 (m) */
@@ -167,6 +170,8 @@ export interface Ball {
   restartBy: number
   /** 패스가 아직 살아 있다 (아무도 못 받았다) — 공간으로 보낸 패스도 성공률에 세기 위해 */
   passLive: boolean
+  /** 마지막 패스 종류 (ground·through·lob·lowcross·highcross·punt·throw) — 계측 전용, 해시에 안 들어간다 (2026-09-15) */
+  passKind: string
 }
 
 export type Phase =

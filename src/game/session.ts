@@ -185,7 +185,8 @@ export class Session {
     ;(host.querySelector('#btn-settings') as HTMLButtonElement).onclick = () => this.showSettings()
     ;(host.querySelector('#btn-lobby') as HTMLButtonElement).onclick = () => this.confirmQuit()
     // 로비 배경음을 끄고 관중석을 켠다
-    this.snd.stopMusic()
+    // 경기 트랙(드라이빙 락)은 관중보다 작게 — 로비로 나가면 로비가 앤섬으로 바꾼다 (2026-09-15)
+    this.snd.startMusic('match')
     this.snd.startCrowd()
 
     this.input.onEscape = () => this.toggleMenu()
@@ -696,7 +697,11 @@ export class Session {
       const hostEl = box.querySelector('#set-host')
       if (hostEl) {
         bindSettingsPanel(hostEl, s, {
-          setMuted: (m) => this.snd.setMuted(m),
+          setMuted: (m) => {
+            this.snd.setMuted(m)
+            if (m) this.snd.stopMusic()
+            else this.snd.startMusic('match')
+          },
           setShadows: (on) => this.renderer.setShadows(on),
           setResScale: (v) => this.renderer.setResScale(v),
           setGraphics: (mode) => {

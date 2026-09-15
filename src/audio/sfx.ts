@@ -23,6 +23,8 @@ function placeAt(x: number): Place {
   return { gain: 1, pan: Math.max(-0.85, Math.min(0.85, x / HALF_L)) }
 }
 
+export type MusicTrack = 'lobby' | 'match'
+
 export class Sfx {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
@@ -37,10 +39,17 @@ export class Sfx {
   /** 0(조용) ~ 1(들끓음). 공이 골문에 가까울수록 올라간다 */
   private heat = 0
 
-  // ---- 로비 배경음 ----
+  // ---- 배경음악 (락 시퀀서 — 2026-09-15: 로비/대기실 앤섬 · 경기 드라이빙, 전부 오실레이터·노이즈) ----
   private musicGain: GainNode | null = null
   private musicTimer = 0
   private musicStep = 0
+  private musicTrack: MusicTrack = 'lobby'
+  /** 다음 16분음표를 놓을 AudioContext 시각 */
+  private musicNext = 0
+  private distCurve: Float32Array<ArrayBuffer> | null = null
+  /** 관중 응원 리듬(북·박수) 끝나는 시각 */
+  private chantUntil = 0
+  private chantTimer = 0
 
   constructor() {
     let m = false
@@ -360,24 +369,32 @@ export class Sfx {
     this.crowdFilter?.frequency.setTargetAtTime(700 + this.heat * 600, t, 0.5)
   }
 
-  // ---------------------------------------------------------------- 로비 배경음
+  // ---------------------------------------------------------------- 배경음악 — 락 (코드 생성)
 
   /**
-   * 로비 배경음 — 느린 화음 패드 + 가벼운 아르페지오. 전부 오실레이터로 만든다.
-   * 4마디를 돌면서 화음이 바뀐다. 경기 중에는 끄고 관중석만 남긴다.
+   * 배경음악을 튼다 (2026-09-15 — 사용자 요청 "신나는 락"). 두 곡:
+   * - `lobby`(로비·대기실) 126 BPM 앤섬 — 오픈 파워코드 E–C–G–D, 4/4 킥·스네어, 리드 아르페지오.
+   * - `match`(경기) 150 BPM 드라이빙 — 팜뮤트 8분 파워코드 E–G–A–C, 더블 킥, 4마디마다 펜타토닉 리프. 관중보다 작게.
+   * 16분음표 스케줄러가 0.25 초 앞을 미리 놓는다. 외부 파일 없음 — 오실레이터 + 웨이브셰이퍼 디스토션 + 노이즈 드럼.
    */
-  startMusic(): void {
-    if (!this.ensure() || this.musicGain) return
+  startMusic(track: MusicTrack = 'lobby'): void {
+    if (!this.ensure()) return
+    if (this.musicGain && this.musicTrack === track) return
+    this.stopMusic()
     const ctx = this.ctx!
     const g = ctx.createGain()
-    g.gain.value = MUSIC_LEVEL
+    g.gain.value = 0.0001
+    g.gain.setTargetAtTime(track === 'match' ? MUSIC_LEVEL * 0.55 : MUSIC_LEVEL, ctx.currentTime, 0.6)
     g.connect(this.master!)
     this.musicGain = g
+    this.musicTrack = track
     this.musicStep = 0
+    this.musicNext = ctx.currentTime + 0.1
     const tick = (): void => {
       if (!this.musicGain || !this.ctx) return
-      if (this.ctx.state === 'running' && !this.mutedFlag) this.musicBar()
-      this.musicTimer = window.setTimeout(tick, 3200)
+      if (this.ctx.state === 'running' && !this.mutedFlag) this.musicSchedule()
+      else this.musicNext = this.ctx.currentTime + 0.1
+      this.musicTimer = window.setTimeout(tick, 60)
     }
     tick()
   }
@@ -394,49 +411,277 @@ export class Sfx {
     this.musicGain = null
   }
 
-  /** 화음 진행 4개 — 도리안풍으로 잔잔하게. 반음이 아니라 5도·9도만 써서 튀지 않는다 */
-  private musicBar(): void {
+  private musicSchedule(): void {
+    const ctx = this.ctx!
+    const bpm = this.musicTrack === 'match' ? 150 : 126
+    const step = 60 / bpm / 4
+    while (this.musicNext < ctx.currentTime + 0.25) {
+      this.musicStepPlay(this.musicStep, this.musicNext, step)
+      this.musicStep++
+      this.musicNext += step
+    }
+  }
+
+  private distortion(): WaveShaperNode {
+    const ctx = this.ctx!
+    if (!this.distCurve) {
+      const n = 1024
+      const c = new Float32Array(n)
+      const k = 38
+      for (let i = 0; i < n; i++) {
+        const x = (i / (n - 1)) * 2 - 1
+        c[i] = ((1 + k) * x) / (1 + k * Math.abs(x))
+      }
+      this.distCurve = c
+    }
+    const ws = ctx.createWaveShaper()
+    ws.curve = this.distCurve
+    ws.oversample = '2x'
+    return ws
+  }
+
+  /** 드럼 한 타 — 킥(사인 스윕) · 스네어(노이즈 + 톤) · 하이햇(짧은 노이즈) · 크래시(긴 노이즈) */
+  private drum(t: number, kind: 'kick' | 'snare' | 'hat' | 'crash' | 'tom', vol = 1): void {
     const ctx = this.ctx!
     const dst = this.musicGain!
-    const t0 = ctx.currentTime + 0.02
-    const roots = [146.83, 174.61, 196.0, 130.81] // D3 F3 G3 C3
-    const root = roots[this.musicStep % roots.length]
-    this.musicStep++
-    // 패드 — 근음·5도·9도를 길게
-    for (const [mul, gain] of [[1, 0.16], [1.5, 0.11], [2.25, 0.07]] as [number, number][]) {
-      const o = ctx.createOscillator()
-      o.type = 'triangle'
-      o.frequency.value = root * mul
-      const g = ctx.createGain()
-      g.gain.setValueAtTime(0.0001, t0)
-      g.gain.linearRampToValueAtTime(gain, t0 + 0.9)
-      g.gain.setValueAtTime(gain, t0 + 2.0)
-      g.gain.linearRampToValueAtTime(0.0001, t0 + 3.2)
-      const lp = ctx.createBiquadFilter()
-      lp.type = 'lowpass'
-      lp.frequency.value = 900
-      o.connect(lp)
-      lp.connect(g)
-      g.connect(dst)
-      o.start(t0)
-      o.stop(t0 + 3.3)
-    }
-    // 아르페지오 — 한 마디에 네 번, 위쪽 옥타브에서 짧게
-    const steps = [2, 3, 4, 3]
-    for (let i = 0; i < steps.length; i++) {
-      const at = t0 + 0.4 + i * 0.62
+    if (kind === 'kick' || kind === 'tom') {
       const o = ctx.createOscillator()
       o.type = 'sine'
-      o.frequency.value = root * steps[i]
+      const f0 = kind === 'kick' ? 150 : 110
+      o.frequency.setValueAtTime(f0, t)
+      o.frequency.exponentialRampToValueAtTime(kind === 'kick' ? 44 : 70, t + 0.12)
       const g = ctx.createGain()
-      g.gain.setValueAtTime(0.0001, at)
-      g.gain.exponentialRampToValueAtTime(0.05, at + 0.03)
-      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.5)
+      g.gain.setValueAtTime(0.9 * vol, t)
+      g.gain.exponentialRampToValueAtTime(0.001, t + (kind === 'kick' ? 0.16 : 0.22))
       o.connect(g)
       g.connect(dst)
-      o.start(at)
-      o.stop(at + 0.55)
+      o.start(t)
+      o.stop(t + 0.25)
+      return
     }
+    if (!this.noise) return
+    const src = ctx.createBufferSource()
+    src.buffer = this.noise
+    const f = ctx.createBiquadFilter()
+    const g = ctx.createGain()
+    if (kind === 'snare') {
+      f.type = 'bandpass'
+      f.frequency.value = 1900
+      f.Q.value = 0.7
+      g.gain.setValueAtTime(0.55 * vol, t)
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.16)
+      const tone = ctx.createOscillator()
+      tone.type = 'triangle'
+      tone.frequency.setValueAtTime(200, t)
+      tone.frequency.exponentialRampToValueAtTime(120, t + 0.08)
+      const tg = ctx.createGain()
+      tg.gain.setValueAtTime(0.35 * vol, t)
+      tg.gain.exponentialRampToValueAtTime(0.001, t + 0.09)
+      tone.connect(tg)
+      tg.connect(dst)
+      tone.start(t)
+      tone.stop(t + 0.1)
+    } else if (kind === 'hat') {
+      f.type = 'highpass'
+      f.frequency.value = 7000
+      g.gain.setValueAtTime(0.22 * vol, t)
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.045)
+    } else {
+      f.type = 'highpass'
+      f.frequency.value = 4500
+      g.gain.setValueAtTime(0.3 * vol, t)
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.8)
+    }
+    src.connect(f)
+    f.connect(g)
+    g.connect(dst)
+    src.start(t)
+    src.stop(t + 0.9)
+  }
+
+  /** 베이스 — 사각파 + 로우패스 */
+  private bassNote(t: number, freq: number, dur: number, vol = 1): void {
+    const ctx = this.ctx!
+    const o = ctx.createOscillator()
+    o.type = 'square'
+    o.frequency.value = freq
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = 420
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.26 * vol, t + 0.01)
+    g.gain.setValueAtTime(0.26 * vol, t + dur * 0.7)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+    o.connect(lp)
+    lp.connect(g)
+    g.connect(this.musicGain!)
+    o.start(t)
+    o.stop(t + dur + 0.02)
+  }
+
+  /** 파워코드 기타 — 톱니파 근음·5도·옥타브 → 디스토션 → 로우패스. `mute` 면 팜뮤트(짧고 둔탁) */
+  private powerChord(t: number, freq: number, dur: number, mute: boolean, vol = 1): void {
+    const ctx = this.ctx!
+    const ws = this.distortion()
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = mute ? 900 : 2600
+    const g = ctx.createGain()
+    const peak = (mute ? 0.2 : 0.17) * vol
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.008)
+    if (mute) g.gain.exponentialRampToValueAtTime(0.0001, t + Math.min(dur, 0.11))
+    else {
+      g.gain.setValueAtTime(peak, t + dur * 0.6)
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+    }
+    for (const [mul, v] of [[1, 1], [1.5, 0.8], [2, 0.45]] as [number, number][]) {
+      const o = ctx.createOscillator()
+      o.type = 'sawtooth'
+      o.frequency.value = freq * mul
+      o.detune.value = (mul - 1) * 4
+      const og = ctx.createGain()
+      og.gain.value = v
+      o.connect(og)
+      og.connect(ws)
+      o.start(t)
+      o.stop(t + dur + 0.05)
+    }
+    ws.connect(lp)
+    lp.connect(g)
+    g.connect(this.musicGain!)
+  }
+
+  /** 리드 — 펜타토닉 한 음 (톱니파 + 약한 디스토션) */
+  private leadNote(t: number, freq: number, dur: number, vol = 1): void {
+    const ctx = this.ctx!
+    const o = ctx.createOscillator()
+    o.type = 'sawtooth'
+    o.frequency.value = freq
+    const ws = this.distortion()
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = 3200
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.09 * vol, t + 0.01)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+    o.connect(ws)
+    ws.connect(lp)
+    lp.connect(g)
+    g.connect(this.musicGain!)
+    o.start(t)
+    o.stop(t + dur + 0.02)
+  }
+
+  /** 16분음표 하나 — 트랙별 패턴 */
+  private musicStepPlay(i: number, t: number, step: number): void {
+    const s16 = i % 16
+    const bar = Math.floor(i / 16)
+    const E2 = 82.41
+    const G2 = 98.0
+    const A2 = 110.0
+    const C3 = 130.81
+    const C2 = 65.41
+    const D2 = 73.42
+    if (this.musicTrack === 'match') {
+      // ---- 경기: 드라이빙 락 ----
+      const prog = [E2, E2, G2, A2, E2, E2, C3, A2]
+      const root = prog[bar % prog.length]
+      // 드럼 — 킥 1·3 + 더블(&), 스네어 2·4, 하이햇 8분, 4마디마다 크래시
+      if (s16 === 0 || s16 === 8 || s16 === 6 || s16 === 14) this.drum(t, 'kick')
+      if (s16 === 4 || s16 === 12) this.drum(t, 'snare')
+      if (s16 % 2 === 0) this.drum(t, 'hat', s16 % 4 === 0 ? 1 : 0.6)
+      if (s16 === 0 && bar % 4 === 0) this.drum(t, 'crash')
+      if (bar % 8 === 7 && s16 >= 12) this.drum(t, 'tom', 0.8) // 필인
+      // 베이스 8분
+      if (s16 % 2 === 0) this.bassNote(t, s16 >= 12 ? root * 2 : root, step * 1.8)
+      // 기타 — 팜뮤트 8분, 마디 첫 박은 오픈
+      if (s16 === 0) this.powerChord(t, root, step * 3.5, false)
+      else if (s16 % 2 === 0) this.powerChord(t, root, step * 1.6, true)
+      // 리드 리프 — 8마디 중 4·8번째 마디
+      if (bar % 4 === 3) {
+        const riff = [E2 * 4, G2 * 4, A2 * 4, G2 * 4, E2 * 4, D2 * 8, E2 * 4, G2 * 4, A2 * 4, C3 * 4, A2 * 4, G2 * 4, E2 * 4, G2 * 4, E2 * 4, D2 * 8]
+        if (s16 % 2 === 0 || bar % 8 === 7) this.leadNote(t, riff[s16], step * 1.9)
+      }
+      return
+    }
+    // ---- 로비·대기실: 앤섬 락 ----
+    const prog = [E2, C2, G2, D2]
+    const root = prog[Math.floor(bar / 2) % prog.length]
+    if (s16 === 0 || s16 === 8 || s16 === 10) this.drum(t, 'kick')
+    if (s16 === 4 || s16 === 12) this.drum(t, 'snare', 0.9)
+    if (s16 % 2 === 0) this.drum(t, 'hat', s16 % 4 === 0 ? 0.9 : 0.5)
+    if (s16 === 0 && bar % 8 === 0) this.drum(t, 'crash', 0.8)
+    if (s16 % 4 === 0) this.bassNote(t, s16 === 12 ? root * 1.5 : root, step * 3.6, 0.9)
+    // 오픈 파워코드 — 마디 첫 박 길게, 3.5 박에 짧게
+    if (s16 === 0) this.powerChord(t, root, step * 12, false, 0.9)
+    else if (s16 === 14) this.powerChord(t, root, step * 2, false, 0.6)
+    // 리드 아르페지오 — 짝수 마디 위쪽 옥타브
+    if (bar % 2 === 1 && s16 % 4 === 2) {
+      const arp = [root * 4, root * 6, root * 8, root * 6]
+      this.leadNote(t, arp[(s16 >> 2) % 4], step * 3, 0.8)
+    }
+  }
+
+  // ---------------------------------------------------------------- 관중 응원 (북·박수 리듬)
+
+  /** 골·킥오프 뒤 몇 초 동안 북과 박수 — "짝짝 짝짝짝" (2026-09-15) */
+  chant(seconds: number): void {
+    if (!this.ready() || !this.ctx || !this.crowdGain || !this.noise) return
+    const ctx = this.ctx
+    const until = ctx.currentTime + seconds
+    if (until <= this.chantUntil) return
+    const fresh = this.chantUntil < ctx.currentTime
+    this.chantUntil = until
+    if (!fresh) return
+    const beat = 0.42
+    let t = ctx.currentTime + 0.1
+    const pattern = [1, 1, 0, 1, 1, 1, 0, 0]
+    const play = (): void => {
+      if (!this.ctx || !this.crowdGain || !this.noise) return
+      while (t < this.ctx.currentTime + 0.5 && t < this.chantUntil) {
+        for (let k = 0; k < pattern.length; k++) {
+          const at = t + k * beat * 0.5
+          if (!pattern[k]) continue
+          // 박수 — 짧은 노이즈 여러 겹
+          for (let j = 0; j < 3; j++) {
+            const src = ctx.createBufferSource()
+            src.buffer = this.noise
+            const f = ctx.createBiquadFilter()
+            f.type = 'bandpass'
+            f.frequency.value = 1500 + j * 600
+            f.Q.value = 1.2
+            const g = ctx.createGain()
+            g.gain.setValueAtTime(0.16, at + j * 0.012)
+            g.gain.exponentialRampToValueAtTime(0.001, at + 0.09 + j * 0.012)
+            src.connect(f)
+            f.connect(g)
+            g.connect(this.crowdGain)
+            src.start(at + j * 0.012)
+            src.stop(at + 0.15)
+          }
+          // 북 — 1·5 박
+          if (k === 0 || k === 3) {
+            const o = ctx.createOscillator()
+            o.type = 'sine'
+            o.frequency.setValueAtTime(95, at)
+            o.frequency.exponentialRampToValueAtTime(55, at + 0.2)
+            const g = ctx.createGain()
+            g.gain.setValueAtTime(0.5, at)
+            g.gain.exponentialRampToValueAtTime(0.001, at + 0.3)
+            o.connect(g)
+            g.connect(this.crowdGain)
+            o.start(at)
+            o.stop(at + 0.32)
+          }
+        }
+        t += beat * 4
+      }
+      if (t < this.chantUntil) this.chantTimer = window.setTimeout(play, 200)
+    }
+    play()
   }
 
   // ---------------------------------------------------------------- 이벤트
@@ -450,9 +695,11 @@ export class Sfx {
         case 'goal':
           this.whistle(1)
           this.goal()
+          this.chant(6) // 골 뒤 북·박수 응원 (2026-09-15)
           break
         case 'shot':
           this.kick(e.x, 0.95)
+          this.crowdSwell(0.35, 0.9) // 슛 순간 "우—" (2026-09-15)
           break
         case 'save':
           this.save(e.x)
@@ -475,6 +722,8 @@ export class Sfx {
         case 'whistle':
           // 킥오프를 실제로 차는 순간 (kickoff 사건은 자리 잡기라 조용하다 — 2026-09-10)
           this.whistle(1)
+          this.crowdSwell(0.3, 1.6)
+          this.chant(3)
           break
         case 'block':
           this.tackle(e.x)
@@ -487,6 +736,8 @@ export class Sfx {
           break
         case 'end':
           this.whistle(3, true)
+          this.crowdSwell(0.8, 3.5)
+          this.chant(5)
           break
         case 'sub':
           this.ui('click')
@@ -503,6 +754,7 @@ export class Sfx {
   }
 
   dispose(): void {
+    if (this.chantTimer) clearTimeout(this.chantTimer)
     this.stopCrowd()
     this.stopMusic()
     this.off?.()

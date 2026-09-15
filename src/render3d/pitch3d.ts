@@ -37,19 +37,25 @@ function grassTexture(): THREE.CanvasTexture {
   // 바탕 (라인 밖) — 살짝 어두운 잔디
   g.fillStyle = '#25703a'
   g.fillRect(0, 0, c.width, c.height)
-  // 줄무늬 10개 (5.25 m)
+  // 줄무늬 10개 (5.25 m) — 두 톤을 조금 더 벌렸다 (2026-09-15, FC 온라인 영상의 진한 줄무늬)
   const stripe = (HALF_L * 2) / 10
   for (let i = 0; i < 10; i++) {
-    g.fillStyle = i % 2 === 0 ? '#2f8a45' : '#2a7d3e'
+    g.fillStyle = i % 2 === 0 ? '#328f47' : '#287a3c'
     g.fillRect(mx(-HALF_L + i * stripe), my(HALF_W), stripe * PX + 1, HALF_W * 2 * PX)
   }
-  // 잔디 결 — 가는 노이즈 점
-  g.fillStyle = 'rgba(0,0,0,0.05)'
+  // 세로 방향 깎은 자국 — 가로 줄무늬 위에 옅게 겹쳐 **격자**가 된다 (영상의 두 방향 깎기)
+  const stripeY = (HALF_W * 2) / 8
+  for (let i = 0; i < 8; i++) {
+    g.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.045)' : 'rgba(0,0,0,0.045)'
+    g.fillRect(mx(-HALF_L), my(HALF_W - i * stripeY), HALF_L * 2 * PX, stripeY * PX + 1)
+  }
+  // 잔디 결 — 가는 노이즈 점 (밝은 점·어두운 점 섞어)
   let h = 0x2545f3
-  for (let i = 0; i < 9000; i++) {
+  for (let i = 0; i < 22000; i++) {
     h = (Math.imul(h, 1664525) + 1013904223) >>> 0
     const x = (h % c.width)
     const y = ((h >>> 12) % c.height)
+    g.fillStyle = (h >>> 24) & 1 ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.04)'
     g.fillRect(x, y, 2, 1)
   }
 
@@ -142,6 +148,40 @@ function drawCrowd(c: HTMLCanvasElement, home?: number): void {
   }
 }
 
+/**
+ * 광고판 띠 텍스처 (2026-09-15, P0) — 실제 브랜드는 쓰지 않는다. 우리 이름과 홈 구단 색 띠만.
+ * 한 장이 12 m 를 덮고 repeat 로 둘레를 채운다
+ */
+function boardTexture(home: number): { tex: THREE.CanvasTexture; canvas: HTMLCanvasElement; redraw(home: number): void } {
+  const c = document.createElement('canvas')
+  c.width = 768
+  c.height = 64
+  const draw = (hex: number): void => {
+    const g = c.getContext('2d')!
+    g.fillStyle = '#0e1626'
+    g.fillRect(0, 0, c.width, c.height)
+    // 홈 색 띠 (위·아래)
+    g.fillStyle = shade(hex, 0.9)
+    g.fillRect(0, 0, c.width, 6)
+    g.fillRect(0, c.height - 6, c.width, 6)
+    g.font = '800 34px "Black Han Sans", "IBM Plex Sans KR", sans-serif'
+    g.textBaseline = 'middle'
+    g.textAlign = 'center'
+    g.fillStyle = '#f4f7f2'
+    g.fillText('개리그 온라인 2026', 192, 33)
+    g.fillStyle = '#e3b341'
+    g.fillText('KLO26', 576, 33)
+    g.fillStyle = 'rgba(255,255,255,0.12)'
+    g.fillRect(383, 10, 2, 44)
+  }
+  draw(home)
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.wrapS = THREE.RepeatWrapping
+  tex.anisotropy = 4
+  return { tex, canvas: c, redraw: draw }
+}
+
 /** 관중 텍스처 + 홈 색으로 다시 칠하는 함수 */
 function crowdTexture(): { tex: THREE.CanvasTexture; canvas: HTMLCanvasElement } {
   const c = document.createElement('canvas')
@@ -217,7 +257,8 @@ export function buildPitch(opts: PitchOptions): Pitch3D {
   disposables.push(grassTex)
   const wm = HALF_L * 2 + MARGIN * 2
   const hm = HALF_W * 2 + MARGIN * 2
-  const grass = new THREE.Mesh(new THREE.PlaneGeometry(wm, hm), new THREE.MeshLambertMaterial({ map: grassTex }))
+  // 잔디에 살짝 광택 — 방송 화면의 젖은 잔디 느낌 (2026-09-15)
+  const grass = new THREE.Mesh(new THREE.PlaneGeometry(wm, hm), new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.82, metalness: 0 }))
   grass.rotation.x = -Math.PI / 2
   grass.receiveShadow = true
   group.add(grass)
@@ -233,19 +274,47 @@ export function buildPitch(opts: PitchOptions): Pitch3D {
   const netM = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.32 })
   group.add(buildGoal(1, postM, netM), buildGoal(-1, postM, netM))
 
-  // ---- 관중석 — 낮은 띠 4개 ----
+  // ---- 광고판 띠 — 피치 둘레 (2026-09-15, P0) ----
+  const board = boardTexture(0x2c3644)
+  disposables.push(board.tex)
+  const boardMat = new THREE.MeshLambertMaterial({ map: board.tex })
+  const boardBack = new THREE.MeshLambertMaterial({ color: 0x0b1018 })
+  const BOARD_H = 1.0
+  const BOARD_OFF = 2.6
+  const mkBoard = (len: number, x: number, z: number, rotY: number): void => {
+    const geo = new THREE.BoxGeometry(len, BOARD_H, 0.25)
+    const tex = board.tex.clone()
+    tex.repeat.set(len / 12, 1)
+    tex.needsUpdate = true
+    disposables.push(tex, geo)
+    const face = boardMat.clone()
+    face.map = tex
+    const m = new THREE.Mesh(geo, [boardBack, boardBack, boardBack, boardBack, face, boardBack])
+    m.position.set(x, BOARD_H / 2, z)
+    m.rotation.y = rotY
+    m.rotation.x = -0.12 // 살짝 뒤로 기울여 카메라를 본다
+    m.castShadow = true
+    group.add(m)
+  }
+  mkBoard(HALF_L * 2 + 2, 0, -(HALF_W + BOARD_OFF), 0)
+  mkBoard(HALF_L * 2 + 2, 0, HALF_W + BOARD_OFF, Math.PI)
+  mkBoard(HALF_W * 2 - 8, HALF_L + BOARD_OFF, 0, -Math.PI / 2)
+  mkBoard(HALF_W * 2 - 8, -(HALF_L + BOARD_OFF), 0, Math.PI / 2)
+
+  // ---- 관중석 — 2단 + 지붕 (2026-09-15: 영상의 2층 스탠드) ----
   const crowd = crowdTexture()
   disposables.push(crowd.tex)
   /** 스탠드마다 clone 을 쓴다 (repeat 이 달라서) — 홈 색을 바꾸면 전부 needsUpdate 해야 한다 */
   const crowdClones: THREE.Texture[] = []
-  const standH = 5.5
   const standD = 10
   const gap = 7
   const side = new THREE.MeshLambertMaterial({ color: 0x1b2230 })
-  const mkStand = (len: number, depth: number, x: number, z: number, rotY: number): void => {
+  const roofM = new THREE.MeshLambertMaterial({ color: 0x0f141c })
+  const mkStand = (len: number, depth: number, x: number, z: number, rotY: number, standH: number, lift: number, back: number): void => {
     const tex = crowd.tex.clone()
     crowdClones.push(tex)
-    tex.repeat.set(len / 12, 1)
+    tex.repeat.set(len / 12, standH / 5.5)
+    tex.wrapT = THREE.RepeatWrapping
     tex.needsUpdate = true
     disposables.push(tex)
     const face = new THREE.MeshLambertMaterial({ map: tex })
@@ -260,31 +329,58 @@ export function buildPitch(opts: PitchOptions): Pitch3D {
     pos.needsUpdate = true
     geo.computeVertexNormals()
     const m = new THREE.Mesh(geo, mats)
-    m.position.set(x, standH / 2, z)
-    m.rotation.y = rotY
+    // 로컬 +z 가 피치 쪽 — `back` 만큼 피치에서 멀어진다
+    const holder = new THREE.Group()
+    holder.position.set(x, 0, z)
+    holder.rotation.y = rotY
+    m.position.set(0, lift + standH / 2, -back)
     m.receiveShadow = true
-    group.add(m)
+    holder.add(m)
+    group.add(holder)
+    disposables.push(geo)
+    return
+  }
+  const mkRoof = (len: number, x: number, z: number, rotY: number, y: number, depth: number, back: number): void => {
+    const geo = new THREE.BoxGeometry(len, 0.6, depth)
+    const holder = new THREE.Group()
+    holder.position.set(x, 0, z)
+    holder.rotation.y = rotY
+    const m = new THREE.Mesh(geo, roofM)
+    m.position.set(0, y, -back)
+    m.rotation.x = 0.08 // 앞이 살짝 내려온 캔틸레버
+    holder.add(m)
+    group.add(holder)
     disposables.push(geo)
   }
-  // 먼 쪽(−z)·가까운 쪽(+z)·양 골문 뒤. 안쪽 면이 피치를 보게 회전
-  mkStand(HALF_L * 2 + 2 * gap + 2 * standD, standD, 0, -(HALF_W + gap + standD / 2), 0)
-  mkStand(HALF_L * 2 + 2 * gap + 2 * standD, standD, 0, HALF_W + gap + standD / 2, Math.PI)
-  mkStand(HALF_W * 2 + 2 * gap, standD, HALF_L + gap + standD / 2, 0, -Math.PI / 2)
-  mkStand(HALF_W * 2 + 2 * gap, standD, -(HALF_L + gap + standD / 2), 0, Math.PI / 2)
+  // 먼 쪽(−z)·가까운 쪽(+z)·양 골문 뒤. 안쪽 면이 피치를 보게 회전. 1단(6 m) 위에 2단(9 m)이 뒤로 물러나 얹히고 지붕
+  const stands: [number, number, number, number][] = [
+    [HALF_L * 2 + 2 * gap + 2 * standD, 0, -(HALF_W + gap + standD / 2), 0],
+    [HALF_L * 2 + 2 * gap + 2 * standD, 0, HALF_W + gap + standD / 2, Math.PI],
+    [HALF_W * 2 + 2 * gap, HALF_L + gap + standD / 2, 0, -Math.PI / 2],
+    [HALF_W * 2 + 2 * gap, -(HALF_L + gap + standD / 2), 0, Math.PI / 2],
+  ]
+  for (const [len, x, z, rotY] of stands) {
+    mkStand(len, standD, x, z, rotY, 6, 0, 0)
+    if (rotY === Math.PI) continue // 카메라 쪽(가까운 사이드) 스탠드는 1단만 — 2단·지붕이 카메라 아래 시야를 가린다
+    mkStand(len + 2 * standD, standD, x, z, rotY, 9, 6.5, standD)
+    mkRoof(len + 2 * standD + 4, x, z, rotY, 17.5, standD + 6, standD - 2)
+  }
 
   // ---- 조명 ----
-  const hemi = new THREE.HemisphereLight(0xdfe9ff, 0x233a1e, 0.85)
+  const hemi = new THREE.HemisphereLight(0xdfe9ff, 0x233a1e, 1.0)
   group.add(hemi)
-  const sun = new THREE.DirectionalLight(0xfff1dc, 2.1)
+  const sun = new THREE.DirectionalLight(0xfff1dc, 2.4)
   sun.position.set(-30, 70, 40)
   sun.castShadow = opts.shadows
-  sun.shadow.mapSize.set(2048, 2048) // 4096 → 2048 (2026-09-15): 실사 22명은 그림자 패스가 삼각형을 두 번 그린다 — P0 에서 공 주변으로 범위를 좁힐 때 다시 본다
+  // 2026-09-15 (P0): 그림자맵 2048 을 **공 주변 52 × 40 m 에만** 쓴다 — 렌더러가 매 프레임 태양·과녁을 공 위치로 옮긴다.
+  // 예전 4096 으로 피치 전체(132 × 96 m)를 덮던 것보다 텍셀이 촘촘해 그림자가 선명하고, 실사 22명 그림자 패스도 가볍다
+  sun.shadow.mapSize.set(2048, 2048)
   sun.shadow.camera.near = 10
-  sun.shadow.camera.far = 220
-  sun.shadow.camera.left = -66
-  sun.shadow.camera.right = 66
-  sun.shadow.camera.top = 48
-  sun.shadow.camera.bottom = -48
+  sun.shadow.camera.far = 160
+  sun.shadow.camera.left = -26
+  sun.shadow.camera.right = 26
+  sun.shadow.camera.top = 20
+  sun.shadow.camera.bottom = -20
   sun.shadow.bias = -0.0004
   sun.shadow.normalBias = 0.03
   group.add(sun)
@@ -296,6 +392,8 @@ export function buildPitch(opts: PitchOptions): Pitch3D {
     setHomeColor(hex: number) {
       drawCrowd(crowd.canvas, hex)
       crowd.tex.needsUpdate = true
+      board.redraw(hex)
+      board.tex.needsUpdate = true
       // clone 은 캔버스를 공유하지만 needsUpdate 는 각자 켜야 GPU 에 다시 올라간다
       for (const t of crowdClones) t.needsUpdate = true
       side.color.set(shade(hex, 0.3))

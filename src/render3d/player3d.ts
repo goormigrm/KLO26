@@ -239,6 +239,8 @@ export interface AnimInput {
   throwing: boolean
   /** 전력질주 중 — 보폭이 빠르고 팔을 크게 굽혀 흔들며 상체를 앞으로 (사용자 요청 2026-09-11) */
   sprint: boolean
+  /** 골 세레모니 — 득점 팀 필드 선수가 두 팔을 든다 (2026-09-15) */
+  celebrate: boolean
 }
 
 /** 코드 애니메이션 — 걷기/달리기 · 킥 · 슬라이딩 · 넘어짐 · GK 다이브 */
@@ -302,6 +304,12 @@ export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
   if (a.throwing) {
     armL = -2.7
     armR = -2.7
+  }
+  // 골 세레모니 — 두 팔을 위로 흔든다
+  if (a.celebrate) {
+    const sw = Math.sin(rig.walk * 0.7) * 0.3
+    armL = -2.9 + sw
+    armR = -2.9 - sw
   }
   rig.legL.rotation.x = legL * (1 - lie)
   rig.legR.rotation.x = legR * (1 - lie) + 0.35 * lie

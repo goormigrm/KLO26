@@ -173,7 +173,7 @@ export class Session {
     const stage = host.querySelector('#stage') as HTMLElement
     this.overlay = host.querySelector('#overlay') as HTMLElement
     this.fpsEl = host.querySelector('#fps') as HTMLElement
-    this.renderer = new Renderer3D(stage, { shadows: cfg.settings.shadows, resScale: cfg.settings.resScale, graphics: cfg.settings.graphics })
+    this.renderer = new Renderer3D(stage, { shadows: cfg.settings.shadows, resScale: cfg.settings.resScale, graphics: cfg.settings.graphics, helpers: cfg.settings.helpers })
     this.renderer.setMatch(this.state, this.kits, this.gkKits)
     // 실사 캐릭터 파일 — 로비에서 미리 받아 두었으면 즉시, 아니면 찰흙으로 그리다 도착하면 바꾼다
     if (cfg.settings.graphics === 'real') this.ensureCharacter()
@@ -413,7 +413,9 @@ export class Session {
       message = `상대 입력 대기 중… (${this.cfg.net.link.rtt} ms)`
     }
     if (!this.drawReplay(dt)) {
-      this.renderer.draw(this.prev, this.state, alpha, dt, { humanTeam: me, controlled, aim: this.previewAim() })
+      const tm = this.state.teams[me]
+      const hold = Math.min(1, Math.max(tm.holdShoot / 36, tm.holdPass / 30))
+      this.renderer.draw(this.prev, this.state, alpha, dt, { humanTeam: me, controlled, aim: this.previewAim(), hold })
       this.hud.update(this.state, { humanTeam: me, controlled, message })
     }
     if (import.meta.env.DEV) this.captureAfterDraw()
@@ -701,6 +703,7 @@ export class Session {
             this.renderer.setGraphics(mode)
             if (mode === 'real') this.ensureCharacter()
           },
+          setHelpers: (on) => this.renderer.setHelpers(on),
           setKeysHint: (on) => {
             this.keysShown = on
             this.hud.setKeysShown(on)

@@ -33,6 +33,16 @@ describe('방송 카메라', () => {
     expect(cameraLookAt(t).x).toBe(p.x)
   })
 
+  it('골문에 가까워지면 카메라가 낮고 가까워진다 (낮은 측면 컷, 2026-09-15)', () => {
+    const mid = cameraPosition(broadcastTarget(0, 0, 0))
+    const goal = cameraPosition(broadcastTarget(HALF_L, 0, 0))
+    expect(goal.y).toBeLessThan(mid.y)
+    expect(goal.z).toBeLessThan(mid.z)
+    expect(goal.z).toBeGreaterThan(HALF_W)
+    expect(broadcastTarget(HALF_L, 0, 0).near).toBe(1)
+    expect(broadcastTarget(0, 0, 0).near).toBe(0)
+  })
+
   it('좁은 창은 세로 FOV 를 키워 좌우를 자르지 않는다', () => {
     expect(fovForAspect(35, BASE_ASPECT)).toBe(35)
     expect(fovForAspect(35, 2.2)).toBe(35)

@@ -46,6 +46,8 @@ export interface RenderOptions {
   resScale: number
   /** 선수 그래픽 — 찰흙(프리미티브) · 실사(glTF 스킨드 메시, 2026-09-15). 실사 파일이 아직 안 왔으면 찰흙으로 그리다 바꾼다 */
   graphics?: GraphicsMode
+  /** 도움 표시 — 발밑 링 · 방향 화살표 · 상대 링 (기본 켬). 끄면 FC 처럼 삼각형 커서와 이름만 남는다 */
+  helpers?: boolean
 }
 
 export interface ViewInfo {
@@ -56,6 +58,8 @@ export interface ViewInfo {
   replay?: boolean
   /** 세트피스 궤적 미리보기 — 킥커가 D/A 를 홀드 중일 때 세션이 계산해 준다 (2026-09-11) */
   aim?: KickPreview | null
+  /** 슛·패스 홀드 파워 0~1 — 조작 선수 발밑 바 (2026-09-15, FC 온라인 방식) */
+  hold?: number
 }
 
 /** 궤적 미리보기 점 최대 개수 (60 Hz × 4 초) · 구슬 개수 */
@@ -97,11 +101,11 @@ function nameSprite(text: string, color: string): THREE.Sprite {
   c.width = 256
   c.height = 72
   const g = c.getContext('2d')!
-  g.font = '700 34px "IBM Plex Sans KR", "Segoe UI", sans-serif'
+  g.font = '700 32px "IBM Plex Sans KR", "Segoe UI", sans-serif'
   g.textAlign = 'center'
   g.textBaseline = 'middle'
   const w = Math.min(248, g.measureText(text).width + 28)
-  g.fillStyle = 'rgba(10,14,20,0.78)'
+  g.fillStyle = 'rgba(10,14,20,0.55)'
   g.beginPath()
   g.roundRect((256 - w) / 2, 8, w, 56, 12)
   g.fill()
@@ -124,6 +128,11 @@ export class Renderer3D {
   private refs: Referees
   private rigs: Rig[] = []
   private graphics: GraphicsMode = 'clay'
+  private helpers = true
+  private markerMat: THREE.MeshBasicMaterial
+  /** 조작 선수 발밑 파워 바 (2026-09-15) */
+  private powBar = new THREE.Group()
+  private powFill: THREE.Mesh
   private charLib: CharacterLib | null = null
   private lastState: GameState | null = null
   private disposed = false
@@ -146,6 +155,7 @@ export class Renderer3D {
   private camX = 0
   private camLookY = 0
   private camFov = FOV_WIDE
+  private camNear = 0
   private camInit = false
   /**
    * 세트피스 카메라 (2026-09-11) — 직접 프리킥(골문 36 m 안)·페널티킥은 **키커 뒤에서 골문을 본다**.
@@ -173,6 +183,7 @@ export class Renderer3D {
   ) {
     this.opts = opts
     this.graphics = opts.graphics ?? 'clay'
+    this.helpers = opts.helpers ?? true
     this.canvas = document.createElement('canvas')
     this.canvas.className = 'gl'
     container.appendChild(this.canvas)
@@ -181,7 +192,7 @@ export class Renderer3D {
     this.gl.shadowMap.type = THREE.PCFSoftShadowMap
     this.gl.outputColorSpace = THREE.SRGBColorSpace
     this.gl.toneMapping = THREE.ACESFilmicToneMapping
-    this.gl.toneMappingExposure = 1.0
+    this.gl.toneMappingExposure = 1.08
     this.scene.background = new THREE.Color(0x121a26)
     this.camera = new THREE.PerspectiveCamera(FOV_WIDE, 16 / 9, 0.5, 500)
     this.pitch = buildPitch({ shadows: opts.shadows })
@@ -200,8 +211,9 @@ export class Renderer3D {
     this.ballShadow.position.y = 0.012
     this.scene.add(this.ballShadow)
 
-    // 조작 표시: 머리 위 화살표 + 발밑 링
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.55, 4), new THREE.MeshBasicMaterial({ color: 0xffe14a }))
+    // 조작 표시: 머리 위 **팀색 작은 삼각형**(2026-09-15, FC 온라인 방식 — 예전엔 노란 큰 콘이 돌았다) + 발밑 링
+    this.markerMat = new THREE.MeshBasicMaterial({ color: 0xffe14a })
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.34, 3), this.markerMat)
     cone.rotation.x = Math.PI
     this.marker.add(cone)
     this.scene.add(this.marker)
@@ -269,7 +281,22 @@ export class Renderer3D {
     this.beads.renderOrder = 4
     this.beads.visible = false
     this.scene.add(this.beads)
+    // 발밑 파워 바 — 바탕(어둡게) + 채움(노랑→빨강). 조작 선수 앞 0.9 m 에 눕힌다
+    const pbBack = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.14), new THREE.MeshBasicMaterial({ color: 0x0a0e14, transparent: true, opacity: 0.75, depthWrite: false }))
+    pbBack.rotation.x = -Math.PI / 2
+    this.powFill = new THREE.Mesh(new THREE.PlaneGeometry(1.26, 0.1), new THREE.MeshBasicMaterial({ color: 0xffe14a, depthWrite: false }))
+    this.powFill.rotation.x = -Math.PI / 2
+    this.powFill.position.y = 0.002
+    this.powBar.add(pbBack, this.powFill)
+    this.powBar.renderOrder = 5
+    this.powBar.visible = false
+    this.scene.add(this.powBar)
     this.resize()
+  }
+
+  /** 도움 표시(링·화살표) 켜고 끄기 — 설정 */
+  setHelpers(on: boolean): void {
+    this.helpers = on
   }
 
   /** 선수 하나의 리그 — 설정과 캐릭터 파일 유무에 따라 찰흙/실사 */
@@ -410,8 +437,9 @@ export class Renderer3D {
       const rig = this.rigs[c]
       const bob = Math.sin(this.t * 6) * 0.08
       this.marker.visible = true
-      this.marker.position.set(rig.root.position.x, rig.height + 0.5 + bob, rig.root.position.z)
-      this.marker.rotation.y = this.t * 1.5
+      this.marker.position.set(rig.root.position.x, rig.height + 0.42 + bob, rig.root.position.z)
+      // 팀색 — 원정 흰색이면 흰 삼각형 (FC 온라인처럼 커서가 팀색이다)
+      if (this.kits) this.markerMat.color.setHex(this.kits[view.humanTeam].shirt)
       this.ring.visible = true
       this.ring.position.set(rig.root.position.x, 0.02, rig.root.position.z)
       if (this.nameFor !== c) {
@@ -421,7 +449,8 @@ export class Renderer3D {
           this.name.material.dispose()
         }
         const p = curr.players[c]
-        this.name = nameSprite(`${p.spec.no} ${p.spec.name}`, '#ffe14a')
+        this.name = nameSprite(p.spec.name, '#ffffff')
+        this.name.scale.multiplyScalar(0.72)
         this.scene.add(this.name)
         this.nameFor = c
       }
@@ -449,7 +478,8 @@ export class Renderer3D {
           this.ownerName.material.dispose()
         }
         const p = curr.players[ow]
-        this.ownerName = nameSprite(`${p.spec.no} ${p.spec.name}`, color)
+        this.ownerName = nameSprite(p.spec.name, color)
+        this.ownerName.scale.multiplyScalar(0.72)
         this.scene.add(this.ownerName)
         this.ownerNameFor = ow
         this.ownerNameColor = color
@@ -529,6 +559,23 @@ export class Renderer3D {
       this.oppRing.position.set(rig.root.position.x, 0.02, rig.root.position.z)
     } else this.oppRing.visible = false
 
+    // 도움 표시 끄면 링·화살표는 숨긴다 — 삼각형 커서와 이름만 (FC 온라인 밀도)
+    if (!this.helpers) {
+      this.ring.visible = false
+      this.chev.visible = false
+      this.oppRing.visible = false
+      this.ownerRing.visible = false
+    }
+    // 발밑 파워 바 — 홀드 중일 때만, 조작 선수 앞(카메라 쪽)
+    const hold = view.hold ?? 0
+    if (c >= 0 && c < n && hold > 0) {
+      const rig = this.rigs[c]
+      this.powBar.visible = true
+      this.powBar.position.set(rig.root.position.x, 0.03, rig.root.position.z + 0.9)
+      this.powFill.scale.x = Math.max(0.02, Math.min(1, hold))
+      this.powFill.position.x = -0.63 * (1 - this.powFill.scale.x)
+      ;(this.powFill.material as THREE.MeshBasicMaterial).color.setHex(hold > 0.85 ? 0xf85149 : hold > 0.55 ? 0xffb347 : 0xffe14a)
+    } else this.powBar.visible = false
     this.refs.update(curr, dt)
 
     // ---- 카메라 ----
@@ -549,14 +596,22 @@ export class Renderer3D {
       this.camX = tgt.x
       this.camLookY = tgt.lookY
       this.camFov = tgt.fov
+      this.camNear = tgt.near
       this.camInit = true
     } else {
       const s = 1 - Math.pow(0.03, dt)
       this.camX += (tgt.x - this.camX) * s
       this.camLookY += (tgt.lookY - this.camLookY) * s * 0.8
       this.camFov += (tgt.fov - this.camFov) * (1 - Math.pow(0.15, dt))
+      // 낮은 컷은 천천히 들어가고 나온다 — 방송 카메라가 크레인을 내리듯
+      this.camNear += (tgt.near - this.camNear) * (1 - Math.pow(0.25, dt))
     }
-    const ct = { x: this.camX, lookY: this.camLookY, fov: this.camFov }
+    const ct = { x: this.camX, lookY: this.camLookY, fov: this.camFov, near: this.camNear }
+    // 그림자는 **공 주변 52 × 40 m 만** 그린다 — 태양과 과녁을 공을 따라 옮긴다 (2026-09-15: 선명해지고 실사 22명 그림자 패스가 가벼워진다)
+    const sun = this.pitch.sun
+    sun.position.set(bx - 30, 70, -by + 40)
+    sun.target.position.set(bx, 0, -by)
+    sun.target.updateMatrixWorld()
     const cp = cameraPosition(ct)
     const cl = cameraLookAt(ct)
     // ---- 세트피스 카메라: 키커 뒤 ----
@@ -636,7 +691,8 @@ export class Renderer3D {
       const l = p.vx * rx + p.vy * ry
       lateral = l > 0.05 ? 1 : l < -0.05 ? -1 : 0
     }
-    return { action: p.action, actT: p.actT, speed, holding: p.holdT > 0, lateral, throwing: p.throwing, sprint }
+    const celebrate = st.phase === 'goal' && st.goalTeam === p.team && !p.sk.isGK
+    return { action: p.action, actT: p.actT, speed, holding: p.holdT > 0, lateral, throwing: p.throwing, sprint, celebrate }
   }
 
   /** 프레임 시간(ms) 계측용 */

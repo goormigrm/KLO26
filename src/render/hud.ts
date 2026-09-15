@@ -92,6 +92,8 @@ export class Hud {
 
   /** 리플레이 재생 중 (phaseText 가 본다) */
   private replaying = false
+  private bannerText = ''
+  private bannerAt = 0
 
   update(st: GameState, v: HudView): void {
     this.replaying = v.replay === true
@@ -113,8 +115,18 @@ export class Hud {
     if (banner) {
       this.set('banner', banner)
       bn.hidden = false
-      bn.classList.toggle('big', st.phase === 'goal' || st.phase === 'end' || st.phase === 'halftime' || (st.phase === 'play' && banner === st.callText && st.callText.includes('킥오프')))
-    } else bn.hidden = true
+      const big = st.phase === 'goal' || st.phase === 'end' || st.phase === 'halftime' || (st.phase === 'play' && banner === st.callText && st.callText.includes('킥오프'))
+      bn.classList.toggle('big', big)
+      // 같은 문구가 2.5 초 넘게 떠 있으면 작게 접는다 — 세트피스 안내가 화면을 계속 가리지 않게 (2026-09-15)
+      if (banner !== this.bannerText) {
+        this.bannerText = banner
+        this.bannerAt = performance.now()
+      }
+      bn.classList.toggle('small', !big && performance.now() - this.bannerAt > 2500)
+    } else {
+      bn.hidden = true
+      this.bannerText = ''
+    }
 
     // 조작 선수
     const me = this.el.name.parentElement!
@@ -127,10 +139,8 @@ export class Hud {
       staEl.style.width = `${sta}%`
       staEl.style.background = sta < 30 ? '#f85149' : sta < 55 ? '#e3b341' : '#3fb950'
       const team = st.teams[v.humanTeam]
-      const hold = Math.max(team.holdShoot / 36, team.holdPass / 30)
-      const pow = Math.min(1, hold)
-      this.el.powbar.hidden = hold <= 0
-      this.el.pow.style.width = `${Math.round(pow * 100)}%`
+      // 파워 바는 2026-09-15 부터 조작 선수 **발밑**(렌더러) — HUD 의 바는 안 쓴다
+      void team
       // "전술 균형" 만 있으면 무슨 글자인지 모른다(사용자 지적 2026-09-11) — 바꾸는 키까지 적는다
       this.set('preset', `전술 ${PRESET_NAMES[team.preset] ?? ''} · [ ] 로 바꿈`)
     } else me.hidden = true

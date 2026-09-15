@@ -48,7 +48,7 @@ export class Radar {
     const sy = (RADAR_H - pad * 2) / (HALF_W * 2)
     const X = (x: number): number => pad + (x + HALF_L) * sx
     const Y = (y: number): number => pad + (HALF_W - y) * sy
-    g.fillStyle = 'rgba(8,12,18,0.72)'
+    g.fillStyle = 'rgba(8,12,18,0.5)'
     g.beginPath()
     g.roundRect(0, 0, RADAR_W, RADAR_H, 10)
     g.fill()

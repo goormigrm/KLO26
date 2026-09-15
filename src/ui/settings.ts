@@ -12,6 +12,8 @@ export interface Settings {
   resScale: number
   /** 선수 그래픽 — 'real' 실사(glTF 모션캡처, 2 MB 내려받음) · 'clay' 찰흙 (2026-09-15) */
   graphics: 'real' | 'clay'
+  /** 도움 표시 — 발밑 링·방향 화살표·상대 링 (2026-09-15). 끄면 FC 온라인처럼 팀색 삼각형과 이름만 */
+  helpers: boolean
   /** 화면 아래 조작 안내 띠 */
   keysHint: boolean
   /** 왼쪽 아래 **내가 지금 누르는 키** 표시 (방향키 제외) — Q+D 같은 조합이 실제로 들어가는지 본다 (2026-09-11) */
@@ -35,6 +37,7 @@ export const DEFAULT_SETTINGS: Settings = {
   shadows: true,
   resScale: 1,
   graphics: 'real',
+  helpers: true,
   keysHint: true,
   keyView: true,
   difficulty: 2,
@@ -58,6 +61,7 @@ export function loadSettings(): Settings {
     if (![2, 3, 4].includes(s.halfMin)) s.halfMin = 3
     if (s.resScale !== 0.75) s.resScale = 1
     if (s.graphics !== 'clay') s.graphics = 'real'
+    if (typeof s.helpers !== 'boolean') s.helpers = true
     if (!Number.isInteger(s.oppClub)) s.oppClub = -1
     if (typeof s.testSpectate !== 'boolean') s.testSpectate = true
     if (typeof s.testKeyView !== 'boolean') s.testKeyView = true
@@ -93,6 +97,8 @@ export interface SettingsHooks {
   setResScale(v: number): void
   /** 선수 그래픽 (렌더러에 즉시 — 22명을 다시 만든다) */
   setGraphics?(mode: 'real' | 'clay'): void
+  /** 도움 표시 (렌더러에 즉시) */
+  setHelpers?(on: boolean): void
   /** 화면 아래 조작 안내 띠 */
   setKeysHint(on: boolean): void
   /** 왼쪽 아래 입력 키 표시 — 경기 중에만 뜻이 있다 (로비는 안 넘겨도 된다) */
@@ -115,6 +121,7 @@ export function settingsPanelHtml(s: Settings, muted: boolean): string {
     ${segRow('그림자', 'st-shadows', [['1', '켜기'], ['0', '끄기']], s.shadows ? '1' : '0', '저사양 PC 는 끄면 가벼워집니다')}
     ${segRow('렌더 해상도', 'st-res', [['1', '100%'], ['0.75', '75%']], String(s.resScale), '75% 는 조금 흐려지지만 빨라집니다')}
     ${segRow('선수 그래픽', 'st-gfx', [['real', '실사'], ['clay', '찰흙']], s.graphics, '실사는 모션캡처 캐릭터(약 2 MB 내려받음) · 느리면 찰흙')}
+    ${segRow('도움 표시', 'st-helpers', [['1', '보이기'], ['0', '숨기기']], s.helpers ? '1' : '0', '발밑 링·방향 화살표·상대 링. 숨기면 팀색 삼각형과 이름만 남습니다')}
     ${segRow('조작 안내 띠', 'st-keys', [['1', '보이기'], ['0', '숨기기']], s.keysHint ? '1' : '0', '화면 아래 키 안내')}
     ${segRow('입력 키 표시', 'st-keyview', [['1', '보이기'], ['0', '숨기기']], s.keyView ? '1' : '0', '왼쪽 아래에 지금 누르는 키 (방향키 빼고) — 상대에겐 안 보입니다')}
   </div>`
@@ -143,6 +150,10 @@ export function bindSettingsPanel(root: ParentNode, s: Settings, hooks: Settings
   on('#st-gfx', (v) => {
     s.graphics = v === 'clay' ? 'clay' : 'real'
     hooks.setGraphics?.(s.graphics)
+  })
+  on('#st-helpers', (v) => {
+    s.helpers = v === '1'
+    hooks.setHelpers?.(s.helpers)
   })
   on('#st-keys', (v) => {
     s.keysHint = v === '1'

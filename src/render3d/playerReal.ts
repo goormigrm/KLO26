@@ -3,8 +3,9 @@
 // - 캐릭터 파일: `public/models/player.glb` (Mixamo 뼈대 `mixamorig*`, 클립 idle/walk/run 필수). 지금은 three.js 예제의
 //   Soldier(Mixamo 캐릭터, MIT 저장소)로 파이프라인을 검증한다 — 최종 인간 캐릭터는 Mixamo 에서 받아 같은 이름으로 바꿔 넣는다.
 // - 유니폼: 텍스처를 캔버스에서 **피부색 픽셀은 남기고 나머지는 밝기 × 구단 색**으로 물들인다 — 어떤 캐릭터든 같은 규칙.
-// - 클립이 없는 동작(킥·슬라이딩·다이브·넘어짐·스로인·GK 홀드)은 믹서가 뼈를 세팅한 뒤 **뼈 회전을 덧씌운다**(절차적).
-//   Mixamo 축구 클립이 들어오면 그 부분만 클립으로 바꾼다.
+// - 클립이 없는 동작(킥·스로인·GK 홀드·세레모니)은 믹서가 뼈를 세팅한 뒤 **뼈를 월드 방향으로 겨눠** 덧씌운다 —
+//   뼈 로컬 축을 가정하지 않으므로(사용자 제보 2026-09-15: "스로잉·골 모션이 없다") 어느 Mixamo 리그든 같은 결과.
+//   눕기(슬라이딩·다이브·넘어짐)는 허리 축 그룹 회전. Mixamo 축구 클립이 들어오면 그 부분만 클립으로 바꾼다.
 // - 찰흙(`player3d.ts`)과 같은 `Rig` 인터페이스라 렌더러는 둘을 구분하지 않는다. 설정 "선수 그래픽"으로 바꾼다.
 
 import * as THREE from 'three'
@@ -26,6 +27,11 @@ export interface CharacterLib {
 }
 
 const MODEL_URL = `${import.meta.env.BASE_URL}models/player.glb`
+/**
+ * 모델 정면. Mixamo/three 예제 캐릭터는 **−z 를 본다**(사용자 제보 2026-09-15: 반대 방향을 보고 뛰었다) —
+ * 우리 로컬 정면(+z)에 맞추려 모델을 180° 돌린다. 캐릭터 파일이 +z 를 보면 0 으로.
+ */
+const MODEL_YAW = Math.PI
 
 let libPromise: Promise<CharacterLib> | null = null
 
@@ -105,6 +111,36 @@ function tintTexture(src: THREE.Texture, color: number): THREE.Texture {
   return t
 }
 
+// ---------------------------------------------------------------- 뼈 겨누기 (절차적 덧씌우기)
+
+const Y_AXIS = new THREE.Vector3(0, 1, 0)
+const qParent = new THREE.Quaternion()
+const qRoot = new THREE.Quaternion()
+const qGoal = new THREE.Quaternion()
+const vDir = new THREE.Vector3()
+const tmpV = new THREE.Vector3()
+
+/**
+ * 뼈의 자식 방향(+y, Mixamo 관습)이 **root 공간의 `dir`** 을 향하게 slerp 로 돌린다.
+ * root 공간: +z 정면 · +y 위 · +x 오른쪽(선수 기준 왼쪽). 부모 뼈의 월드 회전을 거꾸로 적용해 로컬 축 가정을 없앤다.
+ */
+function aimBone(bone: THREE.Object3D, root: THREE.Object3D, dir: THREE.Vector3, k: number): void {
+  if (!bone.parent) return
+  bone.parent.getWorldQuaternion(qParent)
+  root.getWorldQuaternion(qRoot)
+  vDir.copy(dir).normalize().applyQuaternion(qRoot).applyQuaternion(qParent.invert())
+  qGoal.setFromUnitVectors(Y_AXIS, vDir.normalize())
+  bone.quaternion.slerp(qGoal, k)
+}
+
+const DIR_UP = new THREE.Vector3(0.15, 1, 0.1)
+const DIR_THROW = new THREE.Vector3(0, 1, -0.45)
+const DIR_HOLD = new THREE.Vector3(0.1, -0.25, 1)
+const DIR_KICK = new THREE.Vector3(0.05, -0.55, 1)
+const DIR_KICK_BACK = new THREE.Vector3(0.05, -0.7, -0.7)
+const DIR_CHEER_L = new THREE.Vector3(0.45, 1, 0.15)
+const DIR_CHEER_R = new THREE.Vector3(-0.45, 1, 0.15)
+
 // ---------------------------------------------------------------- 리그
 
 interface Bones {
@@ -115,6 +151,8 @@ interface Bones {
   rUpLeg: THREE.Object3D | null
   lArm: THREE.Object3D | null
   rArm: THREE.Object3D | null
+  lForeArm: THREE.Object3D | null
+  rForeArm: THREE.Object3D | null
   head: THREE.Object3D | null
 }
 
@@ -126,8 +164,6 @@ export interface RealRig extends Rig {
   body: THREE.Group
   mixer: THREE.AnimationMixer
 }
-
-const tmpV = new THREE.Vector3()
 
 export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): RealRig {
   const model = cloneSkinned(lib.scene) as THREE.Group
@@ -164,6 +200,7 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
   const pivotY = lib.height * 0.5
   body.position.y = pivotY
   model.position.y = -pivotY
+  model.rotation.y = MODEL_YAW
   body.add(model)
   root.scale.setScalar(scale)
 
@@ -197,6 +234,8 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
     rUpLeg: bone(model, 'RightUpLeg'),
     lArm: bone(model, 'LeftArm'),
     rArm: bone(model, 'RightArm'),
+    lForeArm: bone(model, 'LeftForeArm'),
+    rForeArm: bone(model, 'RightForeArm'),
     head: bone(model, 'Head'),
   }
 
@@ -208,6 +247,8 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
   let wIdle = 1
   let wWalk = 0
   let wRun = 0
+  let armPose = 0 // 팔 오버레이 강도 (부드럽게 들어가고 나온다)
+  let cheerT = 0
 
   const rig: RealRig = {
     root,
@@ -215,7 +256,7 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
     mixer,
     height: lib.height * scale,
     animate(a: AnimInput, dt: number): void {
-      if (a.action === ACT_KICK && lastAction !== ACT_KICK) kickT = 0.32
+      if (a.action === ACT_KICK && lastAction !== ACT_KICK) kickT = 0.36
       lastAction = a.action
       kickT = Math.max(0, kickT - dt)
       if (a.action === ACT_DIVE) wasDive = true
@@ -252,23 +293,7 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
       run.setEffectiveTimeScale(Math.max(0.7, (a.speed / lib.runSpeed) * (a.sprint ? 1.12 : 1)))
       mixer.update(dt)
 
-      // ---- 절차적 덧씌우기 (믹서 뒤) ----
-      // 킥: 오른 다리를 앞으로 차고 상체를 살짝 뒤로
-      if (kickT > 0 && bones.rUpLeg) {
-        const t = 1 - kickT / 0.32
-        const s = Math.sin(t * Math.PI)
-        bones.rUpLeg.rotation.x += -1.1 * s
-        if (bones.spine) bones.spine.rotation.x += -0.12 * s
-      }
-      // 전력질주: 상체를 앞으로
-      if (a.sprint && moving && bones.spine) bones.spine.rotation.x += 0.18 * wRun
-      // GK 가 공을 들면 두 팔 앞으로 · 스로인은 두 팔 머리 뒤로
-      if ((a.holding || a.throwing) && bones.lArm && bones.rArm) {
-        const up = a.throwing ? -2.4 : -1.3
-        bones.lArm.rotation.x += up
-        bones.rArm.rotation.x += up
-      }
-      // 눕기 — 허리 축으로 몸 전체
+      // ---- 눕기 — 허리 축으로 몸 전체 (먼저: 뼈 겨누기가 이 회전을 본다) ----
       if (sideways || (lie > 0.01 && wasDive)) {
         body.rotation.x = 0
         body.rotation.z = 1.4 * lie * lieSide
@@ -277,6 +302,45 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
         body.rotation.x = -1.4 * lie
       }
       body.position.y = pivotY * (1 - lie) + 0.18 * lie
+
+      // ---- 절차적 덧씌우기 (믹서 뒤, 월드 방향으로 겨눈다) ----
+      const wantArm = a.throwing || a.holding || a.celebrate
+      armPose += ((wantArm ? 1 : 0) - armPose) * Math.min(1, dt * 8)
+      const needWorld = kickT > 0 || armPose > 0.01 || (a.sprint && moving)
+      if (needWorld) root.updateMatrixWorld(true)
+
+      // 킥: 오른 다리를 뒤로 뺐다가 앞으로 차고, 상체는 살짝 뒤로
+      if (kickT > 0 && bones.rUpLeg) {
+        const t = 1 - kickT / 0.36 // 0 → 1
+        if (t < 0.3) aimBone(bones.rUpLeg, root, DIR_KICK_BACK, t / 0.3 * 0.7)
+        else aimBone(bones.rUpLeg, root, DIR_KICK, Math.sin(((t - 0.3) / 0.7) * Math.PI) * 0.9)
+        if (bones.spine) bones.spine.rotation.x += -0.1 * Math.sin(t * Math.PI)
+      }
+      // 전력질주: 상체를 앞으로 (뼈 로컬 x — 척추는 어느 리그든 x 가 앞뒤다)
+      if (a.sprint && moving && bones.spine) bones.spine.rotation.x += 0.16 * wRun
+      // 팔 — 스로인(머리 뒤로) · GK 홀드(앞으로) · 세레모니(위로 흔들기)
+      if (armPose > 0.01 && bones.lArm && bones.rArm) {
+        if (a.celebrate) {
+          cheerT += dt
+          const sway = Math.sin(cheerT * 6) * 0.25
+          DIR_CHEER_L.set(0.45 + sway, 1, 0.15)
+          DIR_CHEER_R.set(-0.45 + sway, 1, 0.15)
+          aimBone(bones.lArm, root, DIR_CHEER_L, armPose)
+          aimBone(bones.rArm, root, DIR_CHEER_R, armPose)
+          if (bones.lForeArm) aimBone(bones.lForeArm, root, DIR_UP, armPose)
+          if (bones.rForeArm) aimBone(bones.rForeArm, root, DIR_UP, armPose)
+        } else if (a.throwing) {
+          aimBone(bones.lArm, root, DIR_THROW, armPose)
+          aimBone(bones.rArm, root, DIR_THROW, armPose)
+          if (bones.lForeArm) aimBone(bones.lForeArm, root, DIR_THROW, armPose)
+          if (bones.rForeArm) aimBone(bones.rForeArm, root, DIR_THROW, armPose)
+        } else {
+          aimBone(bones.lArm, root, DIR_HOLD, armPose)
+          aimBone(bones.rArm, root, DIR_HOLD, armPose)
+          if (bones.lForeArm) aimBone(bones.lForeArm, root, DIR_HOLD, armPose)
+          if (bones.rForeArm) aimBone(bones.rForeArm, root, DIR_HOLD, armPose)
+        }
+      } else cheerT = 0
 
       // 등번호 — 척추 뒤
       const sp = bones.spine1 ?? bones.spine ?? bones.hips

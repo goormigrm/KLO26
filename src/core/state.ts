@@ -78,6 +78,8 @@ export const ACT_KICK = 1
 export const ACT_SLIDE = 2
 export const ACT_FALLEN = 3
 export const ACT_DIVE = 4
+/** 헤딩 — 10틱 점프해 머리로 친다 (2026-09-15) */
+export const ACT_HEAD = 5
 
 export interface Player {
   idx: number

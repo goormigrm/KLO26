@@ -4,9 +4,10 @@
 
 import { atan2A, clamp, cosA, len, sinA } from './fixedmath'
 import { feetX, feetY } from './physics'
+import { BTN_A, BTN_D, BTN_S } from './input'
 import { rand, type Rng } from './rng'
 import {
-  ACT_DIVE, ACT_FALLEN, ACT_KICK, ACT_RUN, ACT_SLIDE, BOX_HALF_W, BOX_L, CONTROL_R, DT, GOAL_H, GOAL_HALF, HALF_L, HALF_W,
+  ACT_DIVE, ACT_FALLEN, ACT_HEAD, ACT_KICK, ACT_RUN, ACT_SLIDE, BOX_HALF_W, BOX_L, CONTROL_R, DT, GOAL_H, GOAL_HALF, HALF_L, HALF_W,
   THROW_SPEED_MAX, goalX, inBoxOf, ownGoalX, type GameState, type PendingCall, type Player,
 } from './state'
 
@@ -206,14 +207,135 @@ function call(st: GameState, c: PendingCall): void {
   st.pending = c
 }
 
+/** 공이 골문 안으로 향하나 (공기 저항 무시) — 슛·헤딩이 같이 쓴다 */
+function markOnTarget(st: GameState, teamIdx: number): void {
+  const b = st.ball
+  const team = st.teams[teamIdx]
+  const gx = goalX(team)
+  const vxg = b.vx * team.dir
+  if (vxg <= 0.1) return
+  const t = Math.abs(gx - b.x) / Math.abs(b.vx)
+  const yAt = b.y + b.vy * t
+  const zAt = b.z + b.vz * t - 0.5 * G * t * t
+  if (Math.abs(yAt) < GOAL_HALF && zAt < GOAL_H && zAt > -1) {
+    b.onTarget = true
+    st.stats[teamIdx].onTarget++
+  }
+}
+
+/**
+ * 헤딩 (2026-09-15, 사용자 제보 "헤딩 골이 되나?" — 예전엔 공중볼을 머리로 **트래핑**만 했다).
+ * 공중볼(1.0 ~ 2.45 m)이 머리 반경 안에 왔을 때 `tryControl` 이 부른다.
+ * 사람: 누르고 있는 키로 — **D 헤딩 슛 · S 헤딩 패스 · A 헤딩 클리어**, 아무것도 없으면 false(트래핑).
+ * AI: 상대 골문 24 m 안에서 아군 크로스면 슛, 자기 진영 깊으면 클리어, 상대 공이면 클리어 쪽, 아니면 절반은 패스.
+ * 헤더(head)가 닿을 확률(0.5 + 0.45·head)·세기·정확도를 정한다. 골키퍼 판정은 gkCatch 그대로.
+ */
+function tryHeader(st: GameState, p: Player): boolean {
+  const b = st.ball
+  const team = st.teams[p.team]
+  const dir = team.dir
+  const gx = goalX(team)
+  const dG = dist(p.x, p.y, gx, 0)
+  const human = team.human && team.controlled === p.idx
+  let mode: 'shoot' | 'pass' | 'clear' | null = null
+  if (human) {
+    const held = team.prevButtons
+    if (held & BTN_D) mode = 'shoot'
+    else if (held & BTN_S) mode = 'pass'
+    else if (held & BTN_A) mode = 'clear'
+  } else if (!p.sk.isGK) {
+    if (dG < 24 && Math.abs(p.y) < 18 && b.lastTeam === p.team) mode = 'shoot'
+    else if (p.x * dir < -25) mode = 'clear'
+    else if (b.lastTeam !== p.team && rand(st.rng) < 0.6) mode = 'clear'
+    else if (rand(st.rng) < 0.4) mode = 'pass'
+  }
+  if (!mode) return false
+  p.action = ACT_HEAD
+  p.actT = 10
+  p.lastKick = st.tick
+  const fromRestart = b.restartBy
+  const wasTeam = b.lastTeam
+  if (rand(st.rng) > 0.5 + 0.45 * p.sk.head) {
+    // 헛헤딩 — 공을 스치기만 한다
+    b.vx *= 0.9
+    b.vy *= 0.9
+    b.vz *= 0.7
+    b.lastTouch = p.idx
+    b.lastTeam = p.team
+    b.shotBy = -1
+    b.passTo = -1
+    b.passLive = false
+    b.fromThrow = false
+    if (wasTeam === p.team) touchedBall(st, p, fromRestart)
+    else b.restartBy = -1
+    return true
+  }
+  if (wasTeam === p.team) touchedBall(st, p, fromRestart)
+  else b.restartBy = -1
+  b.lastTouch = p.idx
+  b.lastTeam = p.team
+  b.passLive = false
+  b.passTo = -1
+  b.fromThrow = false
+  b.shotBy = -1
+  b.onTarget = false
+  b.kickTick = st.tick
+  if (mode === 'shoot') {
+    // 골키퍼가 비운 코너로, 아래로 내리꽂는다 — 헤더가 좋을수록 세고 정확하다
+    const gk = oppGK(st, p.team)
+    const open = gk ? (gk.y > 0.3 ? -1 : gk.y < -0.3 ? 1 : p.y > 0 ? -1 : 1) : p.y > 0 ? -1 : 1
+    const ty = open * 2.4
+    const sigma = 5 * (1.4 - p.sk.head) + (dG > 14 ? 3 : 0)
+    const a = atan2A(ty - b.y, gx - b.x) + Math.round(randN(st.rng) * sigma * DEG)
+    const speed = 9 + 9 * p.sk.head
+    const t = Math.max(0.2, dG / speed)
+    const vz = clamp((0.5 - b.z) / t + 0.5 * G * t, -6, 4)
+    b.vx = cosA(a) * speed
+    b.vy = sinA(a) * speed
+    b.vz = vz
+    b.shotBy = p.idx
+    b.shotQ = p.sk.head
+    st.stats[p.team].shots++
+    markOnTarget(st, p.team)
+    st.events.push({ tick: st.tick, type: 'shot', team: p.team, player: p.idx, x: b.x, y: b.y })
+  } else if (mode === 'pass') {
+    const target = pickPassTarget(st, p, dir, 0, false)
+    let ax = p.x + dir * 8
+    let ay = p.y
+    if (target >= 0) {
+      ax = st.players[target].x
+      ay = st.players[target].y
+    }
+    const d = dist(b.x, b.y, ax, ay)
+    const a = atan2A(ay - b.y, ax - b.x) + Math.round(randN(st.rng) * 8 * (1.3 - p.sk.head) * DEG)
+    const speed = clamp(6 + 0.5 * d, 7, 12)
+    b.vx = cosA(a) * speed
+    b.vy = sinA(a) * speed
+    b.vz = 1.2
+    b.passTo = target
+    b.passLive = true
+    st.stats[p.team].passes++
+  } else {
+    // 클리어 — 상대 진영 쪽, 가까운 터치라인 쪽으로 높게
+    const side = p.y > 0 ? 1 : -1
+    const a = atan2A(side * 0.5, dir) + Math.round(randN(st.rng) * 10 * DEG)
+    const speed = 14 + 4 * p.sk.head
+    b.vx = cosA(a) * speed
+    b.vy = sinA(a) * speed
+    b.vz = 5
+  }
+  return true
+}
+
 /**
  * 자유 공 잡기. 자격 있는 선수 중 가장 가까운 한 명만 시도한다 (동률은 idx 가 작은 쪽).
  * 방금 찬 사람은 8틱 동안 자기 공을 다시 못 잡는다.
  */
 export function tryControl(st: GameState): void {
   const b = st.ball
-  if (b.owner >= 0 || b.z > 2.2) return
+  if (b.owner >= 0 || b.z > 2.45) return // 2.45 m 까지 — 점프 헤딩 (2026-09-15, 예전 2.2)
   const speed = len(b.vx, b.vy)
+  const aerial = b.z > 1.0
   let best: Player | null = null
   let bestD = 99
   // 이번 틱에 공이 지나온 선분 — 빠른 공도 발 옆을 지나면 잡을 기회가 있다
@@ -226,8 +348,11 @@ export function tryControl(st: GameState): void {
     if (p.sk.isGK && p.holdT > 0) continue
     // 상대 패스를 끊는 것은 위치 선정(posn)이 좋은 수비수가 더 멀리서 한다 (수비 강화 — 2026-09-10)
     const intercept = b.passLive && b.lastTeam !== p.team ? 0.28 * p.sk.posn : 0
-    const reach = CONTROL_R + (speed > 8 ? 0.15 : 0) + (b.passTo === p.idx ? 0.35 : 0) + intercept
-    const d = distToSegment(feetX(p, 0.25), feetY(p, 0.25), px, py, b.x, b.y)
+    // 공중볼은 **머리**로 — 몸 중심 기준, 헤더(점프)가 좋을수록 멀리 닿는다. 받으라고 보낸 크로스면 +0.25 (2026-09-15)
+    const reach = aerial
+      ? 0.8 + 0.35 * p.sk.head + (b.passTo === p.idx ? 0.25 : 0)
+      : CONTROL_R + (speed > 8 ? 0.15 : 0) + (b.passTo === p.idx ? 0.35 : 0) + intercept
+    const d = aerial ? distToSegment(p.x, p.y, px, py, b.x, b.y) : distToSegment(feetX(p, 0.25), feetY(p, 0.25), px, py, b.x, b.y)
     if (d < reach && d < bestD) {
       bestD = d
       best = p
@@ -235,6 +360,8 @@ export function tryControl(st: GameState): void {
   }
   if (!best) return
   const p = best
+  // 공중볼 — 키(사람)나 위치(AI)에 따라 헤딩 슛·패스·클리어. 아니면 아래로 내려가 머리로 트래핑
+  if (aerial && tryHeader(st, p)) return
   // 받으라고 보낸 선수는 공을 **기다리고 있다** — 퍼스트 터치가 훨씬 잘 붙는다.
   // 예전엔 남의 공을 가로채는 것과 같은 확률이라 패스 성공률이 44% 에 머물렀다 (2026-09-09 계측).
   const intended = b.passTo === p.idx
@@ -809,17 +936,7 @@ export function doShoot(st: GameState, p: Player, dx: number, dy: number, power:
     }
     break
   }
-  // 골문 안으로 향하나 (공기 저항 무시)
-  const vxg = b.vx * team.dir
-  if (vxg > 0.1) {
-    const t = Math.abs(gx - bx) / Math.abs(b.vx)
-    const yAt = by + b.vy * t
-    const zAt = b.vz * t - 0.5 * G * t * t
-    if (Math.abs(yAt) < GOAL_HALF && zAt < GOAL_H && zAt > -1) {
-      b.onTarget = true
-      S.onTarget++
-    }
-  }
+  markOnTarget(st, p.team)
   st.events.push({ tick: st.tick, type: 'shot', team: p.team, player: p.idx, x: bx, y: by })
 }
 

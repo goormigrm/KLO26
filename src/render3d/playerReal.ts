@@ -11,7 +11,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
-import { ACT_DIVE, ACT_FALLEN, ACT_KICK, ACT_SLIDE, type PlayerSpec } from '../core/state'
+import { ACT_DIVE, ACT_FALLEN, ACT_HEAD, ACT_KICK, ACT_SLIDE, type PlayerSpec } from '../core/state'
 import { BASE_H, numberTexture, type AnimInput, type Kit, type Rig } from './player3d'
 
 export interface CharacterLib {
@@ -240,6 +240,7 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
   }
 
   let kickT = 0
+  let headT = 0
   let lastAction = 0
   let lie = 0
   let lieSide = 1
@@ -257,8 +258,10 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
     height: lib.height * scale,
     animate(a: AnimInput, dt: number): void {
       if (a.action === ACT_KICK && lastAction !== ACT_KICK) kickT = 0.36
+      if (a.action === ACT_HEAD && lastAction !== ACT_HEAD) headT = 0.3
       lastAction = a.action
       kickT = Math.max(0, kickT - dt)
+      headT = Math.max(0, headT - dt)
       if (a.action === ACT_DIVE) wasDive = true
       else if (a.action !== ACT_FALLEN) wasDive = false
 
@@ -301,9 +304,10 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
         body.rotation.z = 0
         body.rotation.x = -1.4 * lie
       }
-      // 하이 다이브는 몸이 떠오른다 (P3)
+      // 하이 다이브는 몸이 떠오른다 (P3) · 헤딩은 점프 (2026-09-15)
       const jump = a.action === ACT_DIVE && a.diveHigh ? 0.5 * Math.sin(Math.min(1, lie) * Math.PI) : 0
-      body.position.y = pivotY * (1 - lie) + 0.18 * lie + jump
+      const headJump = headT > 0 ? 0.3 * Math.sin((1 - headT / 0.3) * Math.PI) : 0
+      body.position.y = pivotY * (1 - lie) + 0.18 * lie + jump + headJump
 
       // ---- 절차적 덧씌우기 (믹서 뒤, 월드 방향으로 겨눈다) ----
       const wantArm = a.throwing || a.holding || a.celebrate || (a.action === ACT_DIVE && a.diveHigh)
@@ -317,6 +321,11 @@ export function buildRealPlayer(lib: CharacterLib, spec: PlayerSpec, kit: Kit): 
         if (t < 0.3) aimBone(bones.rUpLeg, root, DIR_KICK_BACK, t / 0.3 * 0.7)
         else aimBone(bones.rUpLeg, root, DIR_KICK, Math.sin(((t - 0.3) / 0.7) * Math.PI) * 0.9)
         if (bones.spine) bones.spine.rotation.x += -0.1 * Math.sin(t * Math.PI)
+      }
+      // 헤딩: 상체를 젖혔다 앞으로
+      if (headT > 0 && bones.spine) {
+        const t = 1 - headT / 0.3
+        bones.spine.rotation.x += t < 0.4 ? -0.4 * (t / 0.4) : -0.4 + 0.8 * ((t - 0.4) / 0.6)
       }
       // 전력질주: 상체를 앞으로 (뼈 로컬 x — 척추는 어느 리그든 x 가 앞뒤다)
       if (a.sprint && moving && bones.spine) bones.spine.rotation.x += 0.16 * wRun

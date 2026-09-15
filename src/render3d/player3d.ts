@@ -4,7 +4,7 @@
 // 로컬 좌표: 발 아래 원점, +y 위, 정면 = +z. 기준 높이 1.0 (180 cm) 을 만들고 root 를 배율한다.
 
 import * as THREE from 'three'
-import { ACT_DIVE, ACT_FALLEN, ACT_KICK, ACT_SLIDE, type PlayerSpec } from '../core/state'
+import { ACT_DIVE, ACT_FALLEN, ACT_HEAD, ACT_KICK, ACT_SLIDE, type PlayerSpec } from '../core/state'
 
 /** 180 cm 선수의 월드 높이 (m). 실제보다 조금 크게 — 방송 시점에서 22명이 읽혀야 한다 */
 export const BASE_H = 1.9
@@ -49,6 +49,8 @@ export interface PlayerRig extends Rig {
   lastAction: number
   /** 직전이 다이브였다 — 넘어져 있는 동안 옆으로 누운 자세를 유지한 채 일어난다 */
     wasDive: boolean
+  /** 헤딩 남은 시간(초) — 점프하며 상체를 젖혔다 앞으로 */
+  headT: number
   dispose(): void
 }
 
@@ -209,7 +211,7 @@ export function buildPlayer(spec: PlayerSpec, kit: Kit): PlayerRig {
     root, body, head, legL, legR, armL, armR,
     height: 1.03 * scale,
     scale,
-    walk: 0, kickT: 0, lie: 0, lieSide: 1, lastAction: 0, wasDive: false,
+    walk: 0, kickT: 0, lie: 0, lieSide: 1, lastAction: 0, wasDive: false, headT: 0,
     animate(a: AnimInput, dt: number) {
       animateRig(rig, a, dt)
     },
@@ -249,8 +251,10 @@ export interface AnimInput {
 export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
   // 킥은 sim 에서 6틱(0.1초)뿐이라 렌더가 0.32초로 늘려 보여 준다
   if (a.action === ACT_KICK && rig.lastAction !== ACT_KICK) rig.kickT = 0.32
+  if (a.action === ACT_HEAD && rig.lastAction !== ACT_HEAD) rig.headT = 0.3
   rig.lastAction = a.action
   rig.kickT = Math.max(0, rig.kickT - dt)
+  rig.headT = Math.max(0, rig.headT - dt)
 
   // 눕기 목표: 슬라이딩·넘어짐 1, 다이브 1 (옆으로), 아니면 0
   if (a.action === ACT_DIVE) rig.wasDive = true
@@ -297,6 +301,15 @@ export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
     armR = 0.5 * s
     leanX -= 0.12 * s
   }
+  // 헤딩 — 점프하며 상체를 젖혔다 앞으로 (2026-09-15)
+  let jumpH = 0
+  if (rig.headT > 0) {
+    const t = 1 - rig.headT / 0.3
+    jumpH = 0.28 * Math.sin(t * Math.PI)
+    leanX += t < 0.4 ? -0.35 * (t / 0.4) : -0.35 + 0.75 * ((t - 0.4) / 0.6)
+    armL = -1.0
+    armR = -1.0
+  }
   // GK 가 공을 들면 두 팔을 앞으로
   if (a.holding) {
     armL = -1.35
@@ -327,6 +340,6 @@ export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
   } else {
     rig.body.rotation.z = 0
     rig.body.rotation.x = leanX * (1 - lie) - 1.35 * lie
-    rig.body.position.set(0, bob + 0.12 * lie, 0.12 * lie)
+    rig.body.position.set(0, bob + 0.12 * lie + jumpH, 0.12 * lie)
   }
 }

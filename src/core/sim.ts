@@ -18,7 +18,7 @@ import {
 import { drainStamina, moveBall, movePlayer, resolveCollisions } from './physics'
 import { advanceClock, checkOut, performRestartKick, resolvePending, restartStick, setupKickoff, tickPhase, type RestartAim } from './rules'
 import {
-  ACT_DIVE, ACT_FALLEN, ACT_KICK, ACT_RUN, ACT_SLIDE, BENCH_SIZE, DECIDE_TICKS, DEFAULT_HALF_SEC, DEFAULT_SLIDERS, DT,
+  ACT_DIVE, ACT_FALLEN, ACT_HEAD, ACT_KICK, ACT_RUN, ACT_SLIDE, BENCH_SIZE, DECIDE_TICKS, DEFAULT_HALF_SEC, DEFAULT_SLIDERS, DT,
   MAX_SUBS, MAX_SUB_WINDOWS, PLAYER_R, emptyStats,
   type GameState, type MatchConfig, type Player, type PlayerSpec, type Sliders, type SquadConfig, type Team,
 } from './state'
@@ -284,7 +284,7 @@ export function step(st: GameState, inputs: [Input, Input]): void {
       }
       continue
     }
-    if (p.action === ACT_KICK && --p.actT <= 0) p.action = ACT_RUN
+    if ((p.action === ACT_KICK || p.action === ACT_HEAD) && --p.actT <= 0) p.action = ACT_RUN
     if (p.tackleT > 0) p.tackleT--
 
     let dvx: number
@@ -363,6 +363,7 @@ export function step(st: GameState, inputs: [Input, Input]): void {
     // 체력 — 절반 아래로 떨어지면 그만큼 느려진다 (0 이면 78%). 빠른 선수도 뛰기만 하면 지친다 (2026-09-11)
     if (p.stamina < 0.5) speedK *= 0.78 + 0.44 * p.stamina
     if (p.action === ACT_KICK) speedK *= 0.5
+    if (p.action === ACT_HEAD) speedK *= 0.3 // 점프 중
     if (p.holdT > 0) speedK *= 0.3
     movePlayer(p, dvx, dvy, speedK)
     // 견제 — 공(소유자)을 마주 본다

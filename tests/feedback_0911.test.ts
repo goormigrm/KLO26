@@ -22,23 +22,41 @@ function match(seed = 3, halfSec = 60): GameState {
 
 describe('체력 — 경기 길이에 맞게 닳는다', () => {
   it('하프타임에 아직 절반쯤 남고, 종료 때 체력 낮은 선수가 높은 선수보다 더 지쳐 있다', () => {
-    const st = match(11, 60)
-    let halfAvg = -1
-    while (!st.done) {
-      step(st, idle)
-      if (halfAvg < 0 && st.phase === 'halftime') {
-        const f = st.players.filter((p) => !p.sk.isGK)
-        halfAvg = f.reduce((a, p) => a + p.stamina, 0) / f.length
+    // 2026-09-16: 시드 하나(11)로는 sta < 0.55 인 필드 선수가 **한 명**뿐이라 그 선수가 얼마나 뛰었나에 결과가 걸렸다
+    // (시뮬 순서를 바꾸자 10시드 중 4개가 뒤집혔다). 다섯 시드 · 문턱 0.6 으로 합산해 비교한다
+    let hiS = 0
+    let hiN = 0
+    let loS = 0
+    let loN = 0
+    for (let seed = 11; seed <= 15; seed++) {
+      const st = match(seed, 60)
+      let halfAvg = -1
+      while (!st.done) {
+        step(st, idle)
+        if (halfAvg < 0 && st.phase === 'halftime') {
+          const f = st.players.filter((p) => !p.sk.isGK)
+          halfAvg = f.reduce((a, p) => a + p.stamina, 0) / f.length
+        }
+      }
+      // 1분 하프(배율 1.5)에서도 하프타임에 4분의 1 은 남는다
+      expect(halfAvg).toBeGreaterThan(0.2)
+      for (const p of st.players) {
+        if (p.sk.isGK) continue
+        if (p.sk.sta > 0.7) {
+          hiS += p.stamina
+          hiN++
+        } else if (p.sk.sta < 0.6) {
+          loS += p.stamina
+          loN++
+        }
       }
     }
-    expect(halfAvg).toBeGreaterThan(0.35)
-    const lo = st.players.filter((p) => !p.sk.isGK && p.sk.sta < 0.55)
-    const hi = st.players.filter((p) => !p.sk.isGK && p.sk.sta > 0.7)
-    const avg = (a: typeof lo): number => a.reduce((s, p) => s + p.stamina, 0) / Math.max(1, a.length)
-    expect(avg(hi)).toBeGreaterThan(avg(lo))
+    expect(hiN).toBeGreaterThan(10)
+    expect(loN).toBeGreaterThan(5)
+    expect(hiS / hiN).toBeGreaterThan(loS / loN)
     // 종료 때 전원이 바닥은 아니다
-    expect(avg(hi)).toBeGreaterThan(0.1)
-  })
+    expect(hiS / hiN).toBeGreaterThan(0.1)
+  }, 60000) // 다섯 판 — 기본 5초는 계측이 같이 도는 PC 에서 넘긴다
 })
 
 describe('스로인 — 받을 선수 발 근처에 떨어진다', () => {

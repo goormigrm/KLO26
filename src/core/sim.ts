@@ -265,6 +265,30 @@ export function step(st: GameState, inputs: [Input, Input]): void {
   // 체력 배율 — 하프 길이에 맞춰 종료 무렵 바닥나게 (하프 180 초 → 0.5)
   const staK = 90 / st.halfSec
 
+  // 1) 결정 — AI 선수(사람 조작 선수 제외)가 목표를 정한다. **두 팀이 거울처럼 같아야** 한다 (2026-09-16, HANDOVER 0-e —
+  //    같은 스쿼드 대칭 2,000판에서 팀 0 승률 47%·골 −0.14. 진영(dir)·킥오프 팀을 바꿔도 그대로였고 팀 번호에만 붙어 있었다).
+  //    세 가지를 지킨다 (`tools/asymprobe.ts` 로 2,000판씩 잰 결과 셋 다 있어야 50.5%·골 ±0.01 이 된다):
+  //    ① 결정은 이동보다 **먼저**, 22명 전원이 이 틱이 시작될 때의 자리를 본다 — 예전엔 이동 루프 안에서 정해서 팀 1(11~21번)이
+  //       늘 팀 0 의 이 틱 이동을 본 뒤 정했다(한 틱 앞선 정보).
+  //    ② 순서는 **공을 가진 팀부터**(없으면 팀 0) — 소유자가 여기서 공을 차면 같은 틱에 정하는 **상대 팀**이 그것을 본다. 팀 0 이
+  //       늘 먼저면 팀 1 의 패스만 한 틱 늦게 들키고 팀 0 의 패스는 바로 들킨다.
+  //    ③ 결정 주기(15틱)는 **자리 번호**(idx % 11)로 어긋나게 — 팀 번호(idx)로 어긋나면 마주 보는 두 선수(팀 0 의 k 번과 팀 1 의 k 번)의
+  //       반응 시차가 팀마다 달라진다(11 ≢ 0 mod 15).
+  //    순회는 여전히 결정론(4.12-5)이고 난수 순서도 상태에서만 정해진다.
+  const first = ballOwnerTeam(st) === 1 ? 1 : 0
+  for (let k = 0; k < st.players.length; k++) {
+    const p = st.players[k < 11 ? first * 11 + k : (1 - first) * 11 + (k - 11)]
+    if (p.sentOff || (st.tick + (p.idx % 11)) % DECIDE_TICKS !== 0) continue
+    // 슬라이딩·넘어짐·다이브 중엔 정하지 않는다 (이동 루프가 그 상태를 먼저 처리하던 것과 같다)
+    if (p.action === ACT_SLIDE || p.action === ACT_FALLEN || p.action === ACT_DIVE) continue
+    const team = st.teams[p.team]
+    const ctl = team.human && team.controlled === p.idx && st.phase !== 'goal'
+    const isKicker = st.restart !== null && st.restart.kicker === p.idx
+    if (ctl && !isKicker) continue
+    aiDecide(st, p)
+  }
+
+  // 2) 이동 — 정해 둔 목표(p.tx/ty)나 사람 입력으로 한 틱 움직인다
   for (const p of st.players) {
     if (p.sentOff) continue
     const team = st.teams[p.team]
@@ -354,7 +378,6 @@ export function step(st: GameState, inputs: [Input, Input]): void {
         faceBall = true
       }
     } else {
-      if ((st.tick + p.idx) % DECIDE_TICKS === 0) aiDecide(st, p)
       const ddx = p.tx - p.x
       const ddy = p.ty - p.y
       const d = len(ddx, ddy)

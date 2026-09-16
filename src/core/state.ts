@@ -30,7 +30,7 @@ export const PLAYER_R = 0.35
 export const BALL_R = 0.11
 /** 발에서 이 거리 안이면 공을 잡을 수 있다 */
 export const CONTROL_R = 0.55
-/** AI 가 다시 결정하는 주기(틱). 선수마다 idx 로 어긋나게 돌린다 */
+/** AI 가 다시 결정하는 주기(틱). 선수마다 **자리 번호**(idx % 11)로 어긋나게 돌린다 — 팀 번호로 어긋나면 두 팀의 반응 시차가 달라진다 (2026-09-16) */
 export const DECIDE_TICKS = 15
 export const RESTART_TICKS = 90
 export const KICKOFF_TICKS = 60

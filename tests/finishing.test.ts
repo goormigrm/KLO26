@@ -93,11 +93,11 @@ describe('결정력과 골키퍼 · 전력 질주 중 슛', () => {
     const hi = tally(0.92, false)
     expect(hi.goal).toBeGreaterThan(lo.goal * 1.2)
     expect(hi.held).toBeLessThan(lo.held)
-  })
+  }, 60000) // 슛 400번 — 기본 5초는 계측이 같이 도는 PC 에서 넘긴다 (2026-09-16)
 
   it('전력으로 달리던 중의 슛은 서서 찬 슛보다 덜 들어간다 (불안한 자세)', () => {
     const still = tally(0.7, false)
     const run = tally(0.7, true)
     expect(run.goal).toBeLessThan(still.goal * 0.85)
-  })
+  }, 60000)
 })

@@ -75,6 +75,8 @@ npm run dev     # http://localhost:5175/KLO26/
 | `npm run stamina` | 하프타임·종료 시점 체력 분포 — 경기 길이에 맞게 닳는지 |
 | `npm run throwin` | 스로인 뒤 5초 안에 누가 잡는지 (가로채기 비율) |
 | `npm run oneone` | 1대1 (공격수 vs 골키퍼) 전환율 |
+| `npm run asym 200` | 홈/원정 대칭 — 같은 스쿼드끼리 N 판, 하프별 골·슛·점유 (공개 전 필수, 목표 47~53%) |
+| `npm run asymprobe 400 base 10000` | 대칭이 깨졌을 때 원인 가르기 — `swapdir`(진영) · `ko1`(킥오프) · `both` 변형과 하프별 전체 통계 |
 | `npm run cards` | 카드 OVR 보정 · 급여 상한 계산 |
 | `npm run clubs 90` | 실제 구단끼리 90판 계측 (1부/2부 차이 · 골) |
 | `npm run build:cards` | 원본 명단 → `src/data/cards.json` 다시 굽기 (원본은 저장소 밖) — 원본이 갱신됐을 때의 전체 절차는 [HANDOVER.md](HANDOVER.md) "원본 명단 갱신" |

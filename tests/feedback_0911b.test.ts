@@ -81,9 +81,10 @@ describe('패스 — 방향키 쪽 가까운 선수', () => {
 })
 
 describe('수비 D — 공 소유자에게 달린다', () => {
-  // TODO(15차 미완): 재현 세팅이 아직 안 맞는다 — 디버그(`tools/_dbg_press.ts`, 지움)에서는 press=true 로 공 쪽으로 달리는 것을
-  // 확인했지만 이 세팅에선 3 m 안까지 못 간다(상대 조작 선수가 서 있지 않거나 공이 움직임). 다음 세션에서 세팅을 고쳐 켠다
-  it.skip('방향키를 반대로 누르고 있어도 1초 안에 소유자 3 m 안까지 간다', () => {
+  // 15차엔 "1초 안에 3 m" 로 두어 실패했다(skip). 원인은 세팅이 아니라 **가속**이었다 — 10차에 가속을 현실 수준
+  // (5.5+3.0·acc)으로 낮춘 뒤라, 서 있다가 반대 방향키를 25% 섞은 채 8 m 를 1초에 못 간다(1초 뒤 4.4 m · 초속 6.1 m,
+  // 2026-09-16 실측). 압박은 정상이므로 시간을 1.7초로 두고 켰다. 1초 시점엔 최소한 5 m 안까지는 와야 한다.
+  it('방향키를 반대로 누르고 있어도 소유자에게 달려간다 (1초 뒤 5 m 안 · 1.7초 뒤 3 m 안)', () => {
     // 두 팀 다 사람 — 상대 조작 선수(공 소유자)는 입력이 없어 제자리에 선다
     const home = synthSquad(11, { name: '홈', short: '홈', formation: '4-3-3', quality: 66 })
     const away = synthSquad(22, { name: '원정', short: '원정', formation: '4-4-2', quality: 66 })
@@ -114,11 +115,16 @@ describe('수비 D — 공 소유자에게 달린다', () => {
     t.controlled = me.idx
     st.teams[1].controlled = opp.idx
     let minD = 99
-    for (let i = 0; i < 60; i++) {
+    let dAt60 = 99
+    for (let i = 0; i < 100; i++) {
       step(st, [{ mx: -dir * 127, my: 0, buttons: BTN_D, a: 0, b: 0 }, EMPTY_INPUT])
-      minD = Math.min(minD, Math.hypot(me.x - opp.x, me.y - opp.y))
+      const d = Math.hypot(me.x - opp.x, me.y - opp.y)
+      minD = Math.min(minD, d)
+      if (i === 59) dAt60 = d
     }
     expect(t.controlled).toBe(me.idx)
+    expect(me.press).toBe(true)
+    expect(dAt60).toBeLessThan(5)
     expect(minD).toBeLessThan(3)
   })
 })

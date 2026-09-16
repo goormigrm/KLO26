@@ -87,7 +87,10 @@ describe('역할 계수 (core/tactics.ts)', () => {
     expect(s.defStyle).toBe(2)
     const d = defaultPresets()
     expect(d[0].defStyle).toBeGreaterThan(d[2].defStyle)
-    expect(d[2].tempo).toBeGreaterThan(d[0].tempo)
+    // 템포는 세 벌 다 보통 — 공격 프리셋에 '빠르게'를 묶으면 받자마자 내보내 점유·슛을 잃었다 (2026-09-16 실측)
+    expect(d[2].tempo).toBe(d[0].tempo)
+    expect(d[2].line).toBeGreaterThan(d[0].line)
+    expect(d[2].mentality).toBeGreaterThan(d[0].mentality)
   })
 })
 

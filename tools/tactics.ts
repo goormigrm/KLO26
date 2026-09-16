@@ -20,6 +20,17 @@ const PRESETS: { name: string; s: Sliders }[] = [
   { name: '균형', s: BAL },
   { name: '공격', s: ATK },
 ]
+// 임의 프리셋 — `npm run tactics -- 24 "공격b2:line=3,press=3,width=3,mentality=3,tempo=2,buildup=2,defStyle=1" …`
+// 이름 뒤 콜론, 빠진 키는 균형(2). 프리셋 하나가 왜 뒤집히는지 슬라이더 하나씩 바꿔 재 볼 때 쓴다 (2026-09-16)
+for (const arg of process.argv.slice(3)) {
+  const [name, body] = arg.includes(':') ? [arg.slice(0, arg.indexOf(':')), arg.slice(arg.indexOf(':') + 1)] : [arg, arg]
+  const s: Sliders = { ...BAL }
+  for (const kv of body.split(',')) {
+    const [k, v] = kv.split('=')
+    if (k && v !== undefined && k in s) (s as unknown as Record<string, number>)[k] = Number(v)
+  }
+  PRESETS.push({ name: name.slice(0, 6), s })
+}
 
 function withPresets(sq: SquadConfig, s: Sliders): SquadConfig {
   return { ...sq, presets: [s, s, s] as [Sliders, Sliders, Sliders] }

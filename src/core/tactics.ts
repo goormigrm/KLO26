@@ -33,9 +33,13 @@ export const TEAM_TACTICS: TacticMeta[] = [
 /** 프리셋 기본값 — 수비 / 균형 / 공격 (스쿼드 화면 "기본값으로" · 프리셋이 없는 스쿼드) */
 export function defaultPresets(): [Sliders, Sliders, Sliders] {
   return [
-    { line: 1, press: 1, width: 2, mentality: 1, tempo: 1, buildup: 3, defStyle: 3 },
+    // 2026-09-16 `npm run tactics` 로 다시 잰 기본값 (DESIGN 4.10b):
+    //  · 템포는 세 벌 다 보통(2) — 공격에 '빠르게'를 묶었더니 받자마자 내보내 점유 41%·슛 4.8 로 수비(57%·8.3)보다 못했다
+    //  · 공격의 빌드업 짧게(1)·수비 방식 1 도 슛을 깎았다(6.1) → 둘 다 2 로: 슛 9.1 · 골 2.13 · 실점 1.38(균형 5.3 · 1.75 · 1.38)
+    //  · 수비는 시험한 변형(빌드업 2 · 수비 방식 2 · 압박 2 · 라인 2)이 전부 실점을 늘려 그대로
+    { line: 1, press: 1, width: 2, mentality: 1, tempo: 2, buildup: 3, defStyle: 3 },
     { line: 2, press: 2, width: 2, mentality: 2, tempo: 2, buildup: 2, defStyle: 2 },
-    { line: 3, press: 3, width: 3, mentality: 3, tempo: 3, buildup: 1, defStyle: 1 },
+    { line: 3, press: 3, width: 3, mentality: 3, tempo: 2, buildup: 2, defStyle: 2 },
   ]
 }
 

@@ -87,6 +87,7 @@
 | 16 (9/15) | **개발 계획서** — FC 온라인 대회 영상(FSL SUMMER wonder08 vs Exito) 정지 화면 분석 → 엔진·화면 차이표·로드맵·실사 캐릭터 옵션(Mixamo 권장)·라이선스 확인 | `docs/개발계획-FC온라인-벤치마크.md` | CHANGELOG 9/15 |
 | 27 (9/15) | **실사 그래픽 삭제** (G-49) · **뒤에서 오는 태클**(G-50, `fromBehind` 뒤집힘 버그) · **요구사항 재검증** `npm run audit`(G-51): 세트피스 5초 대기(`BOX_SETPIECE_TICKS`), 하프타임 GK 차징 통계 버그, 크로스 박스 침투(45 m·4자리·마커 후퇴·수비 전력 복귀), 시선 회전 ×0.9 | `core/ball.ts` · `core/ai.ts` · `core/rules.ts` · `core/sim.ts` · `tools/audit.ts` · `tools/foulprobe.ts` · `tools/crossprobe.ts` · `tests/tackle_behind.test.ts` | CHANGELOG 9/15 ×3 · DESIGN 4.8 · 4.9 · 7.2 · DECISIONS G-49~51 · 가이드 |
 | 28 (9/16) | **15차 [미반영] 마무리**(D 압박 테스트 켬 — 원인은 가속 · 전력질주/GK FALLEN 브라우저 확인 · DESIGN 4.8e·가이드) · **공격 프리셋 뒤집힘 수정**(템포 세 벌 2, 공격 빌드업·수비 방식 2 — 슛 4.8 → 9.1) · `tools/tactics.ts` 임의 프리셋 인자 · 계측(봇 120판 · 대칭 180판 홈 41%) | `core/tactics.ts defaultPresets` · `tools/tactics.ts` · `tests/feedback_0911b.test.ts` · `tests/tactics.test.ts` | CHANGELOG 9/16 · DESIGN 4.8e · 4.10b · DECISIONS G-52/G-53 |
+| 29 (9/16, 오후) | **💸 급여 비우기**(사용자: 센 팀이 자기 선수를 팔고 영입할 수 있나 → 판매 개념 없이 빼면 급여가 돌아옴을 버튼으로: 후보 급여 비우기 · 싼 선수로 바꾸기, 울산 239 → 211/252) · **공지글 1차 문안을 패치노트 꼴로 다시 씀**(큰 제목 이모지·한 줄 설명·`*` 항목, 14~29차 반영) · **webm 녹화**(`__klo.webm`, vite `/__snap` 이 webm·mp4 허용) · 첨부 캡처를 1920×1080 으로 다시 뜸(아래 0장) · 원본 명단 확인(갱신 없음) | `ui/squad.ts cheapBench/cheapReplace/cheapestFor` · `debug/shot.ts recordCanvas` · `game/session.ts startWebm` · `vite.config.ts` · `docs/공지글-모음.md` | CHANGELOG 9/16 · DECISIONS G-55 · DESIGN 5.6a · 가이드 4장 |
 | 29 (9/16) | **홈/원정 기울기 (0-e) 원인·수정** — `asymprobe` 로 진영·킥오프를 바꿔도 팀 1 이 이겨 **팀 번호 편향**으로 확정 → `step` 을 **결정(공 가진 팀부터 · 자리 번호 주기) → 이동** 두 단계로. 2,000판 47.1% → 50.5%. 체력 테스트 다섯 시드 합산 · 긴 테스트 60초 타임아웃 | `core/sim.ts step` · `core/state.ts DECIDE_TICKS` · `tools/asymprobe.ts` · `tests/asym_order.test.ts` · `tests/feedback_0911.test.ts` | CHANGELOG 9/16 ⚖️ · DESIGN 4.10 결정 순서 · 4.12-5 · 4.14 · 12장 · DECISIONS G-54 · README 도구 표 |
 | 26 (9/15) | **실사 캐릭터 "난리" 수정** — T포즈(같은 클립 두 액션 → run 복제), 루트 모션 제거(`stripRootMotion`, 빌드 도구도), 뼈 이름 정규식(`mixamorig5…`), 킥·패스 클립을 차는 순간(`strikeTime`) 앞에서 제 속도로. `__klo.renderer()` · `tools/char/inspect.mjs` | `render3d/playerReal.ts` · `tools/char/build.mjs` · `tools/char/inspect.mjs` · `game/session.ts` | CHANGELOG 9/15 · 캐릭터-교체-절차 2·4 · DESIGN 7.2 |
 | 25 (9/15) | **팀 전술 7종 · 개인 전술 · 세레모니 3종** — `core/tactics.ts`(TEAM_TACTICS · ROLES · roleTraits · defaultPresets · normalizeSliders), `Sliders` 에 tempo/buildup/defStyle, `Player.role/rt`, `SquadConfig.roles`, ai.ts(앵커 fwd/back/wide · run · box · hold · drop · 템포 · 빌드업 · 수비 방식 · 세트피스 인원), ball.ts gkDistribute(빌드업), 스쿼드 코드 v2(386비트), 스쿼드 화면 전술 패널·역할 상자, 세레모니 `celeStyle` + 리플레이 억제 | `core/tactics.ts` · `core/state.ts` · `core/sim.ts` · `core/ai.ts` · `core/ball.ts` · `cards/squad.ts` · `cards/squadcode.ts` · `ui/squad.ts` · `ui/style.css` · `render3d/renderer3d.ts` · `player3d.ts` · `playerReal.ts` · `tests/tactics.test.ts` | CHANGELOG 9/15 · DESIGN 4.10a · 5.8 · 5.9 · DECISIONS G-47·48 · 가이드 3·4 |
@@ -108,10 +109,20 @@
 | 로비·스쿼드·구단 고르기 (세션 밖) | 그 화면을 띄운 뒤 `await __shot('shot_lobby.png')` |
 | 경기 한 장 (HUD 포함) | 경기 중 `__klo.snap('shot_match.png')` |
 | 경기 GIF (캔버스만 · 빠름) | `__klo.gif('gif_play.gif', 6, 10, 560)` 뒤 6초 동안 조작 |
+| **경기 영상 webm (캔버스만 · 2026-09-16)** | `__klo.webm('vid_play.webm', 12, 30, 5)` — 초 · fps · Mbps. 게시판이 mp4·webm 을 파일당 40 MB 까지 받아 움직이는 장면은 GIF 대신 이걸로. HUD(DOM)는 안 들어간다. 완료는 `[webm]` 로그 |
 | 코인토스처럼 DOM 이 든 GIF | 경기 시작 직후 `__klo.gifDom('gif_toss.gif', 4, 4, 640)` |
 | 세트피스·골 장면을 억지로 | 콘솔에서 `const R = await import('/KLO26/src/core/rules.ts')` 뒤 `R.setupFreeKick(__klo.state(), 팀, x, y)` · `R.setupPenalty(__klo.state(), 팀)` — 개발 서버는 같은 모듈 인스턴스를 준다 |
 
-- 파일은 `docs/img/` 에 떨어진다(저장소엔 안 넣는다 — `.gitignore`). 완료는 콘솔 `[snap]`/`[gif]` 또는 `window.__snapLog`.
+- 파일은 `docs/img/` 에 떨어진다(저장소엔 안 넣는다 — `.gitignore`). 완료는 콘솔 `[snap]`/`[gif]`/`[webm]` 또는 `window.__snapLog`.
+- **(29차, 2026-09-16) 브라우저 도구로 전부 다시 뜬 절차** — 개발 서버는 `/KLO26/` 밑이라 모듈은 `import(location.pathname.replace(/[^/]*$/,'') + 'src/core/rules.ts')`. 뷰포트를 1920×1080 으로(`resize_window`) 두면 PNG·webm 이 1080p 로 나온다. 화면 클릭은 좌표가 어긋나므로 **`[...document.querySelectorAll('button')].find(b=>b.textContent.includes('…')).click()`** 로.
+  - 로비·스쿼드·구단·팀 전술: `await __shot('이름.png', 1)` (스쿼드에서 선발 자리 버튼을 누르면 역할 상자가 뜬다).
+  - 코인토스: 혼자 하기 `경기 시작` 클릭 직후 같은 호출 안에서 `__klo` 를 기다렸다가 `gifDom('gif_toss.gif',4,4,640)` + 1.2 초 뒤 `snap`.
+  - 교체판: `Escape` 키 → 오버레이 `🔁 교체` 클릭 → `snap` → `돌아가기` → `계속`.
+  - **키커 뒤 시점·궤적은 프레임을 직접 돌려야 나온다** — 패널이 가려져 rAF 가 0회면 카메라 블렌드(`spBlend`)가 안 움직인다. `setupFreeKick/Penalty` → `phaseT=99999` → 키 `keydown` → `for(100){ __klo.frameNow(); await sleep(16) }` → `snap` → `keyup`. **프리킥 미리보기는 방향키도 눌러야**(`previewRestartKick` 은 stick 이 0 이면 null) — `ArrowUp`+`KeyD`. PK 는 D 만.
+  - 리플레이·세레모니: 골 직후 `frameNow` 루프로 프레임을 돌리며 `phaseT` 를 보고 찍는다 — 리플레이는 `phaseT` 540~250(골문 뒤 → 측면), 세레모니는 190 아래. 툴 호출 사이의 지연(수 초)을 믿지 말고 **한 호출 안에서** 루프로 맞춘다.
+  - 영상: `__klo.webm('vid_goal.webm', 12, 30, 5)` 를 킥 직전에, 플레이 영상은 테스트 모드(`?test=1` → `TEST` → `시작`, AI 대 AI)에서 `__klo.webm('vid_play.webm', 15, 30, 5)`. 1080p 30fps 5 Mbps 로 12초 5.2 MB · 15초 5.9 MB.
+  - 골 강제: 상대 GK 를 `dir*38, 20` 으로 치우고 공을 `dir*40` 에서 `vx = dir*22` 로 (shotBy·lastTouch 를 우리 FW 로).
+  - 결과 목록·크기·캡션은 `docs/공지글-모음.md` 0장 표. 첨부 규칙(총 50 MB · 영상 12개·40 MB)도 거기.
 - 브라우저 패널이 숨겨져 있어도 된다 — 틱 루프가 직접 그린다. **일시정지(코인토스) 중에도 뜬다**(`captureTick` 이 `paused` 이른 반환 **앞**). GIF 간격은 실시간(ms).
 - 숨겨진 패널에선 `setTimeout` 이 1초로 늦어진다 — 캡처 모듈을 미리 `import` 해 두고, 짧은 연출은 **한 번의 콘솔 호출 안에서** 찍는다.
 - 글꼴은 시스템 글꼴로 떨어진다(외부 글꼴 CDN 은 캔버스를 더럽혀 뺀다). 이모지는 그대로.

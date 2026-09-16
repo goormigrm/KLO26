@@ -301,7 +301,7 @@ export class SquadScreen {
           <label>급여 — 구단이 쓸 수 있는 자산</label>
           <div class="big"><b>${check.salary}</b><span>/ ${CAP}</span></div>
           <div class="bar"><i class="${check.salary > CAP ? 'over' : ''}" style="width:${salPct}%"></i></div>
-          <div class="left">${left >= 0 ? `남은 급여 <b>${left}</b> — 이 안에서 선수를 바꿉니다` : `상한을 <b>${-left}</b> 넘었습니다 — 비싼 선수를 내려야 시작할 수 있습니다`}</div>
+          <div class="left">${left >= 0 ? `남은 급여 <b>${left}</b> — 이 안에서 선수를 바꿉니다. 선수를 빼면 그 급여가 그대로 돌아옵니다 (판매 절차 없음)` : `상한을 <b>${-left}</b> 넘었습니다 — 비싼 선수를 내려야 시작할 수 있습니다`}</div>
         </div>
         <div class="g enh">
           <label>강화 예산 <b>${check.enhTotal}</b> / ${ENH_BUDGET}</label>
@@ -339,6 +339,7 @@ export class SquadScreen {
             <span class="lab">자동 채우기</span>
             <button class="btn" id="auto-xi">선발 11명</button>
             <button class="btn" id="auto-bench">후보 7명</button>
+            <button class="btn" id="auto-cheap" title="후보 7명을 내 구단에서 가장 싼 선수(GK 1 · DF 2 · MF 2 · FW 2)로 채워 급여를 비웁니다. 비운 급여로 타 구단 선수를 데려오세요 (2026-09-16)">💸 후보 급여 비우기</button>
             <span class="lab">기준</span>
             <div class="seg" id="auto-by">
               <button data-v="fam"${this.autoBy === 'fam' ? ' class="on"' : ''} title="포메이션 자리마다 그 자리 능숙도가 높은 선수부터">포메이션 능숙도 우선</button>
@@ -591,6 +592,10 @@ export class SquadScreen {
     const starter = this.sel < START_SIZE
     const partner = this.bestPartner(this.sel)
     const partnerName = partner >= 0 ? cardById(this.sq.ids[partner])?.name ?? '' : ''
+    // 💸 싼 선수로 바꾸기 — 강한 구단은 자기 선수만으로 급여가 거의 차서 영입할 틈이 없다 (사용자 2026-09-16).
+    // "판다"는 절차는 없다: 빼는 순간 그 급여가 돌아온다. 이 버튼이 그 한 걸음을 한 번에 한다
+    const cheap = this.cheapestFor(this.sel)
+    const cheapSave = cheap ? payOf(c, this.myClub()) - payOf(cheap, this.myClub()) : 0
     const base = ovrStars(cardOvr(c, 0))
     const now = ovrStars(cardOvr(c, enh))
     const next = enh < ENH_MAX ? ovrStars(cardOvr(c, enh + 1)) : now
@@ -605,6 +610,11 @@ export class SquadScreen {
         <div class="row swaprow">
           <button class="btn secondary wide" id="quick-swap"${partner < 0 ? ' disabled' : ''}>
             ${starter ? '벤치로 내리기' : '선발로 올리기'}${partnerName ? ` <em>↔ ${partnerName}</em>` : ''}
+          </button>
+        </div>
+        <div class="row swaprow">
+          <button class="btn secondary wide" id="quick-cheap"${cheap ? '' : ' disabled'} title="이 자리를 내 구단에서 가장 싼 선수로 바꿔 급여를 비웁니다 — 비운 급여로 다른 선수를 데려오세요">
+            💸 싼 선수로 바꾸기${cheap ? ` <em>↔ ${cheap.name} · 급여 −${cheapSave}</em>` : ' <em>더 싼 선수 없음</em>'}
           </button>
         </div>
         <div class="enh-box">
@@ -752,6 +762,91 @@ export class SquadScreen {
     this.sel = -1
     this.msg = `${part === 'xi' ? '선발 11명' : '후보 7명'}을 ${by === 'fam' ? '포메이션 능숙도' : '선수 능력치'} 우선으로 다시 채웠습니다.`
     this.snd.ui('ok')
+    saveSquad(this.sq)
+  }
+
+  /**
+   * 자리 `slot` 에 넣을 수 있는 **내 구단에서 가장 싼** 선수 (지금 스쿼드 밖 · 같은 급여면 능력치 높은 쪽).
+   * 후보 자리는 지금 있는 선수와 같은 포지션으로 골라 후보 구성(GK 1 · DF 2 · MF 2 · FW 2)이 안 깨지게 한다.
+   * 지금 선수보다 싸지지 않으면 null (사용자 2026-09-16 — "자기 팀 선수를 팔고 다른 선수를 데려오고 싶다").
+   */
+  private cheapestFor(slot: number): Card | null {
+    const club = this.myClub()
+    if (club < 0 || slot < 0 || slot >= SQUAD_SIZE) return null
+    const cur = cardById(this.sq.ids[slot])
+    if (!cur) return null
+    const inSquad = new Set(this.sq.ids)
+    let best: Card | null = null
+    for (const c of POOL) {
+      if (c.club !== club || inSquad.has(c.id) || !this.canPlace(slot, c)) continue
+      if (slot >= START_SIZE && c.pos !== cur.pos) continue
+      if (!best || cardSalary(c) < cardSalary(best) || (cardSalary(c) === cardSalary(best) && cardOvr(c, 0) > cardOvr(best, 0))) best = c
+    }
+    if (!best || payOf(best, club) >= payOf(cur, club)) return null
+    return best
+  }
+
+  /** 💸 고른 자리를 가장 싼 내 구단 선수로 바꾼다 — 급여를 비우는 한 걸음 */
+  private cheapReplace(): void {
+    const cheap = this.cheapestFor(this.sel)
+    if (!cheap) {
+      this.msg = '이 자리에 더 싼 내 구단 선수가 없습니다.'
+      this.snd.ui('no')
+      return
+    }
+    const cur = cardById(this.sq.ids[this.sel])
+    const saved = cur ? payOf(cur, this.myClub()) - payOf(cheap, this.myClub()) : 0
+    this.sq.ids[this.sel] = cheap.id
+    this.sq.enh[this.sel] = 0
+    this.msg = `${cur?.name ?? ''} → ${cheap.name} — 급여 ${saved} 이 비었습니다. 그만큼 다른 선수를 데려올 수 있습니다.`
+    this.snd.ui('ok')
+    saveSquad(this.sq)
+  }
+
+  /**
+   * 💸 후보 급여 비우기 — 후보 7명을 내 구단에서 가장 싼 선수(GK 1 · DF 2 · MF 2 · FW 2)로 채운다.
+   * 강한 구단은 기본 스쿼드(자기 구단 최고 18명)만으로 급여가 거의 차서 타 구단 선수를 데려올 틈이 없었다 —
+   * 후보를 싼 선수로 바꾸면 그 급여가 고스란히 돌아와 영입(선발 5 · 후보 2)에 쓸 수 있다 (사용자 2026-09-16).
+   */
+  private cheapBench(): void {
+    const club = this.myClub()
+    if (club < 0) {
+      this.mode = 'club'
+      this.msg = '구단을 먼저 고르세요.'
+      return
+    }
+    const xi = this.sq.ids.slice(0, START_SIZE)
+    const used = new Set(xi)
+    const bench: number[] = []
+    for (const pos of ['GK', 'DF', 'DF', 'MF', 'MF', 'FW', 'FW']) {
+      let best: Card | null = null
+      for (const c of POOL) {
+        if (c.club !== club || c.pos !== pos || used.has(c.id)) continue
+        if (!best || cardSalary(c) < cardSalary(best) || (cardSalary(c) === cardSalary(best) && cardOvr(c, 0) > cardOvr(best, 0))) best = c
+      }
+      if (!best) break
+      used.add(best.id)
+      bench.push(best.id)
+    }
+    if (bench.length < SQUAD_SIZE - START_SIZE) {
+      this.msg = '이 구단 선수로는 후보 7명을 다 채울 수 없습니다.'
+      this.snd.ui('no')
+      return
+    }
+    const pay = (ids: number[]): number => ids.reduce((s, id) => {
+      const c = cardById(id)
+      return s + (c ? payOf(c, club) : 0)
+    }, 0)
+    const saved = pay(this.sq.ids.slice(START_SIZE)) - pay(bench)
+    const oldEnh = new Map<number, number>()
+    this.sq.ids.forEach((id, i) => oldEnh.set(id, this.sq.enh[i] ?? 0))
+    this.sq.ids = [...xi, ...bench]
+    this.sq.enh = this.sq.ids.map((id) => oldEnh.get(id) ?? 0)
+    this.sel = -1
+    this.msg = saved > 0
+      ? `후보 7명을 가장 싼 선수로 바꿔 급여 ${saved} 을 비웠습니다. 그만큼 타 구단 선수(선발 ${OUT_XI_MAX} · 후보 ${OUT_BENCH_MAX})를 데려올 수 있습니다.`
+      : '후보는 이미 가장 싼 구성입니다.'
+    this.snd.ui(saved > 0 ? 'ok' : 'no')
     saveSquad(this.sq)
   }
 
@@ -1070,6 +1165,13 @@ export class SquadScreen {
         this.draw()
       }
     }
+    const cheapBtn = this.root.querySelector<HTMLButtonElement>('#quick-cheap')
+    if (cheapBtn) {
+      cheapBtn.onclick = () => {
+        this.cheapReplace()
+        this.draw()
+      }
+    }
     const minus = this.root.querySelector<HTMLButtonElement>('#enh-minus')
     if (minus) {
       minus.onclick = () => {
@@ -1150,6 +1252,10 @@ export class SquadScreen {
     }
     $<HTMLButtonElement>('#auto-bench').onclick = () => {
       this.autoFill('bench')
+      this.draw()
+    }
+    $<HTMLButtonElement>('#auto-cheap').onclick = () => {
+      this.cheapBench()
       this.draw()
     }
     $<HTMLElement>('#auto-by').querySelectorAll<HTMLButtonElement>('button').forEach((b) => {

@@ -137,6 +137,8 @@ export class Session {
   private lastPhase = ''
   /** 공지글 첨부용 캡처 (DEV) — 프레임 끝에서 처리한다 */
   private snapName: string | null = null
+  /** webm 녹화 중 — 틱 루프가 fps 만큼 frame() 을 돌린다 (captureStream 은 그려진 프레임만 담는다 · 2026-09-16) */
+  private vidRec: { everyMs: number; lastMs: number } | null = null
   private gifRec: {
     name: string
     w: number
@@ -219,6 +221,8 @@ export class Session {
       // HUD·코인토스 같은 DOM 까지 든 GIF — 화면 전체를 프레임마다 그리므로 느리다 (4fps 권장)
       gifDom: (name: string, seconds = 5, fps = 4, width = 640) => this.startGif(name, seconds, fps, width, true),
       gif: (name: string, seconds = 6, fps = 10, width = 480) => this.startGif(name, seconds, fps, width, false),
+      // 캔버스만 webm 영상으로 (게시판 첨부 — GIF 보다 작고 선명하다). 해상도는 지금 캔버스 크기 그대로
+      webm: (name: string, seconds = 12, fps = 30, mbps = 5) => this.startWebm(name, seconds, fps, mbps),
       // 패널이 숨겨져 있어도 한 장 그린다 (rAF 가 멈춰 있을 때 확인용)
       frameNow: () => this.frame(performance.now()),
     }
@@ -595,7 +599,32 @@ export class Session {
       g.lastMs = now
       g.armed = true
     }
+    const v = this.vidRec
+    if (v && now - v.lastMs >= v.everyMs) {
+      v.lastMs = now
+      this.frame(now)
+      return
+    }
     if (this.snapName || (g && g.armed)) this.frame(now)
+  }
+
+  /** `__klo.webm('이름.webm', 초, fps, Mbps)` — 캔버스를 영상으로. 끝나면 `[webm]` 로그 (2026-09-16) */
+  private startWebm(name: string, seconds: number, fps: number, mbps: number): void {
+    if (this.vidRec) {
+      snapLog('[webm] 이미 녹화 중')
+      return
+    }
+    this.vidRec = { everyMs: 1000 / fps, lastMs: -1e9 }
+    loadShot()
+      .then(async (m) => {
+        const bytes = await m.recordCanvas(this.renderer.canvasEl, seconds, fps, mbps)
+        this.vidRec = null
+        snapLog(`[webm] ${await m.postSnap(name, bytes)} · ${(bytes.length / 1048576).toFixed(1)} MB`)
+      })
+      .catch((e: unknown) => {
+        this.vidRec = null
+        snapLog(`[webm] 실패 ${String(e)}`)
+      })
   }
 
   /**
@@ -999,6 +1028,13 @@ export class Session {
  */
 const loadShot = (): Promise<typeof import('../debug/shot')> =>
   import.meta.env.DEV ? import('../debug/shot') : Promise.reject(new Error('DEV 전용'))
+
+/** 캡처 로그 — 콘솔과 `window.__snapLog` 둘 다 (숨겨진 패널에서는 콘솔을 못 보므로) */
+function snapLog(msg: string): void {
+  console.log(msg)
+  const w = window as unknown as { __snapLog?: string[] }
+  ;(w.__snapLog ??= []).push(msg)
+}
 
 /** GIF 프레임 — 캔버스를 줄여 RGBA 로. `draw()` 와 같은 작업 안에서 불러야 한다 (DEV 전용) */
 let frameTmp: HTMLCanvasElement | null = null

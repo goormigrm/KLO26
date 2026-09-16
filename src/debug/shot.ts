@@ -88,6 +88,41 @@ export async function snapDom(scale = 1): Promise<string> {
   return c.toDataURL('image/png')
 }
 
+// ---------------------------------------------------------------- webm (MediaRecorder)
+
+/**
+ * 캔버스를 webm 영상으로 녹화한다 (2026-09-16 — 게시판이 mp4·webm 을 파일당 40 MB 까지 받으므로
+ * 움직이는 장면은 252색 GIF 대신 영상으로. 11 MB 넘는 움짤은 게시판이 11 MB 아래로 다시 줄이니 그 안에 맞춘다).
+ * `canvas.captureStream(fps)` 는 **그려진 프레임만** 담는다 — 숨겨진 패널은 rAF 가 0회라 부르는 쪽(session.captureTick)이
+ * fps 만큼 `frame()` 을 직접 돌려 줘야 한다. HUD(DOM)는 안 들어간다 — 캔버스만.
+ */
+export function recordCanvas(canvas: HTMLCanvasElement, seconds: number, fps = 30, mbps = 5): Promise<Uint8Array> {
+  return new Promise((ok, no) => {
+    const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find((m) => MediaRecorder.isTypeSupported(m))
+    if (!mime) {
+      no(new Error('이 브라우저는 webm 녹화를 못 한다'))
+      return
+    }
+    const stream = canvas.captureStream(fps)
+    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: Math.round(mbps * 1e6) })
+    const chunks: Blob[] = []
+    rec.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data)
+    }
+    rec.onerror = () => no(new Error('녹화 오류'))
+    rec.onstop = () => {
+      for (const t of stream.getTracks()) t.stop()
+      new Blob(chunks, { type: mime })
+        .arrayBuffer()
+        .then((b) => ok(new Uint8Array(b)))
+        .catch((e: unknown) => no(e instanceof Error ? e : new Error(String(e))))
+    }
+    rec.start(1000)
+    // 숨겨진 패널에서는 setTimeout 이 1초 단위로 늦어진다 — 길이가 ±1초 흔들려도 괜찮다
+    setTimeout(() => rec.stop(), seconds * 1000)
+  })
+}
+
 // ---------------------------------------------------------------- GIF (GIF89a · 전역 팔레트 · LZW)
 
 /** RGB → 6×7×6 단계 균등 팔레트 인덱스 (252색). 게임 화면은 평면색이 많아 이 정도로 충분하다 */

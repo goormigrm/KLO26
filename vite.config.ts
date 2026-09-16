@@ -23,9 +23,10 @@ function snapPlugin(): Plugin {
         }
         const url = new URL(req.url ?? '/', 'http://x')
         const name = basename(url.searchParams.get('name') ?? '').replace(/[^\w.\-가-힣]/g, '_')
-        if (!name || !/\.(png|gif)$/i.test(name)) {
+        // 2026-09-16: 게시판이 mp4·webm 을 40 MB 까지 받으므로 움직이는 장면은 GIF 대신 webm (shot.ts recordCanvas)
+        if (!name || !/\.(png|gif|webm|mp4)$/i.test(name)) {
           res.statusCode = 400
-          res.end('name=*.png|*.gif')
+          res.end('name=*.png|*.gif|*.webm|*.mp4')
           return
         }
         const chunks: Buffer[] = []

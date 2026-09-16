@@ -1397,6 +1397,14 @@ export class SquadScreen {
     this.onDone(defaultSquad())
   }
 
+  /**
+   * 지금 고치던 상태를 **화면을 떠나지 않고** 저장한다 (2026-09-16).
+   * 방을 열어 둔 채 스쿼드를 고치다가 상대가 들어와 대기실로 갈 때 `main` 이 부른다.
+   */
+  save(): void {
+    saveSquad(this.sq)
+  }
+
   dispose(): void {
     this.root.remove()
   }

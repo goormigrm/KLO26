@@ -24,6 +24,10 @@ export function testEnabled(): boolean {
 
 const hex = (n: number): string => '#' + n.toString(16).padStart(6, '0')
 
+/** 네트워크로 들어온 이름을 화면에 넣기 전에 (상대가 정하는 값이다) */
+const esc = (s: string): string =>
+  s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c)
+
 export class Lobby {
   private s: Settings
   private root: HTMLElement
@@ -39,6 +43,8 @@ export class Lobby {
     private onSquad: (at: 'edit' | 'club') => void,
     private onRoom?: (code: string, role: 'host' | 'guest') => void,
     private lobbyLink?: LobbyLink,
+    /** 내가 열어 둔 방 (2026-09-16) — 방 목록 아래 카드로 보여 주고, 대기실로 들어가거나 닫는다 */
+    private hostCtl?: { info: () => { code: string; guestName: string } | null; enter: () => void; close: () => void },
   ) {
     this.host = host
     this.s = loadSettings()
@@ -106,6 +112,7 @@ export class Lobby {
 
         <div class="section-t">방 목록 <small id="online" class="online-badge"><i class="dot"></i><b>접속 확인 중</b></small></div>
         <div class="rooms" id="rooms"><div class="empty">방을 찾는 중…</div></div>
+        <div id="myroom"></div>
 
         <div class="section-t">조작법 <small>축구 게임 표준 키 배치 · 같은 키가 공격/수비에서 뜻이 바뀝니다</small></div>
         <table class="keys-table">
@@ -247,6 +254,8 @@ export class Lobby {
         return
       }
       this.snd.ui('ok')
+      // 방만 열고 로비에 남는다 — 팝업은 닫는다 (2026-09-16)
+      this.closeDlg()
       this.onRoom?.(makeRoomCode(), 'host')
     }
     const goTest = h.querySelector('#go-test') as HTMLButtonElement | null
@@ -264,6 +273,39 @@ export class Lobby {
       this.lobbyLink.onRooms((rooms) => this.drawRooms(rooms))
       this.updateOnline()
       this.roomTimer = window.setInterval(() => this.updateOnline(), 1500)
+    }
+  }
+
+  /**
+   * 내가 만든 방 카드 — 방 목록 **아래**에 붙는다 (사용자 요청 2026-09-16).
+   * 방을 열어 두고도 다른 방을 보거나 스쿼드를 고칠 수 있게 됐으니, 지금 내 방이 어떤 상태인지 여기서 본다.
+   */
+  setHosting(info: { code: string; guestName: string } | null): void {
+    const el = this.root.querySelector('#myroom')
+    if (!el) return
+    if (!info) {
+      el.innerHTML = ''
+      return
+    }
+    const waiting = !info.guestName
+    el.innerHTML = `<div class="myroom${waiting ? '' : ' ready'}">
+      <div class="mr-t">
+        <b>내가 만든 방</b>
+        <span class="mr-badge">${waiting ? '상대를 기다리는 중' : `${esc(info.guestName)} 님 입장`}</span>
+      </div>
+      <small>${waiting ? '기다리는 동안 다른 방을 보거나 스쿼드를 고쳐도 됩니다. 스쿼드는 대기실에서 준비를 눌러야 확정됩니다.' : '대기실로 들어가 준비를 누르면 시작할 수 있습니다.'}</small>
+      <div class="row">
+        <button class="btn main" id="mr-enter">대기실로 들어가기</button>
+        <button class="btn secondary" id="mr-close">방 닫기</button>
+      </div>
+    </div>`
+    ;(el.querySelector('#mr-enter') as HTMLButtonElement).onclick = () => {
+      this.snd.ui('ok')
+      this.hostCtl?.enter()
+    }
+    ;(el.querySelector('#mr-close') as HTMLButtonElement).onclick = () => {
+      this.snd.ui('click')
+      this.hostCtl?.close()
     }
   }
 

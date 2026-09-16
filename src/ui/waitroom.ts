@@ -22,9 +22,18 @@ export interface WaitOptions {
   code: string
   role: 'host' | 'guest'
   name: string
-  squad: Squad
+  /**
+   * 지금 저장된 스쿼드를 읽어 온다. **준비를 누르는 순간** 이것을 읽어 확정한다 (2026-09-16, 사용자 요청) —
+   * 방을 만들거나 들어올 때가 아니라서, 대기실에 들어온 뒤에도 나가서 스쿼드를 고치고 올 수 있다.
+   */
+  getSquad: () => Squad
   halfSec: number
   offside: boolean
+  /** 방장이 로비에서 이미 열어 둔 연결 — 있으면 그대로 이어받는다 (`net/hostroom.ts`) */
+  link?: RoomLink
+  /** 그 연결에 이미 들어와 있던 상대 */
+  peerId?: string
+  peerName?: string
   /** 방장: 로비에 방 정보를 계속 알린다 */
   announce?: (count: number, state: 'open' | 'full' | 'playing' | 'closed') => void
 }
@@ -39,6 +48,8 @@ export class WaitRoom {
   private started = false
   private timer: number
   private disposed = false
+  /** **준비를 누른 순간** 확정한 스쿼드. 그 전에는 null 이고 화면엔 지금 저장된 것을 보여 준다 */
+  private mySquad: Squad | null = null
 
   constructor(
     host: HTMLElement,
@@ -46,11 +57,17 @@ export class WaitRoom {
     private onStart: (net: NetConfig, halfSec: number, seed: number) => void,
     private onLeave: () => void,
   ) {
-    this.me = { id: '', name: opts.name, ready: false, squadCode: encodeSquad(opts.squad) }
+    // 스쿼드 코드는 비어 있다 — 준비를 눌러야 확정된다 (2026-09-16)
+    this.me = { id: '', name: opts.name, ready: false, squadCode: '' }
     host.innerHTML = '<div class="wait"></div>'
     this.root = host.querySelector('.wait') as HTMLElement
-    this.link = openRoom(opts.code, opts.role)
+    // 방장이 로비에서 열어 둔 연결이 있으면 그대로 쓴다 — 다시 열면 상대가 끊긴다
+    this.link = opts.link ?? openRoom(opts.code, opts.role)
     this.me.id = this.link.selfId
+    if (opts.peerId) {
+      this.otherId = opts.peerId
+      if (opts.peerName) this.other = { id: opts.peerId, name: opts.peerName, ready: false, squadCode: '' }
+    }
 
     this.link.onPeerJoin((id) => {
       if (this.otherId && this.otherId !== id) {
@@ -75,6 +92,8 @@ export class WaitRoom {
       if (!this.started) this.draw()
       this.opts.announce?.(this.otherId ? 2 : 1, this.otherId ? 'full' : 'open')
     }, 1000)
+    // 로비에서 이어받은 연결이면 상대가 이미 들어와 있다 — 내 쪽 정보를 한 번 보낸다
+    if (this.otherId) this.sendHello()
     this.draw()
   }
 
@@ -105,6 +124,8 @@ export class WaitRoom {
   /** 상대 스쿼드를 **내가 다시 검사한다** (DESIGN 5.8) */
   private checkOther(): { ok: boolean; why: string; squad?: Squad } {
     if (!this.other) return { ok: false, why: '상대를 기다리는 중' }
+    // 준비를 누르기 전에는 스쿼드 코드가 비어 있다 — 오류가 아니라 아직 확정 안 한 것이다 (2026-09-16)
+    if (!this.other.squadCode) return { ok: false, why: '상대가 아직 스쿼드를 확정하지 않았습니다' }
     const res = decodeSquad(this.other.squadCode)
     if (!res.ok) return { ok: false, why: `상대 스쿼드 코드 오류 — ${res.message}` }
     const c = checkSquad(res.squad, CAP)
@@ -131,7 +152,13 @@ export class WaitRoom {
   private begin(seed: number, delay: number, halfSec: number, members: Member[]): void {
     if (this.started) return
     const chk = this.checkOther()
-    const mySquad = this.opts.squad
+    // 준비를 누를 때 확정한 스쿼드로 뛴다 — 그 뒤에 저장이 바뀌어도 이 판에는 안 들어온다
+    const mySquad = this.mySquad
+    if (!mySquad) {
+      this.msg = '먼저 준비를 눌러 스쿼드를 확정해 주세요.'
+      this.draw()
+      return
+    }
     if (!chk.ok || !chk.squad) {
       this.msg = chk.why
       this.draw()
@@ -181,7 +208,15 @@ export class WaitRoom {
     if (this.disposed || this.started) return
     const chk = this.other ? this.checkOther() : null
     const bothReady = this.me.ready && this.other?.ready
-    const mine = this.sideHtml(this.opts.role === 'host' ? '나 · 홈 (방장)' : '나 · 원정', this.me.name, this.opts.squad, this.me.ready, '')
+    // 확정 전에는 **지금 저장된** 스쿼드를 보여 준다 — 나갔다 고치고 오면 여기가 따라 바뀐다
+    const myNow = this.mySquad ?? this.opts.getSquad()
+    const mine = this.sideHtml(
+      this.opts.role === 'host' ? '나 · 홈 (방장)' : '나 · 원정',
+      this.me.name,
+      myNow,
+      this.me.ready,
+      this.me.ready ? '이 스쿼드로 확정' : '준비를 누르면 이 스쿼드로 확정됩니다',
+    )
     const theirs = this.other
       ? this.sideHtml(this.opts.role === 'host' ? '상대 · 원정' : '상대 · 홈 (방장)', this.other.name, chk?.ok ? chk.squad! : null, this.other.ready, chk?.ok ? '규칙 통과' : (chk?.why ?? ''))
       : this.sideHtml('상대', '기다리는 중…', null, false, '상대가 이 방에 들어오면 보입니다')
@@ -192,23 +227,47 @@ export class WaitRoom {
         <div class="wait-cols">${mine}${theirs}</div>
         <p class="hintline">왕복 ${this.link.rtt} ms · 지연 ${delayForRtt(this.link.rtt)}틱 · 전후반 ${Math.round(this.opts.halfSec / 60)}분</p>
         <p class="hintline">🪙 홈·원정은 시작할 때 <b>동전 던지기</b>로 정합니다 — 방장이라고 홈이 아닙니다.</p>
+        <p class="hintline">🃏 스쿼드는 <b>준비를 누를 때</b> 확정됩니다. 그 전에는 나가서 고치고 다시 들어와도 됩니다.</p>
         ${this.msg ? `<div class="errs"><span>${this.msg}</span></div>` : ''}
         <div class="row">
-          <button class="btn main" id="w-ready">${this.me.ready ? '준비 취소' : '준비'}</button>
+          <button class="btn main" id="w-ready">${this.me.ready ? '준비 취소' : '준비 (스쿼드 확정)'}</button>
           ${this.opts.role === 'host' ? `<button class="btn" id="w-start"${bothReady && chk?.ok ? '' : ' disabled'}>시작</button>` : ''}
           <button class="btn secondary" id="w-leave">나가기</button>
         </div>
         <p class="hintline dim">서버가 없어 두 브라우저가 직접 붙습니다. 안 붙으면 한쪽을 폰 핫스팟에 물려 보세요 (TURN 은 쓰지 않습니다).</p>
       </div>`
-    ;(this.root.querySelector('#w-ready') as HTMLButtonElement).onclick = () => {
-      this.me.ready = !this.me.ready
-      this.sendHello()
-      this.draw()
-      if (this.opts.role === 'host') this.maybeStart()
-    }
+    ;(this.root.querySelector('#w-ready') as HTMLButtonElement).onclick = () => this.toggleReady()
     const startBtn = this.root.querySelector('#w-start') as HTMLButtonElement | null
     if (startBtn) startBtn.onclick = () => this.maybeStart()
     ;(this.root.querySelector('#w-leave') as HTMLButtonElement).onclick = () => this.leave()
+  }
+
+  /**
+   * 준비 — **여기서 스쿼드가 확정된다** (2026-09-16). 지금 저장된 스쿼드를 읽어 규칙을 보고, 통과하면 코드로 굳혀 보낸다.
+   * 준비를 취소하면 다시 풀려서 나가 고치고 올 수 있다.
+   */
+  private toggleReady(): void {
+    if (this.me.ready) {
+      this.me.ready = false
+      this.mySquad = null
+      this.me.squadCode = ''
+      this.msg = ''
+    } else {
+      const sq = this.opts.getSquad()
+      const c = checkSquad(sq, CAP)
+      if (!c.ok) {
+        this.msg = `내 스쿼드가 규칙을 어겼습니다 — ${c.errors[0]}`
+        this.draw()
+        return
+      }
+      this.mySquad = sq
+      this.me.squadCode = encodeSquad(sq)
+      this.me.ready = true
+      this.msg = ''
+    }
+    this.sendHello()
+    this.draw()
+    if (this.opts.role === 'host') this.maybeStart()
   }
 
   private leave(): void {

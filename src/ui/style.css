@@ -87,6 +87,20 @@ a { color: var(--ink-2); }
   .online-badge.live, .online-badge.live .dot { animation: none; }
 }
 
+/* 내가 만든 방 — 방 목록 아래 카드 (2026-09-16: 방을 열어 두고 로비에 남는다) */
+.myroom { margin-top: 10px; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid rgba(227,179,65,.45); background: linear-gradient(180deg, rgba(227,179,65,.10), rgba(227,179,65,.03)); }
+.myroom.ready { border-color: rgba(63,185,80,.55); background: linear-gradient(180deg, rgba(63,185,80,.13), rgba(63,185,80,.04)); }
+.myroom .mr-t { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; flex-wrap: wrap; }
+.myroom .mr-t b { font: 800 14px 'IBM Plex Sans KR', sans-serif; color: var(--ink); }
+.myroom .mr-badge { padding: 2px 9px; border-radius: 999px; font: 700 11px 'IBM Plex Sans KR', sans-serif;
+  background: rgba(227,179,65,.16); color: var(--gold); border: 1px solid rgba(227,179,65,.4); }
+.myroom.ready .mr-badge { background: rgba(63,185,80,.16); color: #5ee27a; border-color: rgba(63,185,80,.5);
+  animation: onlineGlow 1.4s ease-in-out infinite; }
+.myroom small { display: block; color: var(--ink-3); font-size: 11.5px; line-height: 1.5; word-break: keep-all; }
+.myroom .row { margin-top: 10px; }
+@media (prefers-reduced-motion: reduce) { .myroom.ready .mr-badge { animation: none; } }
+
 .modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 8px; }
 .mode {
   position: relative; background: linear-gradient(180deg, #131922, var(--panel) 46%); border: 1px solid #2c3644; border-radius: 14px; padding: 18px 18px 16px;

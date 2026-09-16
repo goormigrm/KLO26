@@ -2,7 +2,8 @@
 // 설계서: docs/DESIGN.md · 다음 할 일: HANDOVER.md
 
 import { Session, type NetConfig, type SoloConfig } from './game/session'
-import { openLobby, type LobbyLink } from './net/room'
+import { HostRoom } from './net/hostroom'
+import { openLobby, type LobbyLink, type RoomLink } from './net/room'
 import { isBlockedDevice, renderBlocked } from './ui/device'
 import { Lobby } from './ui/lobby'
 import { loadSettings } from './ui/settings'
@@ -19,11 +20,92 @@ let wait: WaitRoom | null = null
  * 폰 차단 화면에서는 아예 열지 않는다 — 접속만 하고 못 노는 사람이 목록에 뜨면 헷갈린다.
  */
 let lobbyLink: LobbyLink | null = null
+/**
+ * 방을 만들어 놓고 **로비에 남아 있는 중** (2026-09-16, 사용자 요청).
+ * 화면(로비 ↔ 스쿼드)이 바뀌어도 연결은 살아 있어야 하므로 여기에 둔다.
+ */
+let hosting: HostRoom | null = null
+
+function esc(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c)
+}
+
+/** 로비 카드에 넘길 지금 방 상태 */
+function hostingInfo(): { code: string; guestName: string } | null {
+  return hosting ? { code: hosting.code, guestName: hosting.guestName } : null
+}
+
+function closeAsk(): void {
+  document.getElementById('join-ask')?.remove()
+}
+
+/** 방을 닫는다 — 목록에서 지우고 연결을 끊는다 */
+function closeRoom(): void {
+  hosting?.close()
+  hosting = null
+  closeAsk()
+  lobby?.setHosting(null)
+}
+
+/** 열어 둔 방을 그대로 들고 대기실로 들어간다 (스쿼드는 대기실에서 준비를 눌러 확정한다) */
+function enterWait(): void {
+  if (!hosting) return
+  const h = hosting
+  hosting = null
+  closeAsk()
+  squad?.save() // 스쿼드 화면에서 고치던 중이면 지금 상태를 저장하고 간다
+  showWait(h.code, 'host', h.handOver(), h.guestId || undefined, h.guestName || undefined)
+}
+
+/**
+ * 상대가 들어왔다 — 스쿼드를 고치던 중일 수 있으니 **묻는다** (사용자 요청 2026-09-16).
+ * 화면이 로비든 스쿼드든 뜨도록 `document.body` 에 붙인다.
+ */
+function askJoin(guest: string): void {
+  closeAsk()
+  const d = document.createElement('div')
+  d.className = 'dlg'
+  d.id = 'join-ask'
+  d.innerHTML = `<div class="dbox">
+    <h3>🚪 상대가 들어왔습니다</h3>
+    <p><b>${esc(guest)}</b> 님이 내 방에 들어왔습니다.</p>
+    <p class="hintline">지금 상태를 저장하고 대기실로 갑니다. 스쿼드는 대기실에서 <b>준비</b>를 눌러야 확정되니 거기서 더 고쳐도 됩니다.</p>
+    <div class="row">
+      <button class="btn main" id="ja-go">저장하고 대기실로</button>
+      <button class="btn secondary" id="ja-stay">조금 더 준비하기</button>
+    </div>
+  </div>`
+  document.body.appendChild(d)
+  ;(d.querySelector('#ja-go') as HTMLButtonElement).onclick = () => enterWait()
+  ;(d.querySelector('#ja-stay') as HTMLButtonElement).onclick = () => closeAsk()
+}
+
+/** 방 만들기 — 대기실로 바로 들어가지 않고 **로비에 남는다** */
+function createRoom(code: string): void {
+  const s = loadSettings()
+  hosting?.close()
+  hosting = new HostRoom({
+    code,
+    name: s.nick.trim() || '이름 없음',
+    halfSec: s.halfMin * 60,
+    announce: (info) => lobbyLink?.announce(info),
+    onGuest: (name) => {
+      lobby?.setHosting(hostingInfo())
+      askJoin(name)
+    },
+    onGuestLeave: () => {
+      closeAsk()
+      lobby?.setHosting(hostingInfo())
+    },
+  })
+  lobby?.setHosting(hostingInfo())
+}
 
 function showSquad(at: 'edit' | 'club' = 'edit'): void {
   lobby?.dispose()
   lobby = null
   app.innerHTML = ''
+  // 방을 열어 둔 채로 스쿼드를 고칠 수 있다 — 상대가 들어오면 `askJoin` 이 여기로도 뜬다 (2026-09-16)
   squad = new SquadScreen(
     app,
     () => {
@@ -35,10 +117,12 @@ function showSquad(at: 'edit' | 'club' = 'edit'): void {
   )
 }
 
-function showWait(code: string, role: 'host' | 'guest'): void {
+function showWait(code: string, role: 'host' | 'guest', link?: RoomLink, peerId?: string, peerName?: string): void {
   const s = loadSettings()
   lobby?.dispose()
   lobby = null
+  squad?.dispose()
+  squad = null
   app.innerHTML = ''
   const halfSec = s.halfMin * 60
   wait = new WaitRoom(
@@ -47,8 +131,12 @@ function showWait(code: string, role: 'host' | 'guest'): void {
       code,
       role,
       name: s.nick.trim() || '이름 없음',
-      squad: loadSquadOrDefault(),
+      // 스쿼드는 **준비를 누를 때** 확정한다 — 그래서 값이 아니라 읽는 함수를 넘긴다 (2026-09-16)
+      getSquad: () => loadSquadOrDefault(),
       halfSec,
+      link,
+      peerId,
+      peerName,
       offside: true,
       announce:
         role === 'host'
@@ -95,15 +183,25 @@ function showLobby(): void {
   lobby = new Lobby(
     app,
     (cfg: SoloConfig) => {
+      closeRoom() // 혼자 하기로 가면 열어 둔 방은 닫는다
       lobby?.dispose()
       lobby = null
       app.innerHTML = ''
       session = new Session(app, { ...cfg, squad: loadSquadOrDefault() }, showLobby)
     },
     showSquad,
-    showWait,
+    // 방 만들기는 **로비에 남고**, 남의 방에 참가하는 것만 바로 대기실로 간다 (2026-09-16)
+    (code, role) => {
+      if (role === 'host') createRoom(code)
+      else {
+        closeRoom()
+        showWait(code, 'guest')
+      }
+    },
     lobbyLink,
+    { info: hostingInfo, enter: enterWait, close: closeRoom },
   )
+  lobby.setHosting(hostingInfo())
 }
 
 function boot(): void {

@@ -116,13 +116,21 @@ select.sel { background: var(--bg-2); color: var(--ink); border: 1px solid var(-
 .game-ui .btn { padding: 6px 12px; font-size: 13px; }
 .game-ui .fps { font: 600 11px 'IBM Plex Mono', monospace; color: var(--ink-3); }
 
-.overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; background: rgba(4,7,11,.5); }
+/* z-index — 창은 HUD·입력 키 표시(7) 위에 떠야 한다. 2026-09-16: 설정 창 위로 입력 키 상자가 겹쳐 보였다 */
+.overlay { position: absolute; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; pointer-events: auto; background: rgba(4,7,11,.5); }
 .overlay[hidden] { display: none; }
-.overlay .box { background: linear-gradient(180deg, #131922, #0d1117 46%); border: 1px solid #2c3644; border-radius: 16px; padding: 24px 28px; min-width: 380px; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,.66), 0 1px 0 rgba(255,255,255,.05) inset; }
+/* 2026-09-16: 설정 항목을 세로로 쌓으면서 창이 화면보다 길어졌다 — 넘치면 창 안에서 스크롤한다 */
+.overlay .box { background: linear-gradient(180deg, #131922, #0d1117 46%); border: 1px solid #2c3644; border-radius: 16px; padding: 24px 28px; min-width: 380px; max-height: 88vh; overflow-y: auto; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,.66), 0 1px 0 rgba(255,255,255,.05) inset; }
 .overlay h2 { font-family: 'Black Han Sans', sans-serif; font-weight: 400; font-size: 34px; margin: 0 0 8px; }
 .overlay p { color: var(--ink-2); margin: 0 0 16px; }
 .overlay p b { color: var(--gold); }
 .overlay .row { justify-content: center; }
+/*
+ * Esc 메뉴 — 버튼을 **세로로** 쌓는다 (사용자 요청 2026-09-16). 가로 한 줄이면 창이 길어지고
+ * "계속 / 교체 / 설정 / 로비로" 가 어디서 끊기는지 안 보인다.
+ */
+.overlay .row.menu-acts { flex-direction: column; align-items: stretch; gap: 8px; width: min(320px, 78vw); margin: 4px auto 0; }
+.overlay .row.menu-acts .btn { width: 100%; padding: 11px 14px; font-size: 14px; }
 .overlay .stats { margin: 0 auto 16px; border-collapse: collapse; font-size: 13.5px; }
 .overlay .stats th { color: var(--ink-3); font-weight: 500; padding: 3px 18px; }
 .overlay .stats td { padding: 3px 12px; min-width: 90px; font-variant-numeric: tabular-nums; }
@@ -578,12 +586,20 @@ input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,7
 .coin.res-a { transform: rotateY(180deg); transition: transform .45s cubic-bezier(.2,.9,.3,1); }
 
 /* ---- 2026-09-11: 설정 패널 (로비 팝업 · 경기 중 창 공용) ---- */
-.setpanel { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 4px; text-align: left; }
-.srow { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 12px; align-items: center; }
-.srow > label { font: 700 11px 'IBM Plex Mono', monospace; color: var(--ink-3); letter-spacing: .06em; text-transform: uppercase; min-width: 0; }
-.sctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.sctl .seg button { padding: 6px 14px; }
-.sctl small { color: var(--ink-3); font-size: 11.5px; }
+/*
+ * 2026-09-16 (사용자 요청) — 항목을 **세로로** 쌓는다. 예전에는 `label | 버튼 + 설명` 을 한 줄에 넣는
+ * 격자라, 설명이 긴 항목(중계 음성)에서 줄이 가로로 길게 늘어져 어디까지가 한 항목인지 안 보였다.
+ * 이제 항목마다 상자 하나: 이름 → 버튼 → 설명 순으로 줄을 바꾼다.
+ */
+/* 항목마다 상자 하나 — 이름과 버튼은 한 줄, 설명은 그 아래 줄. 폭을 묶어 창이 옆으로 늘어나지 않게 한다 */
+.setpanel { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 4px; text-align: left; width: min(440px, 80vw); }
+.srow { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 3px 10px; align-items: center; padding: 7px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--bg-2); }
+.srow > label { font: 700 10.5px 'IBM Plex Mono', monospace; color: var(--ink-2); letter-spacing: .05em; text-transform: uppercase; min-width: 0; }
+.sctl { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.sctl .seg { background: var(--bg); }
+.sctl .seg button { padding: 5px 13px; font-size: 12.5px; }
+/* 설명은 **다음 줄**로 내린다 (버튼 옆에 붙으면 줄이 가로로 길어진다). 한글은 어절 단위로 끊는다 */
+.sctl small { flex-basis: 100%; color: var(--ink-3); font-size: 11px; line-height: 1.4; word-break: keep-all; }
 .game-ui .top-right .btn { white-space: nowrap; }
 
 /* ---- 2026-09-11: 타 구단 영입 (G-17) ---- */

@@ -8,9 +8,14 @@ import { HALF_L, type GameState, type SimEvent } from '../core/state'
 
 const STORAGE_KEY = 'klo26.muted'
 const MASTER = 0.75
-/** 관중석 웅성거림 기본 크기 */
-const CROWD_BASE = 0.055
-/** 로비 배경음 크기 */
+/**
+ * 관중석 웅성거림 기본 크기. 2026-09-16 (사용자 요청 "경기 중에는 배경음을 빼고 관중 환호로 박진감을")
+ * 경기 배경음악을 뺀 자리를 관중이 채우므로 0.055 → 0.085 로 올렸다.
+ */
+const CROWD_BASE = 0.085
+/** 열기(heat)가 최고일 때 웅성거림에 더해지는 크기 */
+const CROWD_HEAT = 0.2
+/** 로비 배경음 크기 (경기 중에는 음악을 틀지 않는다) */
 const MUSIC_LEVEL = 0.1
 
 /** 소리 하나의 배치 — 피치 좌우 위치로 팬을 준다 (카메라가 사이드라인 고정이라 x 가 그대로 좌우다) */
@@ -36,8 +41,21 @@ export class Sfx {
   private crowdSrc: AudioBufferSourceNode | null = null
   private crowdGain: GainNode | null = null
   private crowdFilter: BiquadFilterNode | null = null
+  /**
+   * 함성 층 (2026-09-16) — 낮은 웅성거림 위에 얹는 **사람 목소리 대역**(500~1600 Hz).
+   * 웅성거림은 늘 깔려 있고, 이 층은 열기에 제곱으로 반응해서 위험할수록 "와—" 하고 올라온다.
+   */
+  private voiceSrc: AudioBufferSourceNode | null = null
+  private voiceGain: GainNode | null = null
+  private voiceFilter: BiquadFilterNode | null = null
+  /** 관중이 숨 쉬는 느린 흔들림 (LFO) — 없으면 잡음이 죽은 소리로 들린다 */
+  private breatheOsc: OscillatorNode | null = null
   /** 0(조용) ~ 1(들끓음). 공이 골문에 가까울수록 올라간다 */
   private heat = 0
+  /** 다음 관중 반응(박수·휘파람·탄식) 시각 */
+  private ambNext = 0
+  /** 다음 응원가(북·박수) 시각 — 열기가 높으면 더 자주 */
+  private chantNext = 0
 
   // ---- 배경음악 (락 시퀀서 — 2026-09-15: 로비/대기실 앤섬 · 경기 드라이빙, 전부 오실레이터·노이즈) ----
   private musicGain: GainNode | null = null
@@ -317,32 +335,76 @@ export class Sfx {
     this.crowdSrc = src
     this.crowdGain = g
     this.crowdFilter = lp
+
+    // 함성 층 — 목소리 대역만 통과시킨 두 번째 잡음. 평소엔 거의 0, 위험하면 올라온다 (2026-09-16)
+    const vs = ctx.createBufferSource()
+    vs.buffer = this.noise!
+    vs.loop = true
+    vs.playbackRate.value = 0.83 // 같은 잡음이라도 속도를 달리 하면 두 층이 겹쳐 들리지 않는다
+    const bp = ctx.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.frequency.value = 620
+    bp.Q.value = 0.8
+    const vg = ctx.createGain()
+    vg.gain.value = 0.0001
+    vs.connect(bp)
+    bp.connect(vg)
+    vg.connect(this.master!)
+    vs.start()
+    this.voiceSrc = vs
+    this.voiceGain = vg
+    this.voiceFilter = bp
+
+    // 숨쉬기 — 아주 느린 사인파를 웅성거림 크기에 더한다 (설정값 위에 얹히는 신호)
+    const lfo = ctx.createOscillator()
+    lfo.type = 'sine'
+    lfo.frequency.value = 0.09
+    const lg = ctx.createGain()
+    lg.gain.value = 0.016
+    lfo.connect(lg)
+    lg.connect(g.gain)
+    lfo.start()
+    this.breatheOsc = lfo
+
+    this.ambNext = 0
+    this.chantNext = 0
   }
 
   stopCrowd(): void {
     if (!this.crowdSrc) return
-    try {
-      this.crowdSrc.stop()
-    } catch {
-      // 이미 멈췄다
+    const stop = (n: AudioScheduledSourceNode | null): void => {
+      if (!n) return
+      try {
+        n.stop()
+      } catch {
+        // 이미 멈췄다
+      }
+      n.disconnect()
     }
-    this.crowdSrc.disconnect()
+    stop(this.crowdSrc)
+    stop(this.voiceSrc)
+    stop(this.breatheOsc)
     this.crowdGain?.disconnect()
+    this.voiceGain?.disconnect()
     this.crowdSrc = null
     this.crowdGain = null
     this.crowdFilter = null
+    this.voiceSrc = null
+    this.voiceGain = null
+    this.voiceFilter = null
+    this.breatheOsc = null
     this.heat = 0
   }
 
-  /** 잠깐 함성이 커진다 (선방·골대·골) */
+  /** 잠깐 함성이 커진다 (선방·골대·골) — 웅성거림과 함성 층을 함께 올린다 */
   private crowdSwell(amount: number, seconds: number): void {
     if (!this.crowdGain || !this.ctx) return
     const t = this.ctx.currentTime
     const g = this.crowdGain.gain
     g.cancelScheduledValues(t)
     g.setValueAtTime(g.value, t)
-    g.linearRampToValueAtTime(CROWD_BASE + amount * 0.5, t + 0.12)
-    g.setTargetAtTime(CROWD_BASE + this.heat * 0.14, t + 0.12, seconds * 0.4)
+    g.linearRampToValueAtTime(CROWD_BASE + amount * 0.6, t + 0.12)
+    g.setTargetAtTime(CROWD_BASE + this.heat * CROWD_HEAT, t + 0.12, seconds * 0.4)
     if (this.crowdFilter) {
       const f = this.crowdFilter.frequency
       f.cancelScheduledValues(t)
@@ -350,6 +412,114 @@ export class Sfx {
       f.linearRampToValueAtTime(1900, t + 0.12)
       f.setTargetAtTime(700 + this.heat * 600, t + 0.12, seconds * 0.4)
     }
+    // 함성 층 — 목소리가 확 올라왔다 천천히 가라앉는다 (2026-09-16)
+    if (this.voiceGain) {
+      const vg = this.voiceGain.gain
+      vg.cancelScheduledValues(t)
+      vg.setValueAtTime(Math.max(0.0001, vg.value), t)
+      vg.linearRampToValueAtTime(0.04 + amount * 0.3, t + 0.15)
+      vg.setTargetAtTime(this.voiceTarget(), t + 0.15, seconds * 0.45)
+    }
+    if (this.voiceFilter) {
+      const f = this.voiceFilter.frequency
+      f.cancelScheduledValues(t)
+      f.setValueAtTime(f.value, t)
+      f.linearRampToValueAtTime(1150, t + 0.15)
+      f.setTargetAtTime(620 + this.heat * 420, t + 0.15, seconds * 0.45)
+    }
+  }
+
+  /** 지금 열기에서 함성 층이 있어야 할 크기 — 제곱이라 평소엔 거의 안 들리고 위험할 때만 올라온다 */
+  private voiceTarget(): number {
+    return 0.0001 + this.heat * this.heat * 0.085
+  }
+
+  /**
+   * 흩어지는 박수 — 한 사람씩 어긋나게 친다 (0.5 초 안에 n 번). `strength` 가 클수록 많고 세다.
+   * 2026-09-16: 경기 중 배경음악을 빼면서 그 자리를 관중이 채우게 넣었다.
+   */
+  private scatterClap(strength: number): void {
+    if (!this.ctx || !this.crowdGain || !this.noise) return
+    const ctx = this.ctx
+    const t0 = ctx.currentTime + 0.02
+    const n = Math.round(4 + strength * 10)
+    for (let i = 0; i < n; i++) {
+      const at = t0 + Math.random() * (0.45 + strength * 0.3)
+      const src = ctx.createBufferSource()
+      src.buffer = this.noise
+      const f = ctx.createBiquadFilter()
+      f.type = 'bandpass'
+      f.frequency.value = 1300 + Math.random() * 1800
+      f.Q.value = 1.4
+      const g = ctx.createGain()
+      const peak = (0.05 + Math.random() * 0.07) * (0.6 + strength * 0.6)
+      g.gain.setValueAtTime(peak, at)
+      g.gain.exponentialRampToValueAtTime(0.001, at + 0.07)
+      src.connect(f)
+      f.connect(g)
+      g.connect(this.crowdGain)
+      src.start(at)
+      src.stop(at + 0.12)
+    }
+  }
+
+  /** 관중석 휘파람 — 높은 사인에 살짝 떨림. 경기가 늘어질 때 드문드문 (2026-09-16) */
+  private standWhistle(): void {
+    if (!this.ctx || !this.crowdGain) return
+    const ctx = this.ctx
+    const at = ctx.currentTime + 0.05
+    const dur = 0.35 + Math.random() * 0.3
+    const base = 2100 + Math.random() * 700
+    const o = ctx.createOscillator()
+    o.type = 'sine'
+    o.frequency.setValueAtTime(base * 0.94, at)
+    o.frequency.linearRampToValueAtTime(base, at + dur * 0.4)
+    o.frequency.linearRampToValueAtTime(base * 0.9, at + dur)
+    // 떨림 — 사람이 부는 소리는 일정하지 않다
+    const vib = ctx.createOscillator()
+    vib.type = 'sine'
+    vib.frequency.value = 5.5
+    const vg = ctx.createGain()
+    vg.gain.value = 22
+    vib.connect(vg)
+    vg.connect(o.frequency)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, at)
+    g.gain.exponentialRampToValueAtTime(0.05, at + 0.06)
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
+    o.connect(g)
+    g.connect(this.crowdGain)
+    o.start(at)
+    vib.start(at)
+    o.stop(at + dur + 0.05)
+    vib.stop(at + dur + 0.05)
+  }
+
+  /** "우—" 하고 올라왔다 잦아드는 탄성 — 공이 골문 앞으로 갈 때 (2026-09-16) */
+  private ooh(strength: number): void {
+    if (!this.ctx || !this.crowdGain || !this.noise) return
+    const ctx = this.ctx
+    const at = ctx.currentTime + 0.02
+    const dur = 0.9 + Math.random() * 0.7
+    const src = ctx.createBufferSource()
+    src.buffer = this.noise
+    src.loop = true
+    src.playbackRate.value = 0.7 + Math.random() * 0.3
+    const f = ctx.createBiquadFilter()
+    f.type = 'bandpass'
+    f.frequency.setValueAtTime(420, at)
+    f.frequency.linearRampToValueAtTime(760 + strength * 300, at + dur * 0.45)
+    f.frequency.linearRampToValueAtTime(380, at + dur)
+    f.Q.value = 1.1
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, at)
+    g.gain.exponentialRampToValueAtTime(0.03 + strength * 0.1, at + dur * 0.35)
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
+    src.connect(f)
+    f.connect(g)
+    g.connect(this.crowdGain)
+    src.start(at)
+    src.stop(at + dur + 0.05)
   }
 
   /**
@@ -365,8 +535,32 @@ export class Sfx {
     // 천천히 따라간다 — 관중은 갑자기 조용해지지 않는다
     this.heat += (target - this.heat) * Math.min(1, dt * 1.4)
     const t = this.ctx.currentTime
-    this.crowdGain.gain.setTargetAtTime(CROWD_BASE + this.heat * 0.14, t, 0.4)
+    this.crowdGain.gain.setTargetAtTime(CROWD_BASE + this.heat * CROWD_HEAT, t, 0.4)
     this.crowdFilter?.frequency.setTargetAtTime(700 + this.heat * 600, t, 0.5)
+    this.voiceGain?.gain.setTargetAtTime(this.voiceTarget(), t, 0.35)
+    this.voiceFilter?.frequency.setTargetAtTime(620 + this.heat * 420, t, 0.5)
+
+    // 경기 중 관중은 가만히 있지 않는다 — 박수·휘파람·탄성이 드문드문, 그리고 응원가가 돌아온다.
+    // 2026-09-16 사용자 요청 "경기 중에는 배경음을 빼고 관중 환호로 박진감을" — 음악이 하던 몫을 여기서 한다.
+    if (st.phase !== 'play' && st.phase !== 'goal') return
+    if (this.ambNext === 0) {
+      this.ambNext = t + 2
+      this.chantNext = t + 12
+    }
+    if (t >= this.ambNext) {
+      const hot = this.heat
+      // 열기가 높을수록 자주 반응한다 (2.5~6초 vs 4~13초)
+      this.ambNext = t + 2.5 + Math.random() * (hot > 0.45 ? 3.5 : 9)
+      const r = Math.random()
+      if (hot > 0.4 && r < 0.55) this.ooh(hot)
+      else if (r < 0.8) this.scatterClap(0.3 + hot)
+      else this.standWhistle()
+    }
+    if (t >= this.chantNext) {
+      // 응원가 — 평소 30~48초, 몰아칠 때는 16~34초마다
+      this.chantNext = t + (this.heat > 0.55 ? 16 : 30) + Math.random() * 18
+      this.chant(3.5 + Math.random() * 2.5)
+    }
   }
 
   // ---------------------------------------------------------------- 배경음악 — 락 (코드 생성)

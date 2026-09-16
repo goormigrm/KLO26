@@ -155,11 +155,10 @@ export class Renderer3D {
   private camInit = false
   /**
    * 세트피스 카메라 (2026-09-11) — 직접 프리킥(골문 36 m 안)·페널티킥은 **키커 뒤에서 골문을 본다**.
-   * 방송 카메라와 `spBlend`(0~1) 로 섞고, 찬 뒤에도 `spHold` 초 동안 공을 따라 본다. 렌더 전용.
+   * 방송 카메라와 `spBlend`(0~1) 로 섞는다. **찬 순간 바로** 방송 카메라로 돌아온다 (2026-09-16). 렌더 전용.
    */
   private spBlend = 0
   private spAnchor: { kx: number; ky: number; gx: number; pk: boolean } | null = null
-  private spHold = 0
   /** 세트피스 궤적 미리보기 (2026-09-11) — 점선 + 낙하점 링. 렌더 전용 */
   private path: THREE.Line
   private pathMat: THREE.LineDashedMaterial
@@ -602,12 +601,14 @@ export class Renderer3D {
     const direct = r !== null && tm !== null && !view.replay && kickerView(curr)
     if (direct && r && tm) {
       this.spAnchor = { kx: r.x, ky: r.y, gx: tm.dir * HALF_L, pk: curr.phase === 'penalty' }
-      this.spHold = 1.4
     } else if (this.spAnchor && curr.phase === 'play') {
-      this.spHold -= dt // 찬 뒤 공이 날아가는 것을 잠깐 더 본다
-      if (this.spHold <= 0) this.spAnchor = null
+      // **찬 순간 바로 경기 화면으로** (사용자 요청 2026-09-16) — 예전에는 공이 날아가는 것을 1.4 초 더 보여 주고
+      // 천천히 섞어 돌아왔다. 그 사이 조작이 먹통 같아 불편했다. 이제 킥과 동시에 방송 카메라로 끊어 바꾼다.
+      this.spAnchor = null
+      this.spBlend = 0
     } else if (!direct) this.spAnchor = null
     const want = this.spAnchor ? 1 : 0
+    // 들어갈 때만 부드럽게 (나올 때는 위에서 이미 0 으로 끊었다)
     this.spBlend += (want - this.spBlend) * (1 - Math.pow(0.02, dt))
     let px = cp.x
     let py = cp.y
@@ -624,16 +625,18 @@ export class Renderer3D {
       const ux = ux0 / ul
       const uy = uy0 / ul
       const side = a.ky >= 0 ? -1 : 1 // 가운데 쪽으로 살짝 비켜서 골문이 비스듬히 보인다
-      const back = a.pk ? 8.5 : 7.5
-      const off = a.pk ? 1.8 : 2.2
+      // 2026-09-16 (사용자 요청) — 예전에는 키커 바로 뒤(7.5~8.5 m)라 벽·박스·달려드는 선수가 화면 밖이었다.
+      // 더 뒤에서 더 높이, 화각도 넓게 본다: 주변이 보여야 어디로 찰지 고를 수 있다.
+      const back = a.pk ? 14 : 13
+      const off = a.pk ? 2.4 : 2.8
       const camSx = a.kx - ux * back + -uy * side * off
       const camSy = a.ky - uy * back + ux * side * off
-      const camH = a.pk ? 3.6 : 3.4
+      const camH = a.pk ? 5.4 : 5.2
       // 시선 — 차기 전엔 골문 쪽 앞을, 찬 뒤엔 공을
       const kicked = curr.phase === 'play'
       const lookSx = kicked ? bx : a.kx + ux * Math.max(8, ul * 0.55)
       const lookSy = kicked ? by : a.ky + uy * Math.max(8, ul * 0.55)
-      const spFov = a.pk ? 28 : 36
+      const spFov = a.pk ? 36 : 44
       const k = this.spBlend
       px += (camSx - px) * k
       py += (camH - py) * k

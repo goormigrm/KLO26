@@ -7,6 +7,7 @@ import type { SoloConfig, TestConfig } from '../game/session'
 import { START_SIZE, cardSalary, checkSquad, clubById, computeCap, teamworkBonus } from '../cards/squad'
 import { CLUBS, POOL_SIZE, cardById } from '../data/pool'
 import { sfx } from '../audio/sfx'
+import { MatchVoice } from '../audio/tts'
 import type { LobbyLink, RoomInfo } from '../net/room'
 import { makeRoomCode } from '../net/room'
 import { loadSquadOrDefault } from './squad'
@@ -29,6 +30,8 @@ export class Lobby {
   private host: HTMLElement
   private roomTimer = 0
   private snd = sfx()
+  /** 중계 음성 — 로비에서는 말하지 않고 **어떤 음성으로 읽을지**만 보여 준다 (2026-09-16) */
+  private voice = new MatchVoice()
 
   constructor(
     host: HTMLElement,
@@ -149,7 +152,7 @@ export class Lobby {
       <div class="dlg" id="dlg-settings" hidden><div class="dbox">
         <h3>설정</h3>
         <p class="hintline">내 화면에만 적용되고 브라우저에 저장됩니다. 경기 중에도 <b>⚙ 설정</b>으로 바꿀 수 있습니다.</p>
-        <div id="set-host">${settingsPanelHtml(this.s, this.snd.muted)}</div>
+        <div id="set-host">${settingsPanelHtml(this.s, this.snd.muted, this.voice.info())}</div>
         <div class="dacts"><button class="btn main" data-close>닫기</button></div>
       </div></div>
 
@@ -209,7 +212,11 @@ export class Lobby {
     }
     ;(h.querySelector('#btn-solo') as HTMLButtonElement).onclick = () => open('#dlg-solo')
     ;(h.querySelector('#btn-host') as HTMLButtonElement).onclick = () => open('#dlg-host')
-    ;(h.querySelector('#btn-settings') as HTMLButtonElement).onclick = () => open('#dlg-settings')
+    ;(h.querySelector('#btn-settings') as HTMLButtonElement).onclick = () => {
+      // 열 때마다 다시 그린다 — 음성 목록이 **로비를 만든 뒤에** 도착하므로 처음 HTML 은 "음성 없음"으로 굳는다 (2026-09-16)
+      this.redrawSettings()
+      open('#dlg-settings')
+    }
     this.bindSettingsHost()
     const testBtn = h.querySelector('#btn-test') as HTMLButtonElement | null
     if (testBtn) testBtn.onclick = () => open('#dlg-test')
@@ -262,6 +269,14 @@ export class Lobby {
     }
   }
 
+  /** 설정 패널을 지금 값으로 다시 그린다 (중계 음성 목록이 늦게 오므로 열 때마다) */
+  private redrawSettings(): void {
+    const host = this.host.querySelector('#set-host')
+    if (!host) return
+    host.innerHTML = settingsPanelHtml(this.s, this.snd.muted, this.voice.info())
+    this.bindSettingsHost()
+  }
+
   /** 설정 패널 — 경기 중 창과 같은 것을 쓴다 (settings.ts) */
   private bindSettingsHost(): void {
     const host = this.host.querySelector('#set-host')
@@ -275,8 +290,11 @@ export class Lobby {
       setShadows: () => {},
       setResScale: () => {},
       setKeysHint: () => {},
+      // 로비에서는 중계가 나지 않지만, **어떤 음성으로 읽을지**를 미리 보여 주고 켜고 끌 수 있게 (2026-09-16)
+      setCommentary: (on) => this.voice.setEnabled(on),
+      voiceInfo: () => this.voice.info(),
       rerender: () => {
-        host.innerHTML = settingsPanelHtml(this.s, this.snd.muted)
+        host.innerHTML = settingsPanelHtml(this.s, this.snd.muted, this.voice.info())
         this.bindSettingsHost()
       },
     })

@@ -14,6 +14,7 @@ import { previewRestartKick, type KickPreview } from '../core/rules'
 import type { Lockstep } from '../net/lockstep'
 import type { RoomLink } from '../net/room'
 import { sfx } from '../audio/sfx'
+import { MatchVoice } from '../audio/tts'
 import { Hud } from '../render/hud'
 import { KeyView } from '../render/keyview'
 import { Renderer3D, capturePose, type PrevPose } from '../render3d/renderer3d'
@@ -117,6 +118,8 @@ export class Session {
   private stalls = 0
   private resyncs = 0
   private snd = sfx()
+  /** 중계 음성 (TTS) — 하이라이트에서만 한 줄. 렌더 쪽이라 결정론과 무관하다 (2026-09-16) */
+  private voice = new MatchVoice()
   /** 내 팀 (0 = 홈 · 1 = 원정). **동전 던지기로 정해진다** — 방장이라고 홈이 아니다 (2026-09-11) */
   private meTeam: 0 | 1 = 0
   /** 코인토스 연출 중 — Esc 메뉴를 막는다 */
@@ -137,8 +140,20 @@ export class Session {
   private lastPhase = ''
   /** 공지글 첨부용 캡처 (DEV) — 프레임 끝에서 처리한다 */
   private snapName: string | null = null
-  /** webm 녹화 중 — 틱 루프가 fps 만큼 frame() 을 돌린다 (captureStream 은 그려진 프레임만 담는다 · 2026-09-16) */
-  private vidRec: { everyMs: number; lastMs: number } | null = null
+  /**
+   * webm 녹화 중 — 틱 루프가 fps 만큼 frame() 을 돌린다 (captureStream 은 그려진 프레임만 담는다 · 2026-09-16).
+   * `comp` 가 있으면 **WebGL + UI(DOM)** 를 합성한 캔버스를 녹화한다 — 캔버스만 담으면 전광판·배너가 안 나온다.
+   * UI 는 비싸서(SVG foreignObject) 0.4 초마다 한 장만 다시 뜨고, 그 사이에는 마지막 장을 얹는다.
+   */
+  private vidRec: {
+    everyMs: number
+    lastMs: number
+    comp: HTMLCanvasElement | null
+    ctx: CanvasRenderingContext2D | null
+    ui: HTMLImageElement | null
+    uiBusy: boolean
+    uiNext: number
+  } | null = null
   private gifRec: {
     name: string
     w: number
@@ -185,10 +200,13 @@ export class Session {
     ;(host.querySelector('#btn-menu') as HTMLButtonElement).onclick = () => this.toggleMenu()
     ;(host.querySelector('#btn-settings') as HTMLButtonElement).onclick = () => this.showSettings()
     ;(host.querySelector('#btn-lobby') as HTMLButtonElement).onclick = () => this.confirmQuit()
-    // 로비 배경음을 끄고 관중석을 켠다
-    // 경기 트랙(드라이빙 락)은 관중보다 작게 — 로비로 나가면 로비가 앤섬으로 바꾼다 (2026-09-15)
-    this.snd.startMusic('match')
+    // **경기 중에는 배경음악을 틀지 않는다** (사용자 요청 2026-09-16) — 로비 앤섬을 끄고 관중석만 켠다.
+    // 음악이 하던 몫(박진감)은 관중이 한다: 웅성거림 + 함성 층 + 박수·휘파람·탄성 + 응원가 (`sfx.update`).
+    this.snd.stopMusic()
     this.snd.startCrowd()
+    this.voice.setEnabled(this.cfg.settings.commentary)
+    this.voice.setMuted(this.snd.muted)
+    this.voice.reset()
 
     this.input.onEscape = () => this.toggleMenu()
     this.input.attach()
@@ -210,6 +228,7 @@ export class Session {
       // 두 브라우저가 같은 경기를 보고 있는지 대조할 때 쓴다 (60틱마다 쌓인다)
       hashes: () => [...this.hashes.entries()],
       snd: () => this.snd,
+      voice: () => this.voice,
       net: () =>
         this.cfg.net
           ? { me: this.cfg.net.me, delay: this.cfg.net.lockstep.delay, rtt: this.cfg.net.link.rtt, stalls: this.stalls, resyncs: this.resyncs }
@@ -221,8 +240,8 @@ export class Session {
       // HUD·코인토스 같은 DOM 까지 든 GIF — 화면 전체를 프레임마다 그리므로 느리다 (4fps 권장)
       gifDom: (name: string, seconds = 5, fps = 4, width = 640) => this.startGif(name, seconds, fps, width, true),
       gif: (name: string, seconds = 6, fps = 10, width = 480) => this.startGif(name, seconds, fps, width, false),
-      // 캔버스만 webm 영상으로 (게시판 첨부 — GIF 보다 작고 선명하다). 해상도는 지금 캔버스 크기 그대로
-      webm: (name: string, seconds = 12, fps = 30, mbps = 5) => this.startWebm(name, seconds, fps, mbps),
+      // webm 영상 (게시판 첨부 — GIF 보다 작고 선명하다). 기본은 **UI 를 얹어서** 녹화한다
+      webm: (name: string, seconds = 12, fps = 30, mbps = 5, ui = true) => this.startWebm(name, seconds, fps, mbps, ui),
       // 패널이 숨겨져 있어도 한 장 그린다 (rAF 가 멈춰 있을 때 확인용)
       frameNow: () => this.frame(performance.now()),
     }
@@ -392,6 +411,8 @@ export class Session {
     const ev = this.state.events
     this.renderer.onEvents(ev, this.evSeen)
     this.snd.onEvents(ev, this.sndSeen)
+    // 중계 음성 — 소리와 같은 구간을 본다. 하이라이트만 말한다 (2026-09-16 · `audio/tts.ts`)
+    this.voice.onEvents(this.state, ev, this.sndSeen)
     this.sndSeen = ev.length
     if (this.halfStatsShown && this.state.phase !== 'halftime') {
       this.halfStatsShown = false
@@ -608,16 +629,26 @@ export class Session {
     if (this.snapName || (g && g.armed)) this.frame(now)
   }
 
-  /** `__klo.webm('이름.webm', 초, fps, Mbps)` — 캔버스를 영상으로. 끝나면 `[webm]` 로그 (2026-09-16) */
-  private startWebm(name: string, seconds: number, fps: number, mbps: number): void {
+  /** `__klo.webm('이름.webm', 초, fps, Mbps, ui)` — 화면을 영상으로. 끝나면 `[webm]` 로그 (2026-09-16) */
+  private startWebm(name: string, seconds: number, fps: number, mbps: number, ui = true): void {
     if (this.vidRec) {
       snapLog('[webm] 이미 녹화 중')
       return
     }
-    this.vidRec = { everyMs: 1000 / fps, lastMs: -1e9 }
+    const src = this.renderer.canvasEl
+    let comp: HTMLCanvasElement | null = null
+    let ctx: CanvasRenderingContext2D | null = null
+    if (ui) {
+      comp = document.createElement('canvas')
+      comp.width = src.width
+      comp.height = src.height
+      ctx = comp.getContext('2d')
+      if (!ctx) comp = null
+    }
+    this.vidRec = { everyMs: 1000 / fps, lastMs: -1e9, comp, ctx, ui: null, uiBusy: false, uiNext: 0 }
     loadShot()
       .then(async (m) => {
-        const bytes = await m.recordCanvas(this.renderer.canvasEl, seconds, fps, mbps)
+        const bytes = await m.recordCanvas(comp ?? src, seconds, fps, mbps)
         this.vidRec = null
         snapLog(`[webm] ${await m.postSnap(name, bytes)} · ${(bytes.length / 1048576).toFixed(1)} MB`)
       })
@@ -627,11 +658,38 @@ export class Session {
       })
   }
 
+  /** 녹화 중이면 이번에 그린 WebGL 위에 UI 를 얹어 합성 캔버스에 넣는다 (`frame()` 끝에서) */
+  private compositeVideoFrame(): void {
+    const v = this.vidRec
+    if (!v || !v.comp || !v.ctx) return
+    const { comp, ctx } = v
+    ctx.clearRect(0, 0, comp.width, comp.height)
+    ctx.drawImage(this.renderer.canvasEl, 0, 0, comp.width, comp.height)
+    if (v.ui) ctx.drawImage(v.ui, 0, 0, comp.width, comp.height)
+    const now = performance.now()
+    if (v.uiBusy || now < v.uiNext) return
+    v.uiBusy = true
+    // UI 한 장 뜨는 데 약 25 ms (2026-09-16 실측) — 0.2 초마다면 시계·배너가 따라온다
+    v.uiNext = now + 200
+    loadShot()
+      .then((m) => m.overlayImage(comp.width, comp.height))
+      .then((img) => {
+        v.ui = img
+      })
+      .catch(() => {
+        // UI 한 장을 놓쳐도 영상은 계속 간다
+      })
+      .finally(() => {
+        v.uiBusy = false
+      })
+  }
+
   /**
    * 공지글 첨부 캡처 — `draw()` 직후에만 WebGL 그림이 남아 있다. `frame()` 끝에서 불린다.
    * `__klo.snap('이름.png')` 은 화면 전체(HUD 포함)를, `__klo.gif/gifDom('이름.gif', 초, fps)` 는 GIF 로.
    */
   private captureAfterDraw(): void {
+    this.compositeVideoFrame()
     const w = window as unknown as { __snapLog?: string[] }
     const log = (msg: string): void => {
       console.log(msg)
@@ -695,7 +753,7 @@ export class Session {
     box.innerHTML = `
       <h2>${this.cfg.net ? '메뉴' : '일시정지'}</h2>
       <p>${this.cfg.net ? `온라인 대전 · 방 ${this.cfg.net.link.code} · ${this.cfg.net.link.rtt} ms` : `혼자 하기 — 봇 ${['', '쉬움', '보통', '어려움'][this.cfg.difficulty]}`} · 전후반 ${Math.round(this.cfg.halfSec / 60)}분${this.cfg.net ? ' · 멈추지 않습니다' : ''}</p>
-      <div class="row">
+      <div class="row menu-acts">
         <button class="btn main" id="ov-resume">계속 (Esc)</button>
         <button class="btn secondary" id="ov-sub">🔁 교체 (${this.state.teams[this.meTeam].subsLeft}명 · 기회 ${this.state.teams[this.meTeam].subWindows}번)</button>
         <button class="btn secondary" id="ov-settings">⚙ 설정</button>
@@ -722,16 +780,19 @@ export class Session {
       box.innerHTML = `
         <h2>⚙ 설정</h2>
         <p class="hintline">내 화면에만 적용됩니다${this.cfg.net ? ' — 상대에게 보내지 않습니다' : ''}. 브라우저에 저장됩니다.</p>
-        <div id="set-host">${settingsPanelHtml(s, this.snd.muted)}</div>
+        <div id="set-host">${settingsPanelHtml(s, this.snd.muted, this.voice.info())}</div>
         <div class="row"><button class="btn main" id="ov-close">닫기</button></div>`
       const hostEl = box.querySelector('#set-host')
       if (hostEl) {
         bindSettingsPanel(hostEl, s, {
           setMuted: (m) => {
+            // 경기 중에는 음악이 없다 — 관중석과 중계 음성만 끄고 켠다 (2026-09-16)
             this.snd.setMuted(m)
-            if (m) this.snd.stopMusic()
-            else this.snd.startMusic('match')
+            this.snd.stopMusic()
+            this.voice.setMuted(m)
           },
+          setCommentary: (on) => this.voice.setEnabled(on),
+          voiceInfo: () => this.voice.info(),
           setShadows: (on) => this.renderer.setShadows(on),
           setResScale: (v) => this.renderer.setResScale(v),
           setHelpers: (on) => this.renderer.setHelpers(on),
@@ -1015,6 +1076,7 @@ export class Session {
     this.hud.dispose()
     this.renderer.dispose()
     this.snd.stopCrowd()
+    this.voice.dispose()
     if (this.cfg.net) {
       if (!this.peerLeft) this.cfg.net.link.sendCtl({ t: 'leave' }, this.cfg.net.peerId)
       setTimeout(() => this.cfg.net?.link.leave(), 120)

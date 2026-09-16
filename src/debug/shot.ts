@@ -27,7 +27,7 @@ export function dataUrlBytes(url: string): Uint8Array {
  * SVG <foreignObject> 에 담아 <img> 로 그린다. 외부 출처(글꼴 CDN 등)는 캔버스를 더럽혀 toDataURL 이
  * 막히므로 **빼고** 그린다 — 글꼴은 시스템 글꼴로 떨어진다.
  */
-export async function snapDom(scale = 1): Promise<string> {
+export async function snapDom(scale = 1, overlayOnly = false): Promise<string> {
   const w = window.innerWidth
   const h = window.innerHeight
   let css = ''
@@ -43,9 +43,15 @@ export async function snapDom(scale = 1): Promise<string> {
     }
   }
   const clone = document.body.cloneNode(true) as HTMLElement
+  if (overlayOnly) {
+    // **UI 만** — 캔버스를 통째로 빼고 배경을 투명하게. 영상 녹화가 매 프레임 WebGL 위에 이 그림을 얹는다
+    // (2026-09-16: webm 이 캔버스만 담아 전광판·배너가 안 나왔다). 컨테이너 배경도 눌러야 뒤가 비친다.
+    for (const c of Array.from(clone.querySelectorAll('canvas'))) c.remove()
+    css += 'html,body,.game-root,.game-stage,.lobby{background:transparent !important}\n'
+  }
   // 캔버스는 복제되면 비어 있다 — 지금 그림으로 바꿔 넣는다
-  const live = Array.from(document.querySelectorAll('canvas'))
-  const copies = Array.from(clone.querySelectorAll('canvas'))
+  const live = overlayOnly ? [] : Array.from(document.querySelectorAll('canvas'))
+  const copies = overlayOnly ? [] : Array.from(clone.querySelectorAll('canvas'))
   for (let i = 0; i < copies.length && i < live.length; i++) {
     const src = live[i]
     const img = document.createElement('img')
@@ -66,7 +72,7 @@ export async function snapDom(scale = 1): Promise<string> {
     if (!im.src.startsWith('data:')) im.remove()
   }
   const xhtml = new XMLSerializer().serializeToString(clone)
-  const bg = getComputedStyle(document.body).backgroundColor || '#0d1117'
+  const bg = overlayOnly ? 'transparent' : getComputedStyle(document.body).backgroundColor || '#0d1117'
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">` +
     `<foreignObject width="100%" height="100%"><div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px;height:${h}px;background:${bg};overflow:hidden">` +
@@ -82,10 +88,25 @@ export async function snapDom(scale = 1): Promise<string> {
   c.width = Math.round(w * scale)
   c.height = Math.round(h * scale)
   const g = c.getContext('2d')!
-  g.fillStyle = bg
-  g.fillRect(0, 0, c.width, c.height)
+  if (!overlayOnly) {
+    g.fillStyle = bg
+    g.fillRect(0, 0, c.width, c.height)
+  }
   g.drawImage(img, 0, 0, c.width, c.height)
   return c.toDataURL('image/png')
+}
+
+/** UI(DOM)만 투명 배경으로 그린 `Image` — 영상 합성용 (2026-09-16) */
+export async function overlayImage(w: number, h: number): Promise<HTMLImageElement> {
+  const url = await snapDom(w / window.innerWidth, true)
+  const img = new Image()
+  await new Promise<void>((ok, no) => {
+    img.onload = () => ok()
+    img.onerror = () => no(new Error('overlay png 읽기 실패'))
+    img.src = url
+  })
+  void h
+  return img
 }
 
 // ---------------------------------------------------------------- webm (MediaRecorder)

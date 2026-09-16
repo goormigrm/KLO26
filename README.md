@@ -70,7 +70,7 @@ npm run dev     # http://localhost:5175/KLO26/
 | `npm run economy` | 급여·영입 경제 진단 — 구단별 최강 선발과 격차 |
 | `npm run power` | 구단 전력(최고 18명 급여 합) — 약체 가산 구간 확인 |
 | `npm run attrcheck` | 능력치 묶음별 A/B — 능력치가 경기에 닿는지 (대조군 50%) |
-| `npm run tactics` | 전술 프리셋별 라인 높이·퍼짐·결과 — 전술이 움직임을 바꾸는지 |
+| `npm run tactics` | 전술 프리셋별 라인 높이·퍼짐·결과 — 전술이 움직임을 바꾸는지. `-- 16 "이름:line=3,…"` 로 임의 프리셋도 |
 | `npm run shots` | 자리(거리·각도·결정력·달리기·힘)별 슛 전환율 — 골키퍼가 얼마나 막는지 |
 | `npm run stamina` | 하프타임·종료 시점 체력 분포 — 경기 길이에 맞게 닳는지 |
 | `npm run throwin` | 스로인 뒤 5초 안에 누가 잡는지 (가로채기 비율) |

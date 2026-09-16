@@ -11,6 +11,7 @@
 - `tests/asym_order.test.ts` 4개 — 결정 순간 아무도 안 움직였다 · 공 가진 팀 먼저 · 자리 번호 주기 · 결정론. 통계는 `npm run asym 500`/`asymprobe` 로 (공개 전 필수).
 - `tests/feedback_0911` 체력 테스트 — 시드 하나에서 sta < 0.55 인 필드 선수가 한 명뿐이라 시뮬 순서만 바꿔도 뒤집혔다(10시드 중 4개). 다섯 시드 합산 · 문턱 0.6 으로.
 - DESIGN 4.10 "결정 순서" · 4.12 규칙 5 · 4.14 · 12장 표 · DECISIONS G-54 · README 도구 표(`asym`·`asymprobe`).
+- **원본 명단 확인 — 갱신 없음.** 업스트림 KM26v2.0 은 9/9 반영본(`547f422`) 뒤로 커밋 8개가 있으나 전부 같은 `index.html` blob(`1f2e9998d7`) 재업로드. 최신 `0ff4aff` 로 추출 → gendata → `build_cards.py` 를 노트북에서 끝까지 재현: dataHash `b53cd9ed65ffe691` · 1,056명 · `cards.json` md5 동일. 재현 절차와 함정은 HANDOVER "원본 명단 갱신 절차".
 
 ## 2026-09-16 — 🧹 15차 마무리 · ⚙ 프리셋 기본값 재측정 · 📏 계측 셋
 

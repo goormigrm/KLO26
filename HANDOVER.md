@@ -357,7 +357,27 @@ npm run clubs 90       # 실제 구단끼리 계측
 npm run build:cards    # 원본 명단 → src/data/cards.json (원본은 저장소 밖 · CLUB_NAME 표가 구단명)
 ```
 
-원본 명단 갱신 절차(KM26 → KMD26 도구 → `build_cards.py`)와 그때 걸리는 함정 둘은 **CHANGELOG 2026-09-09 항목**에 그대로 있다.
+### 원본 명단 갱신 절차 (29차에 노트북에서 재현 — 2026-09-16)
+
+업스트림은 `github.com/KleagueM2026/KM26v2.0` — 파일이 `index.html` 하나뿐이고 갱신은 늘 "Delete index.html → Add files via upload" 두 커밋이다.
+**갱신 여부는 blob 으로 본다**: `gh api repos/KleagueM2026/KM26v2.0/git/trees/<sha> --jq '.tree[]|.path+" "+.sha'`. 9/9 반영본 `547f422` 의 blob `1f2e9998d7` 이 9/16 최신 `0ff4aff` 까지 그대로였다(중간 커밋 8개는 같은 파일 재업로드).
+
+재현(전부 scratchpad 에서, 저장소는 안 건드린다):
+
+```bash
+curl -sL -o idx.html https://raw.githubusercontent.com/KleagueM2026/KM26v2.0/<sha>/index.html
+cp ../KMD26v1.0/tools/{extract_data,jsclosure}.py <scratch>/kmdtools/   # 복사본에 함정 둘 적용 (아래)
+PYTHONIOENCODING=utf-8 python <scratch>/kmdtools/extract_data.py idx.html <scratch>/kmdroot/src/data/gen.js
+(cd ../KMD26v1.0/tools/gendata && go run . -root <scratch>/kmdroot)   # → <scratch>/kmdroot/data/*.json · 데이터 해시 출력
+PYTHONIOENCODING=utf-8 python tools/build_cards.py <scratch>/kmdroot/data <scratch>/cards_new.json
+md5sum <scratch>/cards_new.json src/data/cards.json   # 같으면 갱신 없음
+```
+
+- 함정 둘(CHANGELOG 9/9): **GK-01 패치 0곳**(원작자가 같은 고침을 넣음 → PATCHES 에서 빼야 중단 안 됨) · **`UID_GEN is not defined`**(한 줄 다중 선언은 첫 이름만 색인 → ROOTS 에 `UID_CLUB` 추가). KMD26 저장소(`7f8a0ea`, 8/18)에는 이 고침이 **없다** — 복사본에 적용한다. 9/16 은 python 스크립트로 자동 적용했다.
+- `build_cards.py` 기본 입력 `../KMD26v1.0/KMD26v1.0/data` 는 이 노트북에 없다 — 인자로 준다. `../KMD26v1.0/data` 는 8/14 의 1,024명 옛 스냅샷이니 쓰지 말 것.
+- 콘솔이 cp949 라 두 파이썬 도구 다 `PYTHONIOENCODING=utf-8` 없이는 마지막 출력에서 죽는다(파일은 이미 써진 뒤).
+- 바뀌었으면: `POOL_HASH` 가 바뀌어 저장 스쿼드·코드가 전부 버려진다 → CHANGELOG 9/9 v0.7.0 항목처럼 인원·구단 색·급여 상한·OVR 보정 변화를 적고 `npm test`(pool) · `npm run cards` · `npm run clubs 90` 을 다시 잰다. README 의 인원 숫자는 `POOL_SIZE` 에서 읽으므로 손댈 곳 없음.
+- **9/16 결과**: 최신 `0ff4aff` → dataHash `b53cd9ed65ffe691` · 1,056명 · 29구단 · `cards.json` md5 동일. **반영할 것 없음.**
 
 브라우저 콘솔에서 `__klo.state()` · `__klo.hashes()` · `__klo.net()` · `__klo.snd()` · `__klo.frameNow()`(숨겨진 패널에서 한 장 그리기) · 캡처는 위 "스크린샷·GIF 다시 뜨기".
 **테스트 모드**: `http://localhost:5175/KLO26/?test=1` (AI 대 AI 관전 · 키 입력 표시).

@@ -104,7 +104,7 @@ export class Lobby {
         </div>
         ${chk.ok ? '' : '<p class="hintline">⚠ 스쿼드가 규칙을 어겨 경기를 시작할 수 없습니다. 스쿼드 짜기에서 고쳐 주세요.</p>'}
 
-        <div class="section-t">방 목록 <small id="online"></small></div>
+        <div class="section-t">방 목록 <small id="online" class="online-badge"><i class="dot"></i><b>접속 확인 중</b></small></div>
         <div class="rooms" id="rooms"><div class="empty">방을 찾는 중…</div></div>
 
         <div class="section-t">조작법 <small>축구 게임 표준 키 배치 · 같은 키가 공격/수비에서 뜻이 바뀝니다</small></div>
@@ -262,11 +262,22 @@ export class Lobby {
     // ---- 방 목록 ----
     if (this.lobbyLink) {
       this.lobbyLink.onRooms((rooms) => this.drawRooms(rooms))
-      this.roomTimer = window.setInterval(() => {
-        const el = this.root.querySelector('#online')
-        if (el) el.textContent = `접속 ${this.lobbyLink!.onlineCount()}명`
-      }, 1500)
+      this.updateOnline()
+      this.roomTimer = window.setInterval(() => this.updateOnline(), 1500)
     }
+  }
+
+  /**
+   * 접속 인원 — 초록 배지에 깜빡이는 점 (사용자 요청 2026-09-16: 회색 글씨라 눈에 안 띄었다).
+   * 아무도 없으면 깜빡임을 끄고 회색으로 — "살아 있다"는 신호는 실제로 사람이 있을 때만 준다.
+   */
+  private updateOnline(): void {
+    const el = this.root.querySelector('#online')
+    if (!el || !this.lobbyLink) return
+    const n = this.lobbyLink.onlineCount()
+    el.classList.toggle('live', n > 0)
+    const b = el.querySelector('b')
+    if (b) b.textContent = n > 0 ? `접속 ${n}명` : '접속 없음'
   }
 
   /** 설정 패널을 지금 값으로 다시 그린다 (중계 음성 목록이 늦게 오므로 열 때마다) */

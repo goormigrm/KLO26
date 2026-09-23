@@ -117,9 +117,16 @@ export interface Player {
   holdT: number
   yellow: number
   sentOff: boolean
-  /** 드리블 목표 방향 (AI) — decide 사이에도 유지 */
+  /**
+   * 드리블 터치 (32차 2026-09-23, 개발계획 P3 "드리블 터치 간격") — 공을 몰 때 터치마다 공을 발 앞으로 민다.
+   * dribX/dribY = 마지막 터치 방향(단위 벡터) · touchT = 그 틱 · touchLen = 민 거리(m) · touchI = 다음 터치까지 틱.
+   * 소유(owner)는 끊지 않는다 — 공 **위치**만 나갔다 돌아오고, 뺏기 판정(`contestBall`)이 그 틈을 본다
+   */
   dribX: number
   dribY: number
+  touchT: number
+  touchLen: number
+  touchI: number
   /** 공을 잡은 틱 — 12틱 안에 차면 퍼스트 타임(오차 ×1.3) */
   gotT: number
   /** 스탠딩 태클(Space) 남은 틱 — 그동안 뺏을 확률 ×3 */

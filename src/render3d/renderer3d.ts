@@ -795,7 +795,8 @@ export class Renderer3D {
     const goals = st.teams[0].goals + st.teams[1].goals
     const celeStyle = p.idx === st.goalScorer ? goals % 3 : (p.idx * 7 + goals * 5 + st.goalScorer) % 3
     const shot = st.ball.shotBy === p.idx && st.tick - p.lastKick < 12
-    return { action: p.action, actT: p.actT, speed, holding: p.holdT > 0, lateral, throwing: p.throwing, sprint, celebrate, celeStyle, diveHigh: p.diveHigh, shot }
+    const touch = st.ball.owner === p.idx && p.touchLen > 0.05 && st.tick - p.touchT < 4
+    return { action: p.action, actT: p.actT, speed, holding: p.holdT > 0, lateral, throwing: p.throwing, sprint, celebrate, celeStyle, diveHigh: p.diveHigh, shot, touch }
   }
 
   /** 프레임 시간(ms) 계측용 */

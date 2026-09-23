@@ -123,14 +123,78 @@ export function attachBall(st: GameState, p: Player): void {
   }
   const sp = len(p.vx, p.vy)
   const spK = clamp(sp / p.sk.vmax, 0, 1)
-  let off = 0.3 + spK * (0.35 + (1 - p.sk.drib) * 0.45)
-  if (team.human && team.controlled === p.idx && team.slow) off = 0.25
-  b.x = feetX(p, off)
-  b.y = feetY(p, off)
+  const fx = cosA(p.facing)
+  const fy = sinA(p.facing)
+  // 새로 잡은 공 — 첫 터치는 발밑에 세운다 (받은 틱 gotT 가 마지막 터치보다 뒤면 새 공이다)
+  if (p.touchT < p.gotT) {
+    p.touchT = st.tick
+    p.touchLen = 0
+    p.touchI = 12
+    p.dribX = fx
+    p.dribY = fy
+  }
+  const slow = team.human && team.controlled === p.idx && team.slow
+  if (slow || sp < 1.2) {
+    // 페이스 컨트롤(Shift) · 거의 서 있을 때 — 공을 발에 붙인다. 움직이기 시작하면 곧 첫 터치
+    const off = slow ? 0.25 : 0.3
+    b.x = feetX(p, off)
+    b.y = feetY(p, off)
+    b.z = 0
+    b.vx = p.vx
+    b.vy = p.vy
+    b.vz = 0
+    p.touchT = st.tick
+    p.touchLen = 0
+    p.touchI = 8
+    p.dribX = fx
+    p.dribY = fy
+    return
+  }
+  // ---- 드리블 터치 (32차 2026-09-23) ----
+  // 예전엔 공이 속도에 비례한 거리(0.3 + spK·(0.35 + 0.45·(1−drib)))에 **붙어서** 따라왔다. 이제 터치 간격(0.23~0.43 초)마다
+  // 공을 앞으로 밀고, 다음 터치까지 사인 모양으로 나갔다 발로 돌아온다. 민 거리는 평균이 예전 오프셋과 같게 π/2 배 —
+  // 균형(공이 발에서 떨어진 평균 거리)은 그대로 두고 **틈**만 생긴다. 50° 넘게 꺾으면 바로 짧은 터치(몸 가까이 꺾는다)
+  const since = st.tick - p.touchT
+  const turned = p.dribX * fx + p.dribY * fy < 0.64
+  if (since >= p.touchI || (turned && since >= 5)) {
+    p.touchT = st.tick
+    p.dribX = fx
+    p.dribY = fy
+    p.touchLen = spK * (0.35 + (1 - p.sk.drib) * 0.45) * 1.5708 * (turned ? 0.5 : 1)
+    p.touchI = Math.round(14 + 8 * spK + 4 * (1 - p.sk.drib))
+    // 앞(터치 방향 ±45°) 3.5 m 안에 상대가 있으면 **짧게 친다** — 드리블이 좋을수록 더 짧게(몸 가까이).
+    // 없으면 페이크로 묶은 수비수 앞으로 공을 밀어 넣어, 묶임이 풀리는 순간 그 발에 공이 갔다 (조작 연습 시범에서 드러남)
+    let near = 3.5
+    for (const q of st.players) {
+      if (q.team === p.team || q.sentOff) continue
+      const rx = q.x - p.x
+      const ry = q.y - p.y
+      const along = rx * fx + ry * fy
+      if (along <= 0) continue
+      const dq = len(rx, ry)
+      if (dq < near && along > dq * 0.7) near = dq
+    }
+    if (near < 3.5) p.touchLen *= 1 - (1 - near / 3.5) * (0.4 + 0.5 * p.sk.drib)
+  }
+  const ph = Math.round((Math.min(1, (st.tick - p.touchT) / p.touchI)) * 512)
+  const ext = p.touchLen * sinA(ph)
+  // 공은 **지금 몸이 향한 쪽**으로 나가 있다. 터치 방향(dribX/Y)은 "크게 꺾으면 다시 친다" 판정에만 쓴다 —
+  // 터치 방향에 고정했더니 서서히 꺾는 동안 공이 옛 방향(수비수 쪽)에 남아 슛이 수비수 발에 막혔다
+  b.x = feetX(p, 0.3 + ext)
+  b.y = feetY(p, 0.3 + ext)
   b.z = 0
+  // 공 속도는 **선수 속도 그대로** — 나갔다 돌아오는 속도(최대 7 m/s)를 더했더니 공 속도로 앞날 자리를 예측하는
+  // 곳들(슬라이딩 겨냥 · 요격 · 조작 연습 시범)이 크게 흔들렸다 (32차). 터치는 위치로만 보인다
   b.vx = p.vx
   b.vy = p.vy
   b.vz = 0
+}
+
+/** 드리블 터치의 틈 — 공이 발에서 가장 멀리 나가 있을 때 1, 터치 순간(발밑) 0. 터치가 없으면 −1 */
+export function touchGap(st: GameState, p: Player): number {
+  if (p.touchLen < 0.05) return -1
+  const ph = Math.round((Math.min(1, (st.tick - p.touchT) / p.touchI)) * 512)
+  return sinA(ph)
 }
 
 // ---------------------------------------------------------------- 오프사이드
@@ -551,6 +615,7 @@ export function contestBall(st: GameState, o: Player): void {
   // (실제 축구에서 빠른 드리블러도 전력 질주하면 태클에 취약하다 · 2026-09-11 속도 지배 완화)
   const oSpd = len(o.vx, o.vy) / Math.max(1, o.sk.vmax)
   const loose = clamp((oSpd - 0.6) / 0.4, 0, 1) * 0.3
+  const gap = gkHolding ? -1 : touchGap(st, o)
   // 힐투볼롤 같은 개인기 중엔 공이 몸 반대편에 있다 — 닿는 거리 −0.3 m (2026-09-23)
   const baseReach = gkHolding ? 1.0 : 0.6 + (1 - o.sk.drib) * 0.5 - (slow ? 0.15 : 0) + loose - (o.skillT > st.tick ? 0.3 : 0)
   // 당기고 버티기(Space 홀드, 사람만 · 2026-09-23) — 옆·뒤에 붙어 유니폼을 잡는다. 소유자는 느려지고(sim),
@@ -609,6 +674,8 @@ export function contestBall(st: GameState, o: Player): void {
     }
     // 전력으로 몰고 달리는 공은 닿는 거리도 늘지만(loose) **뺏길 확률도** 오른다 — 사용자 지적 2026-09-11
     let p = 0.05 * (0.3 + 1.3 * q.sk.tck) * (1.4 - 0.8 * o.sk.drib) * angleF * (0.6 + 0.8 * (q.sk.str / (q.sk.str + o.sk.str + 0.0001))) * (1 + 2.0 * loose)
+    // 드리블 터치의 틈 (32차) — 터치 순간(공이 발밑) ×0.5 ~ 공이 가장 멀리 나갔을 때 ×1.28 (한 주기 평균 1)
+    if (gap >= 0) p *= 0.5 + 0.78 * gap
     if (q.tackleT > 0) p *= 3
     if (slow) p *= 0.6
     // 견제(C 홀드) 중인 수비수는 자세를 잡고 있다 — 드리블러가 들이받으면 더 잘 뺏는다 (2026-09-10)

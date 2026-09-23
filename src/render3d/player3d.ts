@@ -53,6 +53,9 @@ export interface PlayerRig extends Rig {
   headT: number
   /** 세레모니 경과 시간(초) — 흔들기·깡충 위상 */
   cheer: number
+  /** 드리블 터치 남은 시간(초) · 직전 프레임에 터치였나 */
+  tapT: number
+  lastTouch: boolean
   dispose(): void
 }
 
@@ -213,7 +216,7 @@ export function buildPlayer(spec: PlayerSpec, kit: Kit): PlayerRig {
     root, body, head, legL, legR, armL, armR,
     height: 1.03 * scale,
     scale,
-    walk: 0, kickT: 0, lie: 0, lieSide: 1, lastAction: 0, wasDive: false, headT: 0, cheer: 0,
+    walk: 0, kickT: 0, lie: 0, lieSide: 1, lastAction: 0, wasDive: false, headT: 0, cheer: 0, tapT: 0, lastTouch: false,
     animate(a: AnimInput, dt: number) {
       animateRig(rig, a, dt)
     },
@@ -251,12 +254,17 @@ export interface AnimInput {
   diveHigh: boolean
   /** 이번 킥이 슛이다 (킥 클립 고르기용, 2026-09-15) */
   shot: boolean
+  /** 드리블 터치 순간 (32차) — 오른발로 공을 톡 민다 */
+  touch: boolean
 }
 
 /** 코드 애니메이션 — 걷기/달리기 · 킥 · 슬라이딩 · 넘어짐 · GK 다이브 */
 export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
   // 킥은 sim 에서 6틱(0.1초)뿐이라 렌더가 0.32초로 늘려 보여 준다
   if (a.action === ACT_KICK && rig.lastAction !== ACT_KICK) rig.kickT = 0.32
+  if (a.touch && !rig.lastTouch) rig.tapT = 0.2
+  rig.lastTouch = a.touch
+  rig.tapT = Math.max(0, rig.tapT - dt)
   if (a.action === ACT_HEAD && rig.lastAction !== ACT_HEAD) rig.headT = 0.3
   // 다이브 쪽은 **날기 시작할 때 한 번** 정한다 — 날아가는 동안 속도가 줄어 방향이 바뀌어 보이지 않게
   if (a.action === ACT_DIVE && rig.lastAction !== ACT_DIVE && a.lateral !== 0) rig.lieSide = a.lateral
@@ -300,6 +308,11 @@ export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
   const armFwd = sprint ? 0.4 : 0
 
   // 킥: 오른발을 앞으로 (−x 회전이 앞), 상체 뒤로 살짝
+  // 드리블 터치 — 킥보다 작게, 오른발을 앞으로 톡 (32차)
+  if (rig.tapT > 0 && rig.kickT <= 0) {
+    const t = 1 - rig.tapT / 0.2
+    legR = legR * 0.3 - 0.6 * Math.sin(t * Math.PI)
+  }
   if (rig.kickT > 0) {
     const t = 1 - rig.kickT / 0.32
     const s = Math.sin(t * Math.PI)

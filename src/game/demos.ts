@@ -163,8 +163,19 @@ export const DEMOS: Record<string, DemoFn> = {
     if (j === 0) return I(BTN_Z | BTN_C, 127, 0)
     if (j === 1) return I(BTN_Z | BTN_C | BTN_D, 127, 0)
     if (j === 2) return I(BTN_Z | BTN_C, 127, 0)
-    if (j < 22) return I(BTN_E, 127, 127)
-    if (j < 34) return I(BTN_D, 127, 127)
+    // 굳은 수비수 **옆을 지나칠 때까지** ↗ 전력질주 → 지나치면 곧장 골문 쪽으로 몰아 16 m 안에서 D 를 모아 슛.
+    // (32차: 지나치기 전에 차면 공이 수비수 발 앞에서 출발해 막힌다 — 드리블 터치가 생긴 뒤 수비수 코앞의 터치가 짧아졌다.
+    //  20 m 밖 슛은 골키퍼가 거의 다 잡는다 — `tools/demovar.ts` 로 조준·파워·거리를 쟀다)
+    if (!m.p) {
+      const dir = st.teams[0].dir
+      const me = st.players[c.me]
+      const df = st.players[c.f.def]
+      const passed = (me.x - df.x) * dir > 0.8
+      if ((passed && Math.abs(me.x - dir * HALF_L) < 16) || j > 120) m.p = k
+      else return passed ? I(BTN_E, 127, 0) : I(BTN_E, 127, 127)
+    }
+    const q = k - m.p
+    if (q < 14) return I(BTN_D, 127, 127)
     return I(0)
   },
   header() {

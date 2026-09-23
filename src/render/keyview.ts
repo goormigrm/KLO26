@@ -4,28 +4,32 @@
 // 설정에서 켜고 끄는 일반 기능이 됐다 (2026-09-11). 내 화면에만 보이고 상대에겐 안 간다.
 
 import {
-  BTN_A, BTN_C, BTN_D, BTN_E, BTN_PACE, BTN_PRESET_NEXT, BTN_PRESET_PREV, BTN_Q, BTN_S, BTN_SKIP, BTN_SPACE, BTN_SUB, BTN_W, BTN_Z,
+  BTN_A, BTN_BAL_DOWN, BTN_BAL_UP, BTN_C, BTN_CTRL, BTN_D, BTN_E, BTN_F, BTN_GK, BTN_PACE, BTN_Q, BTN_S, BTN_SKIP, BTN_SPACE, BTN_SUB,
+  BTN_TAC1, BTN_TAC2, BTN_TAC3, BTN_TAC4, BTN_W, BTN_Z, presetPick,
   type Input,
 } from '../core/input'
 
 /** 화면에 그릴 키 — [표시, e.code, 비트(0 = 방향키)] */
 const ROWS: [string, string, number][][] = [
   [
+    ['`', 'Backquote', BTN_GK],
     ['Q', 'KeyQ', BTN_Q],
     ['W', 'KeyW', BTN_W],
     ['E', 'KeyE', BTN_E],
-    ['[', 'BracketLeft', BTN_PRESET_PREV],
-    [']', 'BracketRight', BTN_PRESET_NEXT],
+    ['[', 'BracketLeft', BTN_BAL_DOWN],
+    [']', 'BracketRight', BTN_BAL_UP],
   ],
   [
     ['A', 'KeyA', BTN_A],
     ['S', 'KeyS', BTN_S],
     ['D', 'KeyD', BTN_D],
+    ['F', 'KeyF', BTN_F],
     ['Z', 'KeyZ', BTN_Z],
     ['C', 'KeyC', BTN_C],
   ],
   [
     ['Shift', 'ShiftLeft', BTN_PACE],
+    ['Ctrl', 'ControlLeft', BTN_CTRL],
     ['Space', 'Space', BTN_SPACE],
     ['Enter', 'Enter', BTN_SKIP],
   ],
@@ -33,8 +37,9 @@ const ROWS: [string, string, number][][] = [
 
 const BIT_NAMES: [number, string][] = [
   [BTN_S, 'S'], [BTN_W, 'W'], [BTN_A, 'A'], [BTN_D, 'D'], [BTN_E, 'E'],
-  [BTN_PACE, 'PACE'], [BTN_SPACE, 'SPACE'], [BTN_C, 'C'], [BTN_Q, 'Q'], [BTN_Z, 'Z'],
-  [BTN_PRESET_NEXT, ']'], [BTN_PRESET_PREV, '['], [BTN_SUB, 'SUB'], [BTN_SKIP, 'SKIP'],
+  [BTN_PACE, 'SHIFT'], [BTN_SPACE, 'SPACE'], [BTN_C, 'C'], [BTN_Q, 'Q'], [BTN_Z, 'Z'], [BTN_F, 'F'], [BTN_CTRL, 'CTRL'], [BTN_GK, '`'],
+  [BTN_BAL_UP, ']'], [BTN_BAL_DOWN, '['], [BTN_TAC1, 'F1'], [BTN_TAC2, 'F2'], [BTN_TAC3, 'F3'], [BTN_TAC4, 'F4'],
+  [BTN_SUB, 'SUB'], [BTN_SKIP, 'SKIP'],
 ]
 
 export interface KeyViewInfo {
@@ -80,14 +85,16 @@ export class KeyView {
 
   update(v: KeyViewInfo): void {
     for (const [code, el] of this.keyEls) {
-      // Shift 는 좌우 둘 다 본다
-      const on = v.down.has(code) || (code === 'ShiftLeft' && v.down.has('ShiftRight'))
+      // Shift·Ctrl 은 좌우 둘 다 본다
+      const on = v.down.has(code) || (code === 'ShiftLeft' && v.down.has('ShiftRight')) || (code === 'ControlLeft' && v.down.has('ControlRight'))
       el.classList.toggle('on', on)
     }
     const b = v.input.buttons
     if (b !== this.lastBits) {
       this.lastBits = b
       const names = BIT_NAMES.filter(([bit]) => (b & bit) !== 0).map(([, n]) => n)
+      const pick = presetPick(b)
+      if (pick >= 0) names.push(`전술 ${pick === 9 ? 0 : pick + 1}`)
       this.bits.textContent = names.length ? names.join(' + ') : '—'
       this.bits.classList.toggle('none', names.length === 0)
     }

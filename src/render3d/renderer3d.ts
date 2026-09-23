@@ -60,7 +60,13 @@ export interface ViewInfo {
   aim?: KickPreview | null
   /** 슛·패스 홀드 파워 0~1 — 조작 선수 발밑 바 (2026-09-15, FC 온라인 방식) */
   hold?: number
+  /** 파워 슛(F+D) 타이밍 게이지 — 준비 진행 0~1, 초록 구간 [시작, 끝] (0~1). 없으면 안 그린다 (2026-09-23) */
+  gauge?: { t: number; green: [number, number]; hit: number } | null
 }
+
+/** 선수 이름 표시 — `-` 키로 돌린다 (FC 온라인 "선수명 표시 변경", 2026-09-23). 0 조작·공 가진 선수 · 1 전원 · 2 끔 */
+export type NameMode = 0 | 1 | 2
+export const NAME_MODE_TEXT = ['이름: 조작·공 가진 선수', '이름: 전원', '이름: 끔'] as const
 
 /** 궤적 미리보기 점 최대 개수 (60 Hz × 4 초) · 구슬 개수 */
 const PATH_MAX = 250
@@ -148,6 +154,14 @@ export class Renderer3D {
   private ownerName: THREE.Sprite | null = null
   private ownerNameFor = -1
   private ownerNameColor = ''
+  /** `-` 이름 표시 — 전원 모드일 때 22명 이름표 (필요할 때 만든다) */
+  private nameMode: NameMode = 0
+  private allNames: (THREE.Sprite | null)[] = []
+  private allNameText: string[] = []
+  /** 파워 슛 타이밍 게이지 — 머리 위 (캔버스 한 장을 매 프레임 다시 그린다) */
+  private gaugeCv: HTMLCanvasElement = document.createElement('canvas')
+  private gaugeTex: THREE.CanvasTexture | null = null
+  private gauge: THREE.Sprite | null = null
   private camX = 0
   private camLookY = 0
   private camFov = FOV_WIDE
@@ -293,6 +307,72 @@ export class Renderer3D {
     this.helpers = on
   }
 
+  /** 선수 이름 표시 방식 (`-` 키) */
+  setNameMode(m: NameMode): void {
+    this.nameMode = m
+    if (m !== 1) for (const sp of this.allNames) if (sp) sp.visible = false
+  }
+
+  private dropAllNames(): void {
+    for (const sp of this.allNames) {
+      if (!sp) continue
+      this.scene.remove(sp)
+      ;(sp.material as THREE.SpriteMaterial).map?.dispose()
+      sp.material.dispose()
+    }
+    this.allNames = []
+    this.allNameText = []
+  }
+
+  /** 전원 이름표 — 이름이 바뀐(교체) 선수만 다시 만든다 */
+  private drawAllNames(curr: GameState, humanTeam: number, skip: number): void {
+    const n = Math.min(curr.players.length, this.rigs.length)
+    for (let i = 0; i < n; i++) {
+      const p = curr.players[i]
+      const text = `${p.spec.no} ${p.spec.name}`
+      let sp = this.allNames[i] ?? null
+      if (!sp || this.allNameText[i] !== text) {
+        if (sp) {
+          this.scene.remove(sp)
+          ;(sp.material as THREE.SpriteMaterial).map?.dispose()
+          sp.material.dispose()
+        }
+        sp = nameSprite(text, p.team === humanTeam ? '#f4f4f4' : '#ff8a7a')
+        sp.scale.multiplyScalar(0.6)
+        this.scene.add(sp)
+        this.allNames[i] = sp
+        this.allNameText[i] = text
+      }
+      const rig = this.rigs[i]
+      sp.visible = i !== skip && !p.sentOff
+      sp.position.set(rig.root.position.x, rig.height + 1.05, rig.root.position.z)
+    }
+  }
+
+  /** 파워 슛 게이지 — 바탕 · 초록 구간 · 지나가는 눈금 */
+  private drawGauge(g: { t: number; green: [number, number]; hit: number }): void {
+    const cv = this.gaugeCv
+    if (!this.gauge) {
+      cv.width = 256
+      cv.height = 40
+      this.gaugeTex = new THREE.CanvasTexture(cv)
+      this.gaugeTex.colorSpace = THREE.SRGBColorSpace
+      this.gauge = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.gaugeTex, transparent: true, depthTest: false }))
+      this.gauge.scale.set(2.4, 0.38, 1)
+      this.gauge.renderOrder = 11
+      this.scene.add(this.gauge)
+    }
+    const c = cv.getContext('2d')!
+    c.clearRect(0, 0, 256, 40)
+    c.fillStyle = 'rgba(10,14,20,0.8)'
+    c.fillRect(0, 8, 256, 24)
+    c.fillStyle = g.hit === 1 ? '#7ee787' : '#3fb950'
+    c.fillRect(4 + g.green[0] * 248, 10, (g.green[1] - g.green[0]) * 248, 20)
+    c.fillStyle = g.hit === 2 ? '#f85149' : '#ffffff'
+    c.fillRect(4 + Math.min(1, g.t) * 248 - 3, 2, 6, 36)
+    this.gaugeTex!.needsUpdate = true
+  }
+
   /** 선수 하나의 리그 — 찰흙만 (실사 glTF 모드는 2026-09-15 저녁 사용자 결정으로 뺐다, DECISIONS G-49) */
   private makeRig(p: Player): Rig {
     const kit = p.sk.isGK ? this.gkKits![p.team] : this.kits![p.team]
@@ -315,6 +395,7 @@ export class Renderer3D {
     this.pitch.setHomeColor(kits[0].shirt)
     this.camInit = false
     this.nameFor = -1
+    this.dropAllNames()
     this.refs.place(st)
   }
 
@@ -439,7 +520,7 @@ export class Renderer3D {
       this.ring.visible = false
       if (this.name) this.name.visible = false
     }
-    if (this.name && c >= 0) this.name.visible = true
+    if (this.name && c >= 0) this.name.visible = this.nameMode !== 2
 
     // ---- 공을 가진 선수 (조작 선수가 아닐 때) — 링 + 이름 ----
     const ow = curr.ball.owner
@@ -464,13 +545,22 @@ export class Renderer3D {
         this.ownerNameColor = color
       }
       if (this.ownerName) {
-        this.ownerName.visible = true
+        this.ownerName.visible = this.nameMode === 0
         this.ownerName.position.set(rig.root.position.x, rig.height + 1.25, rig.root.position.z)
       }
     } else {
       this.ownerRing.visible = false
       if (this.ownerName) this.ownerName.visible = false
     }
+    // `-` 전원 이름 (조작 선수는 위의 큰 이름표가 있다)
+    if (this.nameMode === 1) this.drawAllNames(curr, view.humanTeam, c)
+    // 파워 슛 타이밍 게이지 — 조작 선수 머리 위 (초록 구간에서 D 를 한 번 더)
+    if (view.gauge && c >= 0 && c < n) {
+      this.drawGauge(view.gauge)
+      const rig = this.rigs[c]
+      this.gauge!.visible = true
+      this.gauge!.position.set(rig.root.position.x, rig.height + 1.9, rig.root.position.z)
+    } else if (this.gauge) this.gauge.visible = false
     // 방향키 표시 — 누르고 있는 동안 조작 선수 앞 1.3 m 에 ">" (공격: 노랑 · 슛 모으는 중: 빨강 · 수비: 흰색)
     const team = curr.teams[view.humanTeam]
     const ix = team ? team.inX : 0
@@ -488,7 +578,7 @@ export class Renderer3D {
     // ---- 세트피스 궤적 미리보기 (2026-09-11) — 킥커가 D/A 를 홀드 중이면 평균 궤적을 점선으로 ----
     if (view.aim) {
       const a = view.aim
-      const n = Math.min(PATH_MAX, flightPath(a.x, a.y, a.z, a.vx, a.vy, a.vz, 4, this.pathBuf))
+      const n = Math.min(PATH_MAX, flightPath(a.x, a.y, a.z, a.vx, a.vy, a.vz, 4, this.pathBuf, a.curl, a.dip))
       const geo = this.path.geometry
       const pos = geo.getAttribute('position') as THREE.BufferAttribute
       for (let i = 0; i < n; i++) pos.setXYZ(i, this.pathBuf[i * 3], this.pathBuf[i * 3 + 2] + 0.06, -this.pathBuf[i * 3 + 1])
@@ -712,6 +802,8 @@ export class Renderer3D {
   }
 
   dispose(): void {
+    this.dropAllNames()
+    this.gaugeTex?.dispose()
     for (const r of this.rigs) r.dispose()
     this.rigs = []
     this.refs.dispose()

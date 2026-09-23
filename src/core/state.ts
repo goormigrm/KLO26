@@ -142,6 +142,24 @@ export interface Player {
   /** 대인마크 상대 idx (−1 없음) · 잡은 틱 — 두 수비수가 같은 상대를 잡지 않게 (2026-09-15) */
   markOf: number
   markT: number
+  // ---- 사람 조작 동작 (2026-09-23 FC 온라인 조작 맞추기, DESIGN 3.1a) — 봇은 쓰지 않는다 ----
+  /** 침투 패스(Q+S)를 낸 선수 — 이 틱까지 앞 공간으로 달린다 */
+  goUntil: number
+  /** 개인기(힐투볼롤) 중 — 이 틱까지 공을 뺏기 어렵다 */
+  skillT: number
+  /** 페이크 슛에 속았다 — 이 틱까지 발이 묶여 도전하지 못한다 */
+  bitT: number
+  /** Space 홀드 — 붙은 상대의 유니폼을 잡아 늦춘다 (파울 위험) */
+  pull: boolean
+  /** 사람이 건 슬라이딩인가 · A 를 다시 눌러 빨리 일어나기 */
+  slid: boolean
+  quickUp: boolean
+  /** 아군이 발로 준 공·스로인으로 받았다 — 골키퍼가 손으로 줍지 못한다 (백패스 규칙) */
+  gotMate: boolean
+  /** 골키퍼가 손에서 내려놓았다 — 남이 만지기 전에는 다시 손으로 못 잡는다 */
+  dropped: boolean
+  /** 골키퍼가 부른 선수(C) — 이 틱까지 받으러 온다 */
+  callT: number
 }
 
 export interface Ball {
@@ -172,6 +190,14 @@ export interface Ball {
   passLive: boolean
   /** 마지막 패스 종류 (ground·through·lob·lowcross·highcross·punt·throw) — 계측 전용, 해시에 안 들어간다 (2026-09-15) */
   passKind: string
+  /** 감아차기·플레어 — 진행 방향 **왼쪽**으로 휘는 가속도 (m/s², 음수면 오른쪽). 누가 만지면 0 (2026-09-23) */
+  curl: number
+  /** 톱스핀 — 공중에서 더 빨리 떨어지는 가속도 (m/s²). 직접 프리킥이 벽을 넘어 골문 밑으로 떨어지게 */
+  dip: number
+  /** 플레어(노룩·힐) 패스·크로스 — 상대가 읽기 어렵다 (가로채기 불리). 누가 만지면 0 */
+  trick: number
+  /** 딩크(S+S · W+W) — 발높이(0.3 m) 위로 뜬 동안은 상대가 발로 못 끊는다 */
+  dink: boolean
 }
 
 export type Phase =
@@ -255,8 +281,6 @@ export interface Team {
   /** 슛 버튼을 누르고 있는 틱 수 (파워) */
   holdShoot: number
   holdPass: number
-  /** 마지막으로 A 를 누른 틱 (더블 탭 = 로우 크로스) */
-  lastA: number
   /** 이번 틱 방향키 (−1..1) · 홀드 키 */
   inX: number
   inY: number
@@ -284,6 +308,53 @@ export interface Team {
   pendingSubs: SubOrder[]
   /** 골키퍼 돌진(수비 W) — 이 틱까지 GK 가 볼 소유자에게 나간다 */
   gkRush: number
+  // ---- 2026-09-23 FC 온라인 조작 맞추기 (DESIGN 3.1a). 봇 팀은 늘 기본값이다 ----
+  /** 공수 밸런스 −2(전원 수비) ~ +2(전원 공격). 경기마다 0(보통)에서 시작 ([ ]) */
+  balance: number
+  /** 순간 전술 1~4(F1~F4) · 끝나는 틱. 0 = 없음 */
+  tac: number
+  tacUntil: number
+  /** 코너킥 공격 작전 0 기본 · 1 니어 · 2 파 · 3 짧은 코너 · 4 세컨드 볼 */
+  cornerPlan: number
+  /** 지난 틱 방향키 (Shift+방향키 선수 바꾸기) */
+  prevMx: number
+  prevMy: number
+  /** Ctrl 홀드 — 받으면서 방향키 쪽으로 친다 (퍼스트 터치 녹온) */
+  touchK: boolean
+  /** ` 홀드 — 골키퍼를 직접 조작한다 */
+  gkManual: boolean
+  /** 방금 찬 공 — 같은 키를 한 번 더 누르면 바뀐다 (S+S 딩크 · W+W · A+A 낮은 크로스 · D+D 드리븐 · E×3 슈퍼 녹온) */
+  tapKind: number
+  tapTick: number
+  tapBy: number
+  tapD: number
+  /** E 를 연달아 누른 횟수 · 마지막 틱 (E 두 번 = 퀵 녹온, 세 번 = 슈퍼 녹온) */
+  eTaps: number
+  eTick: number
+  /** Shift+Q 로 방향키를 앞으로 민 마지막 틱 (힐투볼롤) */
+  rollT: number
+  /** 파워 슛(F+D) 준비 시작 틱 (−1 없음) · 두 번째 D 판정 0 없음 · 1 초록 · 2 빗나감 · 찰 때 쓸 값 */
+  powerT: number
+  powerHit: number
+  powerDx: number
+  powerDy: number
+  powerPow: number
+  powerZ: boolean
+  /** 페이크 슛 — 마지막 틱 · 이번 D 홀드는 페이크였다 */
+  fakeT: number
+  fakeHold: boolean
+  /** PK 골키퍼(사람) — 다이빙 방향을 골랐다 · 골라인 위 y(−1..1) · 높이 · 방해 동작 틱 */
+  pkDive: boolean
+  pkDiveY: number
+  pkDiveHigh: boolean
+  pkAntT: number
+  /** 프리킥 수비(사람) — 벽 점프 틱 · 벽 좌우(월드 y, m) · 벽 전진(m) · 뛰쳐나가기 */
+  wallJumpT: number
+  wallShift: number
+  wallAdv: number
+  fkCharge: boolean
+  /** 골키퍼가 공을 들고 E — 이 틱까지 팀 라인이 올라간다 */
+  pushUntil: number
 }
 
 export interface TeamStats {

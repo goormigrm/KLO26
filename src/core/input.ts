@@ -1,4 +1,4 @@
-// 사람 입력. 한 틱에 한 개. 네트워크 패킷(락스텝)이 실어 나르는 것도 이 6바이트다 (DESIGN 6.4).
+// 사람 입력. 한 틱에 한 개. 네트워크 패킷(락스텝)이 실어 나르는 것도 이 8바이트다 (DESIGN 6.4 — 2026-09-23 6 → 8).
 // 키 배치는 축구 게임의 표준 키보드 배치를 따른다 (DESIGN 3.1). 같은 키가 공격/수비에서 뜻이 바뀌는 것은
 // 여기서가 아니라 sim 이 "우리 팀이 공을 갖고 있나"로 가른다 — 그래서 비트 이름은 키 이름이 아니라 동작 묶음이다.
 
@@ -13,22 +13,23 @@ export const BTN_D = 1 << 3
 /** E — 전력질주 (홀드) */
 export const BTN_E = 1 << 4
 /**
- * Shift — 페이스 컨트롤 (천천히 드리블, 볼을 붙인다).
+ * Shift — 페이스 컨트롤 (천천히 드리블, 볼을 붙인다) · 전력질주(E) 중에 톡 = 녹온 · 수비에서 Shift+방향키 = 그쪽 선수로 바꾸기 ·
+ * Shift+Q+방향키 앞→뒤 = 힐투볼롤 · 페널티킥 키커 움직이기.
  * 설계 3.1 은 원래 Ctrl 이었으나 **Ctrl+W 가 크롬에서 탭을 닫아** 사용자 결정으로 Shift 로 옮겼다 (DECISIONS C-1).
  */
 export const BTN_PACE = 1 << 5
-/** Space — 태클/밀치기 (스탠딩) */
+/** Space — 스탠딩 태클 (누른 순간) · 누르고 있으면 당기고 버티기 (추격 중 유니폼 잡기 — 파울 위험) */
 export const BTN_SPACE = 1 << 6
-/** C — 견제 (홀드 — 마주 보며 천천히) */
+/** C — 견제 (홀드 — 마주 보며 천천히, C+E 달리며 견제). 조합: C+S 플레어 패스 · C+A 플레어 크로스 · C+D 플레어 슛 */
 export const BTN_C = 1 << 7
-/** Q — 홀드: 팀 지원 요청(두 번째 수비수 압박). 조합: Q+D 칩슛 · Q+A 하이 크로스 */
+/** Q — 홀드: 팀 지원 요청(두 번째 수비수 압박). 조합: Q+D 칩슛 · Q+A 하이 크로스 · Q+S 침투 패스 · Q+W 로빙 스루 */
 export const BTN_Q = 1 << 8
-/** Z — 조합키 예약 (Z+D 감아차기 — 스핀이 없어 v1 은 강슛으로 본다) */
+/** Z — 조합키: 드라이브(빠르고 낮게) · 감아차기(Z+D) · 골키퍼 공 줍기 · 프리킥 수비벽 전진 */
 export const BTN_Z = 1 << 9
-/** ] — 전술 프리셋 다음 (수비 → 균형 → 공격) */
-export const BTN_PRESET_NEXT = 1 << 10
-/** [ — 전술 프리셋 이전 */
-export const BTN_PRESET_PREV = 1 << 11
+/** ] — 공수 밸런스 한 단계 공격 쪽 (전원 수비 · 수비적 · 보통 · 공격적 · 전원 공격 — FC 온라인 [ ] · 2026-09-23) */
+export const BTN_BAL_UP = 1 << 10
+/** [ — 공수 밸런스 한 단계 수비 쪽 */
+export const BTN_BAL_DOWN = 1 << 11
 /**
  * 교체 명령 — a = 나가는 선발(팀 안 0~10), b = 들어오는 벤치(0~6). 다음 데드볼에 적용.
  * 한 틱에 한 명 — 여러 명은 여러 틱에 나눠 보낸다. a = SUB_CLEAR(255) 면 넣어 둔 명령을 전부 지운다 (2026-09-11)
@@ -37,6 +38,30 @@ export const BTN_SUB = 1 << 12
 export const SUB_CLEAR = 255
 /** Enter — 골 세레모니·리플레이 건너뛰기 (온라인은 양쪽이 다 눌러야 넘어간다 · 2026-09-11) */
 export const BTN_SKIP = 1 << 13
+
+// ---- 2026-09-23 FC 온라인 조작 맞추기 (DESIGN 3.1a) — buttons 가 16비트를 넘어 패킷이 8바이트가 됐다 ----
+
+/** F — 파워 슛 (F+D+D: 머리 위 타이밍 게이지) */
+export const BTN_F = 1 << 14
+/** Ctrl — 퍼스트 터치 녹온 (Ctrl+방향키로 받으면서 친다) · PK 골키퍼 다이빙. Ctrl+W 는 브라우저가 먼저 먹는다 — 세션이 한 번 묻는다 */
+export const BTN_CTRL = 1 << 15
+/** ` — 골키퍼 직접 조작 (누르고 있는 동안, "키컨") */
+export const BTN_GK = 1 << 16
+/** F1~F4 — 경기 중 순간 전술(오프사이드 트랩 · 전방 압박 · 공격 가담 · 수비 가담) · 코너킥 공격이면 세트피스 작전 */
+export const BTN_TAC1 = 1 << 17
+export const BTN_TAC2 = 1 << 18
+export const BTN_TAC3 = 1 << 19
+export const BTN_TAC4 = 1 << 20
+export const BTN_TACS = [BTN_TAC1, BTN_TAC2, BTN_TAC3, BTN_TAC4] as const
+/** 숫자 1~0 — 전술 고르기. 비트가 아니라 **4비트 값**(1~10, 0 = 없음)을 21~24 번 자리에 싣는다 */
+export const PRESET_SHIFT = 21
+export const PRESET_MASK = 0xf << PRESET_SHIFT
+
+/** 이번 틱에 누른 숫자 키 → 전술 번호 0~9 (없으면 −1) */
+export function presetPick(buttons: number): number {
+  const v = (buttons & PRESET_MASK) >>> PRESET_SHIFT
+  return v >= 1 && v <= 10 ? v - 1 : -1
+}
 
 export interface Input {
   /** 방향키 −127..127 (대각선은 둘 다) */
@@ -67,22 +92,23 @@ export function inputEquals(a: Input, b: Input): boolean {
   return a.mx === b.mx && a.my === b.my && a.buttons === b.buttons && a.a === b.a && a.b === b.b
 }
 
-export const INPUT_BYTES = 6
+/** mx 1 · my 1 · buttons 4 · a 1 · b 1 (2026-09-23: buttons 2 → 4바이트 — FC 온라인 키가 16비트를 넘었다) */
+export const INPUT_BYTES = 8
 
 export function writeInput(view: DataView, offset: number, i: Input): void {
   view.setInt8(offset, i.mx)
   view.setInt8(offset + 1, i.my)
-  view.setUint16(offset + 2, i.buttons & 0xffff)
-  view.setUint8(offset + 4, i.a & 255)
-  view.setUint8(offset + 5, i.b & 255)
+  view.setUint32(offset + 2, i.buttons >>> 0)
+  view.setUint8(offset + 6, i.a & 255)
+  view.setUint8(offset + 7, i.b & 255)
 }
 
 export function readInput(view: DataView, offset: number): Input {
   return {
     mx: view.getInt8(offset),
     my: view.getInt8(offset + 1),
-    buttons: view.getUint16(offset + 2),
-    a: view.getUint8(offset + 4),
-    b: view.getUint8(offset + 5),
+    buttons: view.getUint32(offset + 2),
+    a: view.getUint8(offset + 6),
+    b: view.getUint8(offset + 7),
   }
 }

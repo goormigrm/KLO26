@@ -75,12 +75,34 @@ export function feetY(p: Player, off: number): number {
   return p.y + sinA(p.facing) * off
 }
 
-/** 자유 상태의 공을 한 틱 옮긴다 (중력·선형 공기 저항·지면 마찰·반발·골대) */
+/** 회전이 풀리는 빠르기 (1/s) — 감아찬 공은 1~1.5 초 동안 휜다 */
+const SPIN_DECAY = 0.6
+
+/**
+ * 옆 회전(curl) — 속도에 수직으로 가속한다(진행 방향 왼쪽이 +). 속력은 그대로 두고 방향만 튼다.
+ * 봇은 늘 0 이라 이 함수가 아무것도 안 한다 (2026-09-23 감아차기·플레어 — 사람 조작만)
+ */
+function applyCurl(b: { vx: number; vy: number; curl: number }, grounded: boolean): void {
+  const sp = len(b.vx, b.vy)
+  if (sp < 1) {
+    b.curl = 0
+    return
+  }
+  const k = (b.curl * DT) / sp
+  const nvx = b.vx - b.vy * k
+  const nvy = b.vy + b.vx * k
+  const f = sp / len(nvx, nvy)
+  b.vx = nvx * f
+  b.vy = nvy * f
+  b.curl *= 1 - (grounded ? 3 : SPIN_DECAY) * DT
+  if (b.curl > -0.05 && b.curl < 0.05) b.curl = 0
+}
+
+/** 자유 상태의 공을 한 틱 옮긴다 (중력·선형 공기 저항·지면 마찰·반발·골대 · 회전: 옆으로 휨·톱스핀 낙하) */
 export function moveBall(b: Ball): boolean {
-  const hitBefore = false
-  void hitBefore
-  if (b.z > 0 || b.vz > 0) {
-    b.vz -= GRAVITY * DT
+  const air = b.z > 0 || b.vz > 0
+  if (air) {
+    b.vz -= (GRAVITY + b.dip) * DT
     b.vx *= 1 - AIR_DRAG * DT
     b.vy *= 1 - AIR_DRAG * DT
   } else {
@@ -92,6 +114,7 @@ export function moveBall(b: Ball): boolean {
       b.vy *= f
     }
   }
+  if (b.curl !== 0) applyCurl(b, !air)
   const px = b.x
   b.x += b.vx * DT
   b.y += b.vy * DT
@@ -99,6 +122,8 @@ export function moveBall(b: Ball): boolean {
   if (b.z <= 0) {
     b.z = 0
     if (b.vz < 0) {
+      // 땅에 닿으면 톱스핀은 풀린다 (튀어 오른 공이 다시 내리꽂히지 않게)
+      b.dip = 0
       if (-b.vz > 0.8) {
         b.vz = -b.vz * BOUNCE
         b.vx *= BOUNCE_SLOW
@@ -106,23 +131,38 @@ export function moveBall(b: Ball): boolean {
       } else b.vz = 0
     }
   }
-  return hitPosts(b, px)
+  const hit = hitPosts(b, px)
+  if (hit) {
+    b.curl = 0
+    b.dip = 0
+  }
+  return hit
 }
 
 /**
- * 렌더 전용 — 자유 공의 예상 궤적 (프리킥 미리보기, 2026-09-11). `moveBall` 과 같은 중력·공기 저항으로
+ * 렌더 전용 — 자유 공의 예상 궤적 (프리킥 미리보기, 2026-09-11). `moveBall` 과 같은 중력·공기 저항·회전(2026-09-23)으로
  * 60 Hz 적분해 [x, y, z, …] 를 채운다. 땅에 닿거나 골라인을 넘거나 maxSec 이 지나면 멈춘다.
  * 결정론과 무관하다 — 시뮬 상태를 건드리지 않는다.
  */
-export function flightPath(x: number, y: number, z: number, vx: number, vy: number, vz: number, maxSec: number, out: number[]): number {
+export function flightPath(
+  x: number, y: number, z: number, vx: number, vy: number, vz: number, maxSec: number, out: number[], curl = 0, dip = 0,
+): number {
   out.length = 0
   const steps = Math.floor(maxSec / DT)
+  const spin = { vx, vy, curl }
   for (let i = 0; i < steps; i++) {
     out.push(x, y, z)
     if (z > 0 || vz > 0) {
-      vz -= GRAVITY * DT
+      vz -= (GRAVITY + dip) * DT
       vx *= 1 - AIR_DRAG * DT
       vy *= 1 - AIR_DRAG * DT
+    }
+    if (spin.curl !== 0) {
+      spin.vx = vx
+      spin.vy = vy
+      applyCurl(spin, false)
+      vx = spin.vx
+      vy = spin.vy
     }
     x += vx * DT
     y += vy * DT
@@ -180,8 +220,11 @@ export function resolveCollisions(players: Player[], r: number): void {
   const d2 = r * r * 4
   for (let i = 0; i < n; i++) {
     const a = players[i]
+    // 퇴장한 선수(연습 모드에서 치워 둔 선수 포함)는 부딪히지 않는다
+    if (a.sentOff) continue
     for (let j = i + 1; j < n; j++) {
       const b = players[j]
+      if (b.sentOff) continue
       const dx = b.x - a.x
       const dy = b.y - a.y
       const dd = dx * dx + dy * dy

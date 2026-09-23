@@ -9,11 +9,14 @@
 import { atan2A, clamp, cosA, len, sinA } from './fixedmath'
 import { anchorOf, type Band } from './formation'
 import { rand } from './rng'
-import { G, aimShot, clearOffside, dist, doPass, doShoot, doThrow, gkPunt, lobVector, nearestOppDist, offsideLineX, pickPassTarget } from './ball'
+import {
+  G, aimShot, clearOffside, clearSpin, dist, doPass, doShoot, doThrow, gkPunt, lobVector, nearestOppDist, offsideLineX, pickPassTarget,
+  type ShotMods,
+} from './ball'
 import { crossedGoalLine } from './physics'
 import { skillsOf } from './skills'
 import {
-  ACT_RUN, ADDED_MAX_MIN, BALL_R, BOX_HALF_W, BOX_L, CIRCLE_R, CLOCK_SCALE, DT, END_GRACE_SEC, BOX_SETPIECE_DIST, BOX_SETPIECE_TICKS, FOUL_TICKS, GOAL_SKIP_TICKS, GOAL_TICKS,
+  ACT_DIVE, ACT_RUN, ADDED_MAX_MIN, GOAL_HALF, BALL_R, BOX_HALF_W, BOX_L, CIRCLE_R, CLOCK_SCALE, DT, END_GRACE_SEC, BOX_SETPIECE_DIST, BOX_SETPIECE_TICKS, FOUL_TICKS, GOAL_SKIP_TICKS, GOAL_TICKS,
   HALFTIME_TICKS, HALF_L, HALF_W, KICKOFF_TICKS, PENALTY_TICKS, PEN_SPOT, RESTART_TICKS, THROWIN_CLEAR,
   goalX, ownGoalX, type GameState, type PendingCall, type Phase, type Player, type Team,
 } from './state'
@@ -35,6 +38,7 @@ function resetBall(st: GameState, x: number, y: number): void {
   b.fromThrow = false
   b.restartBy = -1
   b.passLive = false
+  clearSpin(b)
 }
 
 /** 킥커를 그 자리에 세우고 공을 준다 */
@@ -180,6 +184,13 @@ export function setupFreeKick(st: GameState, team: number, x: number, y: number)
   const kicker = deep ? st.teams[team].gk : nearestField(st, team, px, py)
   placeKicker(st, kicker, px - dir * 1.2, py, goalX(st.teams[team]), 0)
   st.restart = { team, kicker, x: px, y: py, hands: false, noOffside: false }
+  // 프리킥 수비(사람)의 벽 조작은 프리킥마다 새로 (2026-09-23)
+  for (const tm of st.teams) {
+    tm.wallJumpT = -1000
+    tm.wallShift = 0
+    tm.wallAdv = 0
+    tm.fkCharge = false
+  }
   st.events.push({ tick: st.tick, type: 'freekick', team, player: kicker, x: px, y: py })
 }
 
@@ -205,8 +216,9 @@ export function setupPenalty(st: GameState, team: number): void {
   if (kicker < 0) kicker = t.gk
   const oppGkIdx = st.teams[1 - team].gk
   for (const p of st.players) {
-    if (p.idx === kicker) continue
-    if (p.idx === oppGkIdx && !p.sentOff) {
+    // 퇴장한 선수는 터치라인 밖 그대로 (2026-09-23 — 예전엔 PK 때 "공보다 뒤"로 밀려 보이지 않는 채 피치 안에 섰다)
+    if (p.idx === kicker || p.sentOff) continue
+    if (p.idx === oppGkIdx) {
       // 골라인 위 가운데
       p.x = dir * (HALF_L - 0.35)
       p.y = 0
@@ -232,6 +244,10 @@ export function setupPenalty(st: GameState, team: number): void {
   }
   placeKicker(st, kicker, spotX - dir * 2.2, 0, dir * HALF_L, 0)
   st.restart = { team, kicker, x: spotX, y: 0, hands: false, noOffside: true }
+  for (const tm of st.teams) {
+    tm.pkDive = false
+    tm.pkAntT = -1000
+  }
   st.events.push({ tick: st.tick, type: 'penalty', team, player: kicker, x: spotX, y: 0 })
 }
 
@@ -307,6 +323,7 @@ export function enforceRestartPositions(st: GameState): void {
     const dir = st.teams[r.team].dir
     const oppGkIdx = st.teams[1 - r.team].gk
     for (const p of st.players) {
+      if (p.sentOff) continue
       if (p.idx === oppGkIdx) {
         // 골키퍼는 킥 순간까지 골라인에서 0.6 m 안 (규칙)
         const lineX = dir * (HALF_L - 0.35)
@@ -314,6 +331,8 @@ export function enforceRestartPositions(st: GameState): void {
           p.x = lineX - dir * 0.6
           if (p.vx * -dir > 0) p.vx = 0
         }
+        // 사람 골키퍼가 좌우로 움직여도 골대 안 (2026-09-23)
+        if (Math.abs(p.y) > GOAL_HALF - 0.3) p.y = Math.sign(p.y) * (GOAL_HALF - 0.3)
         continue
       }
       if (p.idx === r.kicker) continue
@@ -351,8 +370,10 @@ export function enforceRestartPositions(st: GameState): void {
       }
       continue
     }
+    // 프리킥 수비벽 전진(사람 Z · 2026-09-23) — 그만큼 가까이 설 수 있다(대신 주심에게 걸리면 경고)
+    const cl = ph === 'freekick' ? clear - st.teams[p.team].wallAdv : clear
     const d = dist(p.x, p.y, b.x, b.y)
-    if (d < clear) pushOutOfCircle(p, b.x, b.y, clear)
+    if (d < cl) pushOutOfCircle(p, b.x, b.y, cl)
   }
 }
 
@@ -370,6 +391,11 @@ export interface RestartAim {
   /** 키커 뒤 시점의 정밀 조준 — 화면 좌우(코너) · 위아래(높이). 없으면 자동 보조 */
   lat?: number
   lift?: number
+  /** 조합키 (2026-09-23 FC 온라인) — Z 감아차기 · C 플레어(프리킥) · Q 파넨카(PK) · PK 도움닫기 −1 걸어가며(C) · 1 달려가며(E) */
+  finesse?: boolean
+  flair?: boolean
+  panenka?: boolean
+  approach?: number
 }
 
 /**
@@ -406,6 +432,9 @@ export interface KickPreview {
   vy: number
   vz: number
   kind: 'D' | 'A'
+  /** 감아차기·톱스핀 (없으면 0) */
+  curl: number
+  dip: number
 }
 
 /**
@@ -419,6 +448,7 @@ export function previewRestartKick(
   mx: number,
   my: number,
   power: number,
+  mods?: ShotMods,
 ): KickPreview | null {
   const r = st.restart
   if (!r || r.team !== teamIdx) return null
@@ -431,14 +461,15 @@ export function previewRestartKick(
   const phase = st.phase
   if (kind === 'D') {
     if (phase === 'penalty') {
-      const A = aimShot(st, k, 0, 0, clamp(0.55 + power * 0.45, 0.55, 1), false, stick ? clamp(dy, -1, 1) || 1 : 1, screen ? { lat, lift } : undefined)
+      const pw = mods?.panenka ? power : clamp(0.55 + power * 0.45, 0.55, 1)
+      const A = aimShot(st, k, 0, 0, pw, false, stick ? clamp(dy, -1, 1) || 1 : 1, screen ? { lat, lift } : undefined, mods)
       const a = atan2A(A.ty - b.y, goalX(team) - b.x)
-      return { x: b.x, y: b.y, z: 0, vx: cosA(a) * A.speed, vy: sinA(a) * A.speed, vz: A.vz, kind }
+      return { x: b.x, y: b.y, z: 0, vx: cosA(a) * A.speed, vy: sinA(a) * A.speed, vz: A.vz, kind, curl: A.curl, dip: A.dip }
     }
     if (phase === 'freekick' && stick) {
-      const A = aimShot(st, k, dx, dy, clamp(0.6 + power * 0.4, 0.6, 1), false, null, screen ? { lat, lift } : undefined)
+      const A = aimShot(st, k, dx, dy, clamp(0.6 + power * 0.4, 0.6, 1), false, null, screen ? { lat, lift } : undefined, { ...mods, freekick: true })
       const a = atan2A(A.ty - b.y, goalX(team) - b.x)
-      return { x: b.x, y: b.y, z: 0, vx: cosA(a) * A.speed, vy: sinA(a) * A.speed, vz: A.vz, kind }
+      return { x: b.x, y: b.y, z: 0, vx: cosA(a) * A.speed, vy: sinA(a) * A.speed, vz: A.vz, kind, curl: A.curl, dip: A.dip }
     }
     if (phase === 'goalkick' && stick) {
       // gkPunt 와 같은 값
@@ -448,7 +479,7 @@ export function previewRestartKick(
       const tx = clamp(k.x + dir * d, -HALF_L + 3, HALF_L - 3)
       const ty = clamp(dy * 30, -HALF_W + 3, HALF_W - 3)
       const a = atan2A(ty - b.y, tx - b.x)
-      return { x: b.x, y: b.y, z: 0.3, vx: cosA(a) * speed, vy: sinA(a) * speed, vz: 0.5 * G * T * 1.06, kind }
+      return { x: b.x, y: b.y, z: 0.3, vx: cosA(a) * speed, vy: sinA(a) * speed, vz: 0.5 * G * T * 1.06, kind, curl: 0, dip: 0 }
     }
     return null
   }
@@ -460,7 +491,7 @@ export function previewRestartKick(
     const d = dist(b.x, b.y, ax, ay)
     const v = lobVector(d)
     const a = atan2A(ay - b.y, ax - b.x)
-    return { x: b.x, y: b.y, z: 0, vx: cosA(a) * v.speed, vy: sinA(a) * v.speed, vz: v.vz, kind }
+    return { x: b.x, y: b.y, z: 0, vx: cosA(a) * v.speed, vy: sinA(a) * v.speed, vz: v.vz, kind, curl: 0, dip: 0 }
   }
   return null
 }
@@ -512,7 +543,24 @@ export function performRestartKick(st: GameState, aim: RestartAim | null = null)
     const aimSide = aim && (aim.dx !== 0 || aim.dy !== 0) ? clamp(aim.dy, -1, 1) || side : side
     // 사람: ← → 코너 · ↑ ↓ 높이 (키커 뒤 시점 — 2026-09-11)
     const fine = aim && aim.lat !== undefined && aim.lift !== undefined ? { lat: aim.lat, lift: aim.lift } : undefined
-    doShoot(st, k, 0, 0, power, false, aimSide, fine)
+    // 조합키 (FC 온라인, 2026-09-23): Z 감아차기 · Q 파넨카 · C 걸어가며(정확 +) · E 달려가며(세게, 부정확) ·
+    // 사람 골키퍼가 2 초 안에 방해 동작(W·A·S·D)을 했으면 키커가 흔들린다
+    const def = st.teams[1 - r.team]
+    const mods: ShotMods = {}
+    let sigmaK = 1
+    if (aim?.finesse) mods.finesse = true
+    if (aim?.approach === -1) sigmaK *= 0.88
+    if (aim?.approach === 1) {
+      sigmaK *= 1.12
+      mods.speedK = 1.06
+    }
+    if (def.human && st.tick - def.pkAntT < 120) sigmaK *= 1.12
+    if (sigmaK !== 1) mods.sigmaK = sigmaK
+    if (aim?.panenka) {
+      mods.panenka = true
+      doShoot(st, k, 0, 0, clamp(aim.power, 0, 1), false, aimSide, fine, mods)
+    } else doShoot(st, k, 0, 0, power, false, aimSide, fine, mods)
+    keeperDive(st, 1 - r.team)
     st.ball.restartBy = k.idx
     clearOffside(st)
     return
@@ -538,7 +586,8 @@ export function performRestartKick(st: GameState, aim: RestartAim | null = null)
       else if (phase === 'freekick') {
         // 직접 프리킥: 키커 뒤 시점이면 ← → 코너 · ↑ ↓ 높이 (2026-09-11). 화면의 점선이 이 계산의 평균 궤적이다
         const fine = aim.lat !== undefined && aim.lift !== undefined ? { lat: aim.lat, lift: aim.lift } : undefined
-        doShoot(st, k, dx, dy, clamp(0.6 + aim.power * 0.4, 0.6, 1), false, null, fine)
+        wallReact(st, 1 - r.team)
+        doShoot(st, k, dx, dy, clamp(0.6 + aim.power * 0.4, 0.6, 1), false, null, fine, { freekick: true, finesse: aim.finesse, flair: aim.flair })
       }
       else doPass(st, k, 'lob', -1, dx, dy, 1)
     } else if (aim.kind === 'W') doPass(st, k, 'through', pickPassTarget(st, k, dx, dy, true), dx, dy, 0.5)
@@ -569,7 +618,10 @@ export function performRestartKick(st: GameState, aim: RestartAim | null = null)
     const gx = goalX(team)
     const dG = dist(k.x, k.y, gx, 0)
     if (dG < 28 && Math.abs(k.y) < 22) {
-      doShoot(st, k, 0, 0, 0.85, false, rand(st.rng) < 0.5 ? -1 : 1)
+      // 벽 위로, 코너 높게 (2026-09-23 — 벽이 슛을 막게 되면서 예전의 낮은 슛은 벽 높이라 다 맞았다)
+      const side = rand(st.rng) < 0.5 ? -1 : 1
+      wallReact(st, 1 - r.team)
+      doShoot(st, k, 0, 0, 0.85, false, null, { lat: side * 0.85, lift: 0.75 }, { freekick: true })
     } else {
       let target = -1
       let ts = -99
@@ -603,6 +655,45 @@ export function performRestartKick(st: GameState, aim: RestartAim | null = null)
   }
   st.ball.restartBy = k.idx
   if (noOff) clearOffside(st)
+}
+
+/**
+ * 사람 골키퍼가 PK 전에 고른 다이빙(D·Shift·Ctrl + 방향키) — 차는 순간 그쪽으로 몸을 날린다 (FC 온라인 · 2026-09-23).
+ * 가운데를 골랐으면 서서 기다린다. 틀린 쪽이면 못 막는다
+ */
+function keeperDive(st: GameState, ti: number): void {
+  const tm = st.teams[ti]
+  if (!tm.human || !tm.pkDive) return
+  tm.pkDive = false
+  const gk = st.players[tm.gk]
+  if (gk.sentOff || gk.action !== ACT_RUN) return
+  const lat = tm.pkDiveY * 2.9 - gk.y
+  if (Math.abs(lat) < 0.5) return
+  gk.diveHigh = tm.pkDiveHigh
+  gk.action = ACT_DIVE
+  gk.actT = 24
+  gk.vx = 0
+  gk.vy = Math.sign(lat) * (3.4 + 1.2 * gk.sk.gkReach + 1.2 * gk.sk.gkHand) * (gk.diveHigh ? 0.9 : 1)
+}
+
+/**
+ * 프리킥 수비(사람)가 D 를 눌러 뒀다 — 차는 순간 조작 선수(공 12 m 안)가 공 쪽으로 뛰쳐나간다.
+ * 킥커가 도움닫기 하는 동안 먼저 나간 것이라 1 m 앞에서 시작한다. 가까워진 만큼 벽 판정(ball.ts)에서 낮은 공을 더 막는다
+ */
+function wallReact(st: GameState, ti: number): void {
+  const tm = st.teams[ti]
+  if (!tm.human || !tm.fkCharge) return
+  tm.fkCharge = false
+  const b = st.ball
+  const c = tm.controlled >= 0 ? st.players[tm.controlled] : null
+  if (!c || c.sentOff || c.sk.isGK) return
+  const d = dist(c.x, c.y, b.x, b.y)
+  if (d > 12 || d < 1.5) return
+  c.x += ((b.x - c.x) / d) * 1.0
+  c.y += ((b.y - c.y) / d) * 1.0
+  c.vx = ((b.x - c.x) / d) * 5
+  c.vy = ((b.y - c.y) / d) * 5
+  c.press = true
 }
 
 /**

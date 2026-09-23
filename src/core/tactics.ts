@@ -7,9 +7,71 @@
 // 결정론: 계수는 스쿼드 데이터에서 한 번 계산해 Player 에 박히고, 프리셋 전환은 입력에 실려 간다.
 
 import type { Band } from './formation'
-import { SLIDER_KEYS, type Sliders } from './state'
+import { SLIDER_KEYS, type Sliders, type Team } from './state'
 
 export const PRESET_NAMES = ['수비', '균형', '공격'] as const
+
+// ---------------------------------------------------------------- 경기 중 전술 키 (2026-09-23 FC 온라인 조작, DESIGN 3.1a)
+
+/**
+ * 숫자 4~0 — **편집하지 않는 기본 전술 일곱 벌**. FC 온라인은 숫자 1~0 이 "저장된 클럽 전술"이다.
+ * 이 게임은 스쿼드(파일·스쿼드 코드)에 세 벌(1~3)만 저장한다 — 열 벌을 다 편집하게 하려면 스쿼드 코드 규격(v2)이 바뀌어야 해서
+ * 나머지 일곱 자리는 코드에 박힌 전술로 채웠다 (DECISIONS G-65).
+ */
+export const BUILTIN_TACTICS: readonly { name: string; s: Sliders }[] = [
+  { name: '역습', s: { line: 1, press: 1, width: 2, mentality: 2, tempo: 4, buildup: 3, defStyle: 2 } },
+  { name: '점유', s: { line: 3, press: 2, width: 3, mentality: 2, tempo: 0, buildup: 0, defStyle: 1 } },
+  { name: '측면 공격', s: { line: 2, press: 2, width: 4, mentality: 3, tempo: 2, buildup: 2, defStyle: 2 } },
+  { name: '롱볼', s: { line: 2, press: 2, width: 3, mentality: 3, tempo: 3, buildup: 4, defStyle: 2 } },
+  { name: '전방 압박', s: { line: 4, press: 4, width: 2, mentality: 3, tempo: 3, buildup: 2, defStyle: 3 } },
+  { name: '텐백', s: { line: 0, press: 0, width: 1, mentality: 0, tempo: 1, buildup: 4, defStyle: 1 } },
+  { name: '총공세', s: { line: 4, press: 4, width: 4, mentality: 4, tempo: 4, buildup: 3, defStyle: 4 } },
+]
+export const PRESET_COUNT = 3 + BUILTIN_TACTICS.length
+
+/** 전술 번호(0~9) 이름 — 0~2 는 스쿼드의 세 벌, 3~9 는 기본 전술 */
+export function presetName(i: number): string {
+  return i < 3 ? PRESET_NAMES[i] ?? '' : BUILTIN_TACTICS[i - 3]?.name ?? ''
+}
+
+/** 공수 밸런스 −2~+2 ([ ]) — 경기마다 보통에서 시작 */
+export const BALANCE_NAMES = ['전원 수비', '수비적', '보통', '공격적', '전원 공격'] as const
+
+/** 순간 전술 F1~F4 — 이름 · 길이(틱). 코너킥 공격이면 같은 키가 `CORNER_PLANS` 다 */
+export const TAC_NAMES = ['', '오프사이드 트랩', '전방 압박', '공격 가담', '수비 가담'] as const
+export const TAC_TICKS = [0, 180, 600, 600, 600] as const
+export const CORNER_PLANS = ['기본', '니어 포스트', '파 포스트', '짧은 코너', '세컨드 볼'] as const
+
+const lv = (v: number): number => Math.max(0, Math.min(4, v))
+
+/**
+ * 실제로 뛰는 팀 전술 = 고른 전술(1~0) + 공수 밸런스([ ]) + 순간 전술(F1~F4).
+ * 셋 중 하나가 바뀔 때만 sim 이 부른다 — `team.sliders` 를 다시 만든다(AI 는 이것만 본다)
+ */
+export function applyTeamTactics(team: Team, tick: number): void {
+  const s = normalizeSliders(team.preset < 3 ? team.presets[team.preset] : BUILTIN_TACTICS[team.preset - 3]?.s)
+  const bal = team.balance
+  if (bal !== 0) {
+    s.mentality = lv(s.mentality + bal)
+    s.line = lv(s.line + bal)
+    if (bal === 2 || bal === -2) s.press = lv(s.press + bal / 2)
+  }
+  if (team.tac > 0 && team.tacUntil > tick) {
+    if (team.tac === 1) s.line = lv(s.line + 2)
+    else if (team.tac === 2) {
+      s.press = 4
+      s.line = lv(s.line + 1)
+    } else if (team.tac === 3) {
+      s.mentality = 4
+      s.width = lv(s.width + 1)
+    } else {
+      s.mentality = 0
+      s.line = Math.min(s.line, 1)
+      s.press = Math.min(s.press, 1)
+    }
+  }
+  team.sliders = s
+}
 
 /** 팀 전술 하나의 이름·양끝 라벨·설명 (스쿼드 화면 슬라이더 줄) */
 export interface TacticMeta {

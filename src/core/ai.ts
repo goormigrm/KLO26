@@ -34,7 +34,9 @@ export function updateAnchors(st: GameState): void {
     const shift = ot === p.team ? rt.fwd : ot < 0 ? (rt.fwd + rt.back) * 0.5 : rt.back
     let ay = tmp.y
     if (rt.wide !== 1) ay = (ay - st.ball.y * 0.3) * rt.wide + st.ball.y * 0.3
-    p.ax = clamp(tmp.x + team.dir * shift, -HALF_L + 1, HALF_L - 1)
+    // 골키퍼가 공을 들고 E(팀 전진, 2026-09-23 · 사람만) — 필드 선수 자리를 8 m 올린다
+    const push = team.pushUntil > st.tick && !p.sk.isGK ? 8 : 0
+    p.ax = clamp(tmp.x + team.dir * (shift + push), -HALF_L + 1, HALF_L - 1)
     p.ay = clamp(ay, -HALF_W + 1, HALF_W - 1)
   }
 }
@@ -362,6 +364,19 @@ function boxSetPiece(st: GameState): boolean {
 }
 
 /**
+ * 박스 안 일곱 자리. 코너킥 공격(사람)이 F1~F4 로 작전을 고르면 자리가 바뀐다 (FC 온라인 "세트피스 전술" · 2026-09-23):
+ * 1 니어 포스트에 몰기 · 2 파 포스트에 몰기 · 3 짧은 코너(한 명이 키커 옆 10 m 로) · 4 세컨드 볼(박스 밖 대기)
+ */
+function cornerSpots(plan: number, gx: number, dir: number, side: number): [number, number][] {
+  const d = (m: number): number => gx - dir * m
+  if (plan === 1) return [[d(4.5), side * 3], [d(6.5), side * 5], [d(5.5), side * 1], [d(9), side * 2], [d(11), 0], [d(16), 0], [d(13), -side * 4]]
+  if (plan === 2) return [[d(5), -side * 3.5], [d(7), -side * 6], [d(9), -side * 2], [d(6), side * 3], [d(11), 0], [d(16), -side * 4], [d(13), side * 2]]
+  if (plan === 3) return [[d(5), side * (HALF_W - 9)], [d(6), side * 4], [d(5.5), -side * 3], [d(11), 0], [d(8.5), -side * 7], [d(16), side * 6], [d(18), -side * 8]]
+  if (plan === 4) return [[d(5.5), 0], [d(7), side * 4], [d(11), -side * 3], [d(17), 0], [d(18), side * 7], [d(18), -side * 7], [d(14), 0]]
+  return [[d(5.5), -side * 3], [d(6), side * 4], [d(11), 0], [d(8.5), -side * 7], [d(16), side * 6], [d(18), -side * 8], [d(13), -side * 4]]
+}
+
+/**
  * 세트피스 공격 배치 (2026-09-15 제보 "코너·프리킥에 박스 안에 아무도 없다") — 킥커를 뺀 아군 중
  * 골문에 가까운 순으로 여섯 명(FW·AM·MF 먼저, 그다음 DF)이 박스 안 여섯 자리(니어·파포스트·PK 스팟·6야드 앞·엣지 둘)로,
  * 나머지는 하프라인 근처에 남는다(역습 대비). 오프사이드 라인은 rules 가 따로 지킨다
@@ -373,15 +388,7 @@ function setPieceAttack(st: GameState, p: Player): boolean {
   const dir = team.dir
   const gx = goalX(team)
   const side = r.y >= 0 ? 1 : -1
-  const spots: [number, number][] = [
-    [gx - dir * 5.5, -side * 3],
-    [gx - dir * 6, side * 4],
-    [gx - dir * 11, 0],
-    [gx - dir * 8.5, -side * 7],
-    [gx - dir * 16, side * 6],
-    [gx - dir * 18, -side * 8],
-    [gx - dir * 13, -side * 4],
-  ]
+  const spots: [number, number][] = cornerSpots(st.phase === 'corner' && team.human ? team.cornerPlan : 0, gx, dir, side)
   // 박스 인원 — 멘탈리티(팀 전술): 수비적 5 · 보통 6 · 공격적 7
   const m = team.sliders.mentality
   const nSpots = m >= 3 ? 7 : m <= 1 ? 5 : 6
@@ -428,9 +435,11 @@ function setPieceDefend(st: GameState, p: Player): boolean {
     // 벽 — 공→골문 선 위 9.15 m, 선에 수직으로 0.65 m 간격
     const ux = (ownX - r.x) / Math.max(1, dGoal)
     const uy = (0 - r.y) / Math.max(1, dGoal)
-    const cx = r.x + ux * (CIRCLE_R + 0.3)
-    const cy = r.y + uy * (CIRCLE_R + 0.3)
-    const off = (k - (wallN - 1) / 2) * 0.65
+    // 사람 수비의 벽 조작 (2026-09-23): Z 전진(최대 2 m) · C/E 좌우(월드 y 로 ±2.5 m)
+    const my = st.teams[ti]
+    const cx = r.x + ux * (CIRCLE_R + 0.3 - my.wallAdv)
+    const cy = r.y + uy * (CIRCLE_R + 0.3 - my.wallAdv)
+    const off = (k - (wallN - 1) / 2) * 0.65 + my.wallShift * (ux >= 0 ? 1 : -1)
     p.tx = clamp(cx + -uy * off, -HALF_L + 1, HALF_L - 1)
     p.ty = clamp(cy + ux * off, -HALF_W + 1, HALF_W - 1)
     p.sprint = dist(p.x, p.y, p.tx, p.ty) > 6 && p.stamina > 0.2
@@ -503,6 +512,25 @@ export function aiDecide(st: GameState, p: Player): void {
       if (p.tx * dir > -1.5) p.tx = -dir * 1.5
     }
     return
+  }
+  // 사람이 시킨 움직임 (2026-09-23 FC 조작 — 봇 팀은 늘 −1): 침투 패스(Q+S)를 낸 선수는 앞 공간으로, 골키퍼가 부른 선수(C)는 받으러
+  if (st.phase === 'play' && b.owner !== p.idx) {
+    if (p.goUntil > st.tick && ballOwnerTeam(st) !== 1 - ti) {
+      const line = offsideLineX(st, ti) * dir
+      const want = Math.min(line - LINE_MARGIN, p.x * dir + 14)
+      p.tx = clamp(want * dir, -HALF_L + 1, HALF_L - 1)
+      p.ty = clamp(p.y * 0.8, -HALF_W + 1, HALF_W - 1)
+      p.sprint = p.stamina > 0.15
+      p.runT = st.tick
+      return
+    }
+    if (p.callT > st.tick && b.owner === team.gk) {
+      const gk = st.players[team.gk]
+      p.tx = clamp(gk.x + dir * 13, -HALF_L + 1, HALF_L - 1)
+      p.ty = clamp(gk.y + (p.y >= gk.y ? 1 : -1) * 9, -HALF_W + 1, HALF_W - 1)
+      p.sprint = true
+      return
+    }
   }
   if (b.owner === p.idx) {
     if (st.phase === 'play') carrierDecide(st, p, params.noise)

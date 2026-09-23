@@ -18,7 +18,7 @@ export interface HudView {
   message: string
 }
 
-import { PRESET_NAMES } from '../core/tactics'
+import { BALANCE_NAMES, CORNER_PLANS, TAC_NAMES, presetName } from '../core/tactics'
 
 /** '#rrggbb' 가 밝은 색인가 (글씨 색을 뒤집는 기준) */
 function isLight(css: string): boolean {
@@ -59,8 +59,9 @@ export class Hud {
       </div>
       <div class="subs" data-k="subs"></div>
       <div class="keys" data-k="keys">
-        <b>방향키</b> 이동 · <b>E</b> 전력질주 · <b>S</b> 패스 / 선수 변경 · <b>W</b> 스루 / GK 돌진 · <b>A</b> 로빙 / 슬라이딩 · <b>D</b> 슛(홀드) / 압박(자동 추격) · 공중볼 <b>D</b> 헤딩 슛 · <b>S</b> 헤딩 패스 · GK 공 <b>D</b> 펀트 <b>A</b> 던지기 <b>S</b> 패스 ·
-        <b>Space</b> 태클 · <b>C</b> 견제 · <b>Q</b> 팀 압박 · <b>Q+D</b> 칩슛 · <b>Q+A</b> 하이 크로스 · <b>Shift</b> 페이스 컨트롤 · <b>[ ]</b> 전술 · <b>Esc</b> 메뉴·교체
+        <b>방향키</b> 이동 · <b>E</b> 전력질주 · <b>S</b> 패스 / 선수 변경 · <b>W</b> 스루 / GK 돌진 · <b>A</b> 로빙 / 슬라이딩 · <b>D</b> 슛(홀드) / 압박 · <b>Space</b> 태클(홀드 당기기) · <b>C</b> 견제 · <b>Q</b> 팀 압박<br>
+        조합 <b>Z</b> 드라이브·감아차기 · <b>Q</b> 띄우기·칩·침투 · <b>C</b> 플레어 · <b>F+D</b> 파워 슛 · 같은 키 두 번 = 딩크·낮은 크로스·드리븐 · <b>Shift</b>(달리며 톡) 녹온 · <b>Ctrl</b> 퍼스트 터치 · <b>\`</b> 골키퍼 ·
+        <b>1~0</b> 전술 · <b>[ ]</b> 공수 밸런스 · <b>F1~F4</b> 순간 전술 · <b>-</b> 이름 · <b>Enter</b> 채팅 · <b>Esc</b> 메뉴·교체
       </div>`
     parent.appendChild(this.root)
     this.root.querySelectorAll<HTMLElement>('[data-k]').forEach((e) => (this.el[e.dataset.k!] = e))
@@ -141,8 +142,10 @@ export class Hud {
       const team = st.teams[v.humanTeam]
       // 파워 바는 2026-09-15 부터 조작 선수 **발밑**(렌더러) — HUD 의 바는 안 쓴다
       void team
-      // "전술 균형" 만 있으면 무슨 글자인지 모른다(사용자 지적 2026-09-11) — 바꾸는 키까지 적는다
-      this.set('preset', `전술 ${PRESET_NAMES[team.preset] ?? ''} · [ ] 로 바꿈`)
+      // "전술 균형" 만 있으면 무슨 글자인지 모른다(사용자 지적 2026-09-11) — 바꾸는 키까지 적는다.
+      // 2026-09-23: 1~0 전술 · [ ] 공수 밸런스 · F1~F4 순간 전술(남은 초)
+      const tac = team.tac > 0 && team.tacUntil > st.tick ? ` · ${TAC_NAMES[team.tac]} ${Math.ceil((team.tacUntil - st.tick) / 60)}초` : ''
+      this.set('preset', `전술 ${presetName(team.preset)} (1~0) · ${BALANCE_NAMES[team.balance + 2]} ([ ])${tac}`)
     } else me.hidden = true
 
     // 교체·카드 요약
@@ -178,20 +181,36 @@ export class Hud {
       }
       case 'throwin':
         return mine ? '스로인 — 방향키 + S / A' : `${who(r!.team)} 스로인`
-      case 'corner':
-        return mine ? '코너킥 — 방향키 + A(크로스) / S' : `${who(r!.team)} 코너킥`
+      case 'corner': {
+        const plan = st.teams[humanTeam].cornerPlan
+        return mine
+          ? `코너킥 — 방향키 + A(크로스) / S · 작전 F1~F4: ${CORNER_PLANS[plan]}`
+          : `${who(r!.team)} 코너킥`
+      }
       case 'goalkick':
         return mine ? '골킥 — 방향키 + S 짧게 / A 홀드 롱볼 / D 홀드 펀트' : `${who(r!.team)} 골킥`
       case 'freekick': {
         const call = st.callText ? `${st.callText} — ` : ''
         const dG = Math.round(Math.hypot(r!.x - goalX(st.teams[r!.team]), r!.y))
-        if (mine && kickerView(st)) return `${call}직접 프리킥 · 골문 ${dG} m — ← → 코너 · ↑ ↓ 높이 · D 홀드 힘(점선 = 예상 궤적) / A 홀드 롱볼 / S 짧게`
+        if (mine && kickerView(st)) return `${call}직접 프리킥 · 골문 ${dG} m — ← → 코너 · ↑ ↓ 높이 · D 홀드 힘(Z 감아 · C 플레어 · 찬 뒤 D 낮게) / A 롱볼 / S 짧게`
+        if (!mine && kickerView(st)) {
+          const me = st.teams[humanTeam]
+          const adv = me.wallAdv > 0 ? ` · 전진 ${me.wallAdv} m` : ''
+          return `${call}${who(r!.team)} 직접 프리킥 · ${dG} m — 벽: W 점프 · C/E 좌우 · Z 전진(경고 위험)${adv} · D 뛰쳐나가기`
+        }
         return mine
           ? `${call}프리킥 · 골문 ${dG} m — 방향키 + S 짧게 / A 홀드 롱볼 / D 홀드 슛`
           : `${call}${who(r!.team)} 프리킥 · 골문 ${dG} m`
       }
-      case 'penalty':
-        return mine ? '⚽ 페널티킥 — ← → 코너 · ↑ ↓ 높이 · D 홀드 힘 (점선 = 예상 궤적)' : `${who(r!.team)} 페널티킥`
+      case 'penalty': {
+        if (mine) return '⚽ 페널티킥 — ← → 코너 · ↑ ↓ 높이 · D 홀드 힘 · Z 감아 · Q 파넨카 · C 걸어가며 · E 달려가며 · Shift+방향키 자리'
+        const me = st.teams[humanTeam]
+        if (me.human) {
+          const pick = me.pkDive ? (Math.abs(me.pkDiveY) < 0.34 ? ' · 가운데 대기' : me.pkDiveY * st.teams[r!.team].dir < 0 ? ' · 오른쪽으로 다이빙' : ' · 왼쪽으로 다이빙') : ''
+          return `🧤 ${who(r!.team)} 페널티킥 — ← → 골라인 이동 · D(또는 Shift·Ctrl)+방향키 다이빙 방향 · W/A/S/D 방해 동작${pick}`
+        }
+        return `${who(r!.team)} 페널티킥`
+      }
       case 'halftime':
         return '전반 종료 — 하프타임'
       case 'end':

@@ -45,6 +45,8 @@ export class Lobby {
     private lobbyLink?: LobbyLink,
     /** 내가 열어 둔 방 (2026-09-16) — 방 목록 아래 카드로 보여 주고, 대기실로 들어가거나 닫는다 */
     private hostCtl?: { info: () => { code: string; guestName: string } | null; enter: () => void; close: () => void },
+    /** 🎯 조작 연습 (2026-09-23) */
+    private onPractice?: () => void,
   ) {
     this.host = host
     this.s = loadSettings()
@@ -100,6 +102,9 @@ export class Lobby {
           <button class="tile" id="btn-solo"${chk.ok ? '' : ' disabled'}>
             <span class="k">SOLO</span><b>혼자 하기</b><small>실제 구단 봇과 한 판</small>
           </button>
+          <button class="tile practice" id="btn-practice">
+            <span class="k">PRACTICE</span><b>조작 연습</b><small>키 하나씩, 성공할 때까지</small>
+          </button>
           <button class="tile" id="btn-host"${chk.ok ? '' : ' disabled'}>
             <span class="k">P2P</span><b>방 만들기</b><small>서버 없이 둘이 붙는다</small>
           </button>
@@ -119,20 +124,23 @@ export class Lobby {
           <thead><tr><th>키</th><th>공격 (우리 팀이 공 소유)</th><th>수비</th></tr></thead>
           <tbody>
             <tr><td><b>방향키</b></td><td>이동 · 드리블 (화면 오른쪽 = 전반 공격 방향)</td><td>이동</td></tr>
-            <tr><td><b>E</b> 홀드</td><td>전력질주</td><td>전력질주</td></tr>
-            <tr><td><b>S</b></td><td>그라운드 패스 (홀드 = 거리)</td><td>선수 변경 (공에 가까운 다음 선수)</td></tr>
-            <tr><td><b>W</b></td><td>스루 패스</td><td>골키퍼 돌진 (1.5초)</td></tr>
-            <tr><td><b>A</b></td><td>로빙 패스 · 크로스 (<b>A A</b> 로우 크로스 · <b>Q+A</b> 하이 크로스)</td><td>슬라이딩 태클 (방향키 없으면 공 쪽으로)</td></tr>
-            <tr><td><b>D</b></td><td>슛 (홀드 = 파워 · 방향키 위/아래 = 코너 · <b>Q+D</b> 칩슛)</td><td>압박 (홀드) — 선수가 <b>공을 향해 스스로 달립니다</b> · 루즈볼이면 걷어내기</td></tr>
-            <tr><td><b>Space</b></td><td>—</td><td>스탠딩 태클 — 공 쪽으로 짧게 돌진해 뺏기</td></tr>
-            <tr><td><b>C</b> 홀드</td><td>—</td><td>견제 (마주 보며 천천히 · 들이받는 드리블을 잘 뺏습니다)</td></tr>
-            <tr><td><b>Q</b> 홀드</td><td>조합키</td><td>팀 지원 요청 (두 번째 수비수 압박)</td></tr>
-            <tr><td><b>Shift</b> 홀드</td><td>페이스 컨트롤 (천천히, 볼을 붙임)</td><td>—</td></tr>
-            <tr><td><b>[</b> · <b>]</b></td><td colspan="2">전술 프리셋 이전 · 다음 (수비 → 균형 → 공격)</td></tr>
-            <tr><td><b>Esc</b></td><td colspan="2">메뉴 (일시정지 · <b>교체</b> · 로비로)</td></tr>
+            <tr><td><b>E</b> 홀드</td><td>전력질주 · <b>E E</b> 퀵 녹온 · <b>E E E</b> 슈퍼 녹온</td><td>전력질주 · <b>C+E</b> 달리며 견제</td></tr>
+            <tr><td><b>S</b></td><td>땅볼 패스 (홀드 = 거리) · <b>Z+S</b> 드라이브(박스 옆이면 컷백) · <b>C+S</b> 플레어 · <b>Q+S</b> 침투 패스 · <b>S S</b> 딩크</td><td>선수 변경 (공에 가까운 다음 선수)</td></tr>
+            <tr><td><b>W</b></td><td>스루 · <b>Z+W</b> 드라이브 · <b>Q+W</b> 로빙 스루 · <b>Z+Q+W</b> 낮은 로빙 스루 · <b>W W</b> 딩크 스루</td><td>골키퍼 돌진 (1.5초)</td></tr>
+            <tr><td><b>A</b></td><td>로빙·크로스 · <b>A A</b> 낮은 크로스 · <b>Q+A</b> 높게 · <b>Z+A</b> 빠르게 · <b>C+A</b> 플레어</td><td>슬라이딩 태클 · 슬라이딩 뒤 <b>A</b> 빨리 일어나기</td></tr>
+            <tr><td><b>D</b></td><td>슛 (홀드 = 파워) · <b>Q+D</b> 칩 · <b>Z+D</b> 감아차기 · <b>C+D</b> 플레어 · <b>D D</b> 드리븐 · <b>F+D+D</b> 파워 슛 · <b>Z+C+D</b> 페이크</td><td>압박 (홀드) · 붙어서 누른 순간 <b>어깨 밀치기</b> · 루즈볼이면 걷어내기</td></tr>
+            <tr><td><b>Space</b></td><td>—</td><td>스탠딩 태클 · 누르고 있으면 <b>당기고 버티기</b> (파울 위험)</td></tr>
+            <tr><td><b>C</b> 홀드</td><td>조합키 (플레어)</td><td>견제 · <b>C+방향키</b>(상대 쪽) 붙어서 다투기</td></tr>
+            <tr><td><b>Q</b> 홀드</td><td>조합키 (띄우기·칩·침투)</td><td>팀 지원 요청 (두 번째 수비수 압박)</td></tr>
+            <tr><td><b>Shift</b></td><td>홀드 페이스 컨트롤 · 달리며 톡 <b>녹온</b> · <b>Shift+Q+방향키 앞→뒤</b> 힐투볼롤</td><td><b>Shift+방향키</b> 그쪽 선수로 바꾸기</td></tr>
+            <tr><td><b>Ctrl</b></td><td>받을 때 <b>Ctrl+방향키</b> 퍼스트 터치 녹온</td><td>—</td></tr>
+            <tr><td><b>\`</b> 홀드</td><td>—</td><td>골키퍼 직접 조작</td></tr>
+            <tr><td>골키퍼 공</td><td colspan="2"><b>D</b> 펀트 · <b>A</b> 롱볼 · <b>S</b> 패스 · <b>Z+S/Z+A</b> 드라이브 · <b>W</b> 공 놓기 · <b>Z</b> 공 줍기 · <b>E</b> 팀 전진 · <b>C</b> 선수 부르기</td></tr>
+            <tr><td><b>1~0</b> · <b>[ ]</b> · <b>F1~F4</b></td><td colspan="2">전술 고르기 (1~3 내 전술 · 4~0 기본 전술) · 공수 밸런스 · 순간 전술(오프사이드 트랩·전방 압박·공격 가담·수비 가담, 코너킥이면 작전)</td></tr>
+            <tr><td><b>-</b> · <b>Enter</b> · <b>Esc</b></td><td colspan="2">선수 이름 표시 · 채팅(온라인)·세레모니 건너뛰기 · 메뉴 (일시정지 · <b>교체</b> · 로비로)</td></tr>
           </tbody>
         </table>
-        <p class="hintline">세트피스 — 킥커일 때 방향키로 방향을 잡고 <b>S</b>(그라운드) · <b>W</b>(스루) · <b>A</b>(로빙·크로스) · <b>D</b>(슛). 방향키가 없으면 AI 가 대신 고릅니다. <b>킥오프</b>는 아군에게 짧은 패스로만 시작합니다.</p>
+        <p class="hintline">세트피스 — 킥커일 때 방향키로 방향을 잡고 <b>S</b>(그라운드) · <b>W</b>(스루) · <b>A</b>(로빙·크로스) · <b>D</b>(슛). PK 는 <b>Z</b> 감아 · <b>Q</b> 파넨카 · <b>C</b> 걸어가며 · <b>E</b> 달려가며 · <b>Shift+방향키</b> 자리. 막는 쪽: 프리킥 벽 <b>W</b> 점프 · <b>C/E</b> 좌우 · <b>Z</b> 전진 · <b>D</b> 뛰쳐나가기 · PK 골키퍼 <b>D+방향키</b> 다이빙. 키가 많으니 <b>🎯 조작 연습</b>에서 하나씩 익히세요.</p>
         <p class="hintline">경기 중 조작 선수 앞에 <b>›</b> 표시가 방향키 쪽을 가리킵니다 — 패스·슛이 그 방향으로 갑니다 (슛을 모으면 붉어집니다). 전후반 끝에는 <b>추가시간</b>이 붙고, 공이 죽었을 때 휘슬이 울립니다.</p>
         <p class="hintline">소리는 파일 없이 코드로 만듭니다 — 관중석·휘슬·킥·로비 배경음 전부 Web Audio 절차 생성입니다.</p>
         <p class="hintline">비상업 팬 게임 · 서버·DB 없음 · <a href="https://github.com/goormigrm/KLO26" target="_blank" rel="noopener">저장소</a></p>
@@ -219,6 +227,7 @@ export class Lobby {
     }
     ;(h.querySelector('#btn-solo') as HTMLButtonElement).onclick = () => open('#dlg-solo')
     ;(h.querySelector('#btn-host') as HTMLButtonElement).onclick = () => open('#dlg-host')
+    ;(h.querySelector('#btn-practice') as HTMLButtonElement).onclick = () => this.onPractice?.()
     ;(h.querySelector('#btn-settings') as HTMLButtonElement).onclick = () => {
       // 열 때마다 다시 그린다 — 음성 목록이 **로비를 만든 뒤에** 도착하므로 처음 HTML 은 "음성 없음"으로 굳는다 (2026-09-16)
       this.redrawSettings()

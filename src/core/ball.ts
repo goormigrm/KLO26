@@ -24,6 +24,14 @@ export function dist(ax: number, ay: number, bx: number, by: number): number {
   return len(bx - ax, by - ay)
 }
 
+/** 누가 공을 만졌다 — 회전(감아차기·톱스핀)과 플레어·딩크 표시를 지운다 (2026-09-23) */
+export function clearSpin(b: GameState['ball']): void {
+  b.curl = 0
+  b.dip = 0
+  b.trick = 0
+  b.dink = false
+}
+
 /** 점 (px,py) 에서 선분 (ax,ay)-(bx,by) 까지 거리 — 빠른 공이 한 틱에 발을 "뚫고" 지나가는 것을 막는다 */
 export function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
   const dx = bx - ax
@@ -121,14 +129,19 @@ export function offsideLineX(st: GameState, teamIdx: number): number {
   const dir = st.teams[teamIdx].dir
   let m1 = -99
   let m2 = -99
+  let n = 0
   for (const q of st.players) {
     if (q.team === teamIdx || q.sentOff) continue
+    n++
     const v = q.x * dir
     if (v > m1) {
       m2 = m1
       m1 = v
     } else if (v > m2) m2 = v
   }
+  // 상대가 둘보다 적으면 "뒤에서 두 번째 상대"가 없다 — 아무도 오프사이드가 아니다(선을 골라인에).
+  // 11 대 11 경기에서는 일어나지 않는다. 조작 연습(선수를 치워 둔 상황)에서 모든 전진 패스가 오프사이드였다 (2026-09-23)
+  if (n < 2) return dir * HALF_L
   return m2 * dir
 }
 
@@ -167,6 +180,10 @@ function giveBall(st: GameState, p: Player): void {
   const wasLive = b.passLive
   const sameTeam = b.lastTeam === p.team && b.lastTouch !== p.idx
   const fromRestart = b.restartBy
+  // 아군이 발로 준 공·스로인 — 골키퍼는 이 공을 손으로 줍지 못한다 (Z 공 줍기 · 백패스 규칙)
+  p.gotMate = sameTeam && (wasLive || b.fromThrow)
+  p.dropped = false
+  clearSpin(b)
   b.owner = p.idx
   b.lastTouch = p.idx
   b.lastTeam = p.team
@@ -215,8 +232,9 @@ function markOnTarget(st: GameState, teamIdx: number): void {
   const vxg = b.vx * team.dir
   if (vxg <= 0.1) return
   const t = Math.abs(gx - b.x) / Math.abs(b.vx)
-  const yAt = b.y + b.vy * t
-  const zAt = b.z + b.vz * t - 0.5 * G * t * t
+  // 회전(2026-09-23): 옆으로 휘는 만큼(감쇠를 셈해 0.8) · 톱스핀으로 더 떨어지는 만큼. 봇 공은 둘 다 0
+  const yAt = b.y + b.vy * t + 0.4 * b.curl * team.dir * t * t
+  const zAt = b.z + b.vz * t - 0.5 * (G + b.dip) * t * t
   if (Math.abs(yAt) < GOAL_HALF && zAt < GOAL_H && zAt > -1) {
     b.onTarget = true
     st.stats[teamIdx].onTarget++
@@ -253,6 +271,7 @@ function tryHeader(st: GameState, p: Player): boolean {
   p.action = ACT_HEAD
   p.actT = 10
   p.lastKick = st.tick
+  clearSpin(b)
   const fromRestart = b.restartBy
   const wasTeam = b.lastTeam
   if (rand(st.rng) > 0.5 + 0.45 * p.sk.head) {
@@ -295,6 +314,7 @@ function tryHeader(st: GameState, p: Player): boolean {
     b.vz = vz
     b.shotBy = p.idx
     b.shotQ = p.sk.head
+    b.passKind = 'header'
     st.stats[p.team].shots++
     markOnTarget(st, p.team)
     st.events.push({ tick: st.tick, type: 'shot', team: p.team, player: p.idx, x: b.x, y: b.y })
@@ -346,8 +366,11 @@ export function tryControl(st: GameState): void {
     if (p.action !== ACT_RUN && p.action !== ACT_KICK) continue
     if (st.tick - p.lastKick <= 8) continue
     if (p.sk.isGK && p.holdT > 0) continue
-    // 상대 패스를 끊는 것은 위치 선정(posn)이 좋은 수비수가 더 멀리서 한다 (수비 강화 — 2026-09-10)
-    const intercept = b.passLive && b.lastTeam !== p.team ? 0.28 * p.sk.posn : 0
+    // 딩크(S+S · W+W, 2026-09-23) — 발높이 위로 뜬 동안은 상대가 발로 못 끊는다
+    if (b.dink && !aerial && b.z > 0.3 && p.team !== b.lastTeam) continue
+    // 상대 패스를 끊는 것은 위치 선정(posn)이 좋은 수비수가 더 멀리서 한다 (수비 강화 — 2026-09-10).
+    // 플레어(노룩) 패스는 읽히지 않는다 — 미리 뻗는 거리가 없다 (2026-09-23)
+    const intercept = b.passLive && b.lastTeam !== p.team && !b.trick ? 0.28 * p.sk.posn : 0
     // 공중볼은 **머리**로 — 몸 중심 기준, 헤더(점프)가 좋을수록 멀리 닿는다. 받으라고 보낸 크로스면 +0.25 (2026-09-15)
     const reach = aerial
       ? 0.8 + 0.35 * p.sk.head + (b.passTo === p.idx ? 0.25 : 0)
@@ -375,13 +398,15 @@ export function tryControl(st: GameState): void {
   else {
     chance = 0.6 + 0.4 * p.sk.ctl - clamp((speed - 6) / 30, 0, 0.5)
     // 남의 패스를 가로채는 것은 마크(mark)가 좋을수록 깔끔하다 (0.15 → 0.4 — 2026-09-11 검증에서 mar 가 안 닿았다)
-    if (b.lastTeam !== p.team && b.passLive) chance += 0.4 * p.sk.mark - 0.1
+    if (b.lastTeam !== p.team && b.passLive) chance += 0.4 * p.sk.mark - 0.1 - (b.trick ? 0.12 : 0)
   }
   if (rand(st.rng) < chance) {
     giveBall(st, p)
+    firstTouch(st, p)
     return
   }
   // 튕김 — 이것도 "만진" 것이다 (오프사이드·두 번 터치가 걸린다)
+  clearSpin(b)
   const fromRestart = b.restartBy
   const a = atan2A(b.vy, b.vx) + Math.round(randN(st.rng) * 40 * DEG)
   const ns = speed * 0.35 + 1
@@ -400,6 +425,45 @@ export function tryControl(st: GameState): void {
     b.fromThrow = false
   }
   b.lastTeam = p.team
+}
+
+/**
+ * 녹온 — 공을 진행 방향 앞으로 툭 차 놓고 쫓아간다 (FC 온라인: 전력질주 중 Shift 톡 · E 두 번 · Ctrl 퍼스트 터치 · 2026-09-23).
+ * 공을 몰 때의 속도 상한(드리블 6.4~7.3 m/s)을 벗어나 **전력 질주 속도로** 달릴 수 있는 대신, 공이 발을 떠나 있는 동안은
+ * 누구든(상대도) 먼저 닿으면 잡는다. 받을 사람은 차 놓은 자신(`passTo`)이다 — 받기 판정이 넉넉하다.
+ * push 는 선수 속도에 더하는 공 속도(m/s) — 3.5 녹온 · 5 퀵 · Ctrl 3.2
+ */
+export function knockOn(st: GameState, p: Player, ux: number, uy: number, push: number): void {
+  const b = st.ball
+  let l = len(ux, uy)
+  if (l === 0) {
+    ux = cosA(p.facing)
+    uy = sinA(p.facing)
+    l = 1
+  }
+  ux /= l
+  uy /= l
+  const sp = len(p.vx, p.vy)
+  releaseBall(st, p)
+  p.action = ACT_RUN
+  p.actT = 0
+  p.lastKick = st.tick - 2
+  p.facing = atan2A(uy, ux)
+  b.passKind = 'knock'
+  const v = sp * 0.9 + push
+  b.vx = ux * v
+  b.vy = uy * v
+  b.vz = 0
+  b.z = 0
+  b.passTo = p.idx
+}
+
+/** Ctrl+방향키로 받으면 그쪽으로 툭 치며 받는다 — 퍼스트 터치 녹온. 사람이 조작 중인 선수만 (봇은 이 경로를 안 탄다) */
+function firstTouch(st: GameState, p: Player): void {
+  const team = st.teams[p.team]
+  if (!team.human || team.controlled !== p.idx || !team.touchK || p.sk.isGK) return
+  if (team.inX === 0 && team.inY === 0) return
+  knockOn(st, p, team.inX, team.inY, 3.2)
 }
 
 // ---------------------------------------------------------------- 태클 · 파울
@@ -473,14 +537,31 @@ export function contestBall(st: GameState, o: Player): void {
   // (실제 축구에서 빠른 드리블러도 전력 질주하면 태클에 취약하다 · 2026-09-11 속도 지배 완화)
   const oSpd = len(o.vx, o.vy) / Math.max(1, o.sk.vmax)
   const loose = clamp((oSpd - 0.6) / 0.4, 0, 1) * 0.3
-  const baseReach = gkHolding ? 1.0 : 0.6 + (1 - o.sk.drib) * 0.5 - (slow ? 0.15 : 0) + loose
+  // 힐투볼롤 같은 개인기 중엔 공이 몸 반대편에 있다 — 닿는 거리 −0.3 m (2026-09-23)
+  const baseReach = gkHolding ? 1.0 : 0.6 + (1 - o.sk.drib) * 0.5 - (slow ? 0.15 : 0) + loose - (o.skillT > st.tick ? 0.3 : 0)
+  // 당기고 버티기(Space 홀드, 사람만 · 2026-09-23) — 옆·뒤에 붙어 유니폼을 잡는다. 소유자는 느려지고(sim),
+  // 잡고 있는 동안 틱마다 조금씩 파울이 불린다(1 초면 20~35%). 명백한 득점 기회를 이렇게 끊으면 퇴장
+  if (!gkHolding) {
+    for (const q of st.players) {
+      if (!q.pull || q.team === o.team || q.sentOff || q.action !== ACT_RUN) continue
+      if (dist(q.x, q.y, o.x, o.y) > 1.15 || fromBehind(o, q) < 0.3) continue
+      if (rand(st.rng) < 0.004 + 0.004 * q.sk.agg) {
+        foul(st, q, o.x, o.y, 0.3, 'foul', clearChance(st, o, q) ? 2 : 0)
+        return
+      }
+    }
+  }
   for (const q of st.players) {
     if (q.team === o.team || q.action !== ACT_RUN || q.sentOff) continue
     if (!q.press && q.tackleT <= 0) continue
+    // 페이크 슛에 속아 발이 묶였다 (Z+C+D)
+    if (q.bitT > st.tick) continue
+    // 골키퍼의 손은 **자기 박스 안에서만** — 밖에서는 필드 선수처럼 발로 (2026-09-23: 골키퍼 직접 조작(`)이 생겨 박스 밖까지 나갈 수 있다)
+    const gkHands = q.sk.isGK && inOwnBox(q, st.teams[q.team].dir)
     const d = dist(feetX(q, 0.3), feetY(q, 0.3), b.x, b.y)
     // 2026-09-11 검증 — 태클(tck)만 올려서는 승률이 안 움직였다(태클이 판에 5번뿐). 잘 하는 수비수는
     // **더 먼 발에서** 공을 건드려 기회 자체가 늘게 한다
-    const reach = gkHolding ? baseReach : q.sk.isGK ? 1.1 : baseReach + 0.3 * q.sk.tck
+    const reach = gkHolding ? baseReach : gkHands ? 1.1 : baseReach + 0.3 * q.sk.tck
     if (d > reach) continue
     if (gkHolding) {
       // 골키퍼가 손에 들고 있는 공은 뺏을 수 없다 — 도전 자체가 반칙 (DESIGN 4.7)
@@ -493,7 +574,7 @@ export function contestBall(st: GameState, o: Player): void {
     const qTeam = st.teams[q.team]
     if (fromBack && !(qTeam.human && qTeam.controlled === q.idx)) continue
     const angleF = (0.55 + 0.45 * (1 - fromBehind(o, q))) * (fromBack ? 0.25 : 1)
-    if (q.sk.isGK) {
+    if (gkHands) {
       // 골키퍼가 발 앞 공을 손으로 덮친다 — 핸들링이 좋을수록. 잡으면 손에 든다 (2026-09-11: 드리블 골 막기)
       const pg = 0.03 * (0.5 + q.sk.gkHand) * angleF * (1 + 1.5 * loose)
       const roll = rand(st.rng)
@@ -610,6 +691,7 @@ export function slideContest(st: GameState, q: Player): void {
     }
   } else if (d > 0.7 || b.z > 0.8) return
   const fromRestart = b.restartBy
+  clearSpin(b)
   b.owner = -1
   b.vx = cosA(q.facing) * 6 + randN(st.rng)
   b.vy = sinA(q.facing) * 6 + randN(st.rng)
@@ -630,8 +712,9 @@ export function slideContest(st: GameState, q: Player): void {
 
 // ---------------------------------------------------------------- 차기
 
-function releaseBall(st: GameState, p: Player, markOff = true): void {
+export function releaseBall(st: GameState, p: Player, markOff = true): void {
   const b = st.ball
+  clearSpin(b)
   b.owner = -1
   b.kickTick = st.tick
   b.lastTouch = p.idx
@@ -687,6 +770,22 @@ export function pickPassTarget(st: GameState, p: Player, dx: number, dy: number,
   return best
 }
 
+/** 체공 시간 T 를 정해 띄운다 — 낮은 로빙(Z+A)·낮게 깔리는 로빙 스루(Z+Q+W)는 T 가 짧다 (2026-09-23) */
+export function lobVectorT(d: number, T: number): { speed: number; vz: number } {
+  return { speed: (d / T) * (1.08 + 0.13 * T), vz: 0.5 * G * T * 1.06 }
+}
+
+/** 패스 조합키 (FC 온라인, 2026-09-23) — 봇은 쓰지 않는다 */
+export interface PassMods {
+  /** Z — 드라이브: 땅볼·스루는 +28% 세게, 로빙은 낮고 빠르게 (빠른 크로스) */
+  driven?: boolean
+  /** C — 플레어(노룩·힐): 상대가 미리 못 읽는다 · 조금 느리고 부정확 */
+  flair?: boolean
+  /** Q+W — 스루를 띄워서 (로빙 스루). low 와 같이면 낮게 깔리는 로빙 스루 */
+  lofted?: boolean
+  low?: boolean
+}
+
 /** 로빙 패스·크로스의 속도 — d m 를 띄워 보낼 때. 공기 저항(선형 0.25)이 있어 이론 포물선보다 짧게 떨어지니 보정 계수로 되돌린다. 난수 없음 (렌더 미리보기에도 쓴다) */
 export function lobVector(d: number): { speed: number; vz: number } {
   const T = clamp(d / 13, 0.9, 2.6)
@@ -706,6 +805,7 @@ export function doPass(
   dy: number,
   hold: number,
   aim?: { x: number; y: number },
+  mods?: PassMods,
 ): void {
   const b = st.ball
   b.passKind = kind
@@ -734,6 +834,13 @@ export function doPass(
       const lead = 2 + 2 * hold
       ax = q.x + rx * lead + dir * 1.0
       ay = q.y + ry * lead
+      if (mods?.lofted) {
+        // 로빙 스루(Q+W)는 **수비 라인 뒤 공간**으로 — 라인(뒤에서 두 번째 상대) 4 m 뒤, 받을 선수 앞 6 m 이상 (2026-09-23).
+        // 땅볼 스루의 리드(2~4 m)로 띄우면 공이 라인 위 수비수 머리에 떨어졌다
+        const want = Math.max(offsideLineX(st, p.team) * dir + 4, q.x * dir + 6)
+        ax = Math.min(want, HALF_L - 6) * dir
+        ay = q.y + ry * 3
+      }
     }
     if (kind === 'highcross' && target >= 0) {
       // 하이 크로스 — 받을 선수 **머리 위**에 오게 낙하점을 공 쪽으로 0.9 m 당긴다 (낙하점은 z 0, 그 1 m 앞이 머리 높이)
@@ -760,9 +867,11 @@ export function doPass(
   // 속도
   let speed: number
   let vz = 0
-  const aerial = kind === 'lob' || kind === 'highcross'
+  const aerial = kind === 'lob' || kind === 'highcross' || (kind === 'through' && mods?.lofted === true)
   if (aerial) {
-    const v = lobVector(d)
+    // 낮게: 로빙 스루(Z+Q+W) · 낮은 로빙/빠른 크로스(Z+A) — 체공이 짧다
+    const low = mods?.low || (kind === 'lob' && mods?.driven)
+    const v = low ? lobVectorT(d, clamp(d / 21, 0.6, 1.5)) : lobVector(d)
     speed = v.speed
     vz = v.vz
   } else if (kind === 'lowcross') {
@@ -772,6 +881,7 @@ export function doPass(
     // 땅볼: 8~18 m/s (마찰 4 m/s² 로 18 m/s 면 40 m 굴러간다)
     speed = clamp(7 + 0.55 * d, 8, 18) * (1 + hold * 0.2)
     if (kind === 'through') speed *= 1.05 // 1.15 → 1.05 (2026-09-15: "갑자기 세게 찬다")
+    if (mods?.driven) speed = Math.min(26, speed * 1.28)
   }
   // 오차
   const acc = aerial || kind === 'lowcross' ? p.sk.crs : p.sk.pas
@@ -782,12 +892,19 @@ export function doPass(
   if (st.tick - p.gotT < 12) sigma *= 1.3
   if (p.stamina < 0.3) sigma *= 1.25
   if (kind === 'through') sigma *= 1.15 // 1.4 → 1.15
+  if (mods?.driven) sigma *= 1.1
+  if (mods?.flair) {
+    sigma *= 1.15
+    speed *= 0.92
+  }
   const a = atan2A(ay - by, ax - bx) + Math.round(randN(st.rng) * sigma * DEG)
   speed *= 1 + randN(st.rng) * (0.03 + 0.16 * (1 - acc))
   releaseBall(st, p)
   b.vx = cosA(a) * speed
   b.vy = sinA(a) * speed
   b.vz = vz
+  if (mods?.flair) b.trick = 1
+  if (mods?.lofted) b.passKind = mods.low ? 'lowlobthrough' : 'lobthrough'
   b.passTo = target
   b.passLive = true
   st.stats[p.team].passes++
@@ -874,6 +991,27 @@ export interface ShotAim {
   /** 각도 오차 표준편차 (도) */
   sigma: number
   chip: boolean
+  /** 옆 회전(감아차기) — 처음엔 `ty` 로 나가 휘어서 `tyEnd` 에 닿는다 · 톱스핀(직접 프리킥) */
+  curl: number
+  dip: number
+  tyEnd: number
+}
+
+/** 슛 조합키 (FC 온라인, 2026-09-23) — 봇은 쓰지 않는다(직접 프리킥의 벽 판정만 봇도 탄다) */
+export interface ShotMods {
+  /** Z+D 감아차기 — 먼 구석으로 휘어 들어간다 · 힘 −12% · 오차 ×0.8 */
+  finesse?: boolean
+  /** C+D 플레어(아웃프런트·무회전) — 흔들리며 날아가 잡기 어렵다 · 오차 ×1.15 */
+  flair?: boolean
+  /** F+D+D 파워 슛 — 1 타이밍 맞음(오차 ×0.55) · 2 빗나감(×1.5) · 3 두 번째 D 없음(×1.2). 세기 +22%, 낮게 */
+  power?: number
+  /** PK Q+D 파넨카 — 가운데로 느리게 띄운다. 힘(0~1)이 높이 */
+  panenka?: boolean
+  /** 오차·세기 배수 (PK 걸어가며 C · 달려가며 E · 골키퍼 방해 동작) */
+  sigmaK?: number
+  speedK?: number
+  /** 직접 프리킥 — 벽 판정을 하고, 높게 겨누면 톱스핀으로 떨어진다 */
+  freekick?: boolean
 }
 
 /** 세트피스 정밀 조준 (키커 뒤 시점, 2026-09-11) — lat: 화면 좌우 −1..1 (코너) · lift: 화면 위아래 −1..1 (높이) */
@@ -882,7 +1020,9 @@ export interface FineAim {
   lift: number
 }
 
-export function aimShot(st: GameState, p: Player, dx: number, dy: number, power: number, chip: boolean, aimSide: number | null, fine?: FineAim): ShotAim {
+export function aimShot(
+  st: GameState, p: Player, dx: number, dy: number, power: number, chip: boolean, aimSide: number | null, fine?: FineAim, mods?: ShotMods,
+): ShotAim {
   const b = st.ball
   const team = st.teams[p.team]
   const gx = goalX(team)
@@ -927,18 +1067,60 @@ export function aimShot(st: GameState, p: Player, dx: number, dy: number, power:
   if ((foot === 'R' && ty * team.dir < -1.5) || (foot === 'L' && ty * team.dir > 1.5)) sigma *= 1.4
   if (st.tick - p.gotT < 12) sigma *= 1.3
   if (p.stamina < 0.3) sigma *= 1.25
+  if (mods) {
+    if (mods.finesse) {
+      speed *= 0.88
+      sigma *= 0.8
+      // 감아차기는 포스트에 붙여 겨눈다 — 휘어 들어오니 골키퍼가 늦게 본다
+      if (Math.abs(ty) > 1.2) ty = Math.sign(ty) * 3.2
+    }
+    if (mods.flair) {
+      speed *= 1.04
+      sigma *= 1.15
+    }
+    if (mods.power) {
+      speed *= 1.22
+      sigma *= mods.power === 1 ? 0.55 : mods.power === 2 ? 1.5 : 1.2
+    }
+    if (mods.sigmaK) sigma *= mods.sigmaK
+    if (mods.speedK) speed *= mods.speedK
+  }
   let vz: number
-  if (chip) {
-    speed = 12 + 6 * power
-    const T = clamp(dG / speed, 0.6, 1.6)
-    vz = 0.5 * G * T * 0.95
+  let dip = 0
+  if (mods?.panenka) {
+    // 파넨카 — 가운데로 느리게 띄워 골라인에서 0.6 + 2.6·힘 m (FC 온라인: 게이지 1.7~2칸이면 가슴 높이)
+    speed = 11 + 6 * power
+    const zT = 0.6 + 2.6 * power
+    const t = dG / (speed * 0.95)
+    vz = (zT + 0.5 * G * t * t) / t
+    sigma *= 0.9
+  } else if (chip) {
+    // 칩슛 — 앞으로 나온 골키퍼 **머리 위**로 (2026-09-23 재설계): 체공 1.1~2.0 초, 골라인에서 1 m 높이로 떨어진다.
+    // 예전(속도 12~18 · 체공 0.6~1.6 초)은 정점이 1 m 남짓이라 골키퍼 손(2.6 m)에 늘 걸렸다 — 칩이 칩 노릇을 못 했다.
+    // 힘을 모을수록 낮고 빠르다. 골라인에 선 골키퍼는 물러나며 잡는다(느린 공이라)
+    const T = clamp(0.7 + dG / 14 - 0.3 * power, 1.1, 2.0)
+    speed = (dG / T) * (1 + 0.13 * T)
+    vz = (1.0 + 0.5 * G * T * T) / T
   } else if (fine) {
     // 높이를 직접 고른다 — ↓ 깔아서 0.25 m · 가운데 1.2 m · ↑ 크로스바 밑 2.1 m 로 골라인에 닿게 (공기 저항만큼 조금 느리게 잡는다)
     const zT = 0.25 + ((clamp(fine.lift, -1, 1) + 1) / 2) * 1.85
     const t = dG / (speed * 0.9)
-    vz = (zT + 0.5 * G * t * t) / t
+    // 직접 프리킥을 높게 겨누면 톱스핀(dip) — 벽(9 m, 머리 높이)을 넘은 공이 크로스바 밑으로 떨어진다.
+    // 중력만으로는 25 m/s 에서 "벽 위 · 바 아래"가 안 나온다 (2026-09-23 계산 — DECISIONS G-66)
+    if (mods?.freekick && fine.lift > -0.3) dip = 4 + 3 * clamp(fine.lift, -0.3, 1)
+    vz = (zT + 0.5 * (G + dip) * t * t) / t
   } else vz = speed * (0.04 + 0.1 * power) * (1.3 - 0.6 * p.sk.fin) + rush * 0.9
-  return { ty, speed, vz, sigma, chip }
+  if (mods?.power && !fine) vz *= 0.6
+  // 감아차기 — 먼 포스트 바깥으로 차서 안쪽으로 휘게 한다. 휘는 양 = ½·a·t² (공기 저항·감쇠로 조금 덜 휘어 0.8)
+  let curl = 0
+  const tyEnd = ty
+  if (mods?.finesse && Math.abs(ty) > 0.5) {
+    const C = 4.5
+    curl = -Math.sign(ty) * team.dir * C
+    const t = dG / (speed * 0.93)
+    ty += Math.sign(ty) * 0.4 * C * t * t
+  }
+  return { ty, speed, vz, sigma, chip, curl, dip, tyEnd }
 }
 
 /**
@@ -947,13 +1129,15 @@ export function aimShot(st: GameState, p: Player, dx: number, dy: number, power:
  *
  * 옛날에는 스틱을 옆으로 안 밀면 정중앙(=골키퍼 자리)을 겨눠 1대1 이 거의 안 들어갔다 (사용자 제보 2026-09-09).
  */
-export function doShoot(st: GameState, p: Player, dx: number, dy: number, power: number, chip: boolean, aimSide: number | null, fine?: FineAim): void {
+export function doShoot(
+  st: GameState, p: Player, dx: number, dy: number, power: number, chip: boolean, aimSide: number | null, fine?: FineAim, mods?: ShotMods,
+): void {
   const b = st.ball
   const team = st.teams[p.team]
   const gx = goalX(team)
   const bx = b.x
   const by = b.y
-  const A = aimShot(st, p, dx, dy, power, chip, aimSide, fine)
+  const A = aimShot(st, p, dx, dy, power, chip, aimSide, fine, mods)
   const speed = A.speed
   let a = atan2A(A.ty - by, gx - bx)
   a += Math.round(randN(st.rng) * A.sigma * DEG)
@@ -966,11 +1150,23 @@ export function doShoot(st: GameState, p: Player, dx: number, dy: number, power:
   b.vx = cosA(a) * speed
   b.vy = sinA(a) * speed
   b.vz = vz
+  b.curl = A.curl
+  b.dip = A.dip
+  // 슛 종류 — 계측·연습 모드가 본다 (해시에 안 들어간다)
+  b.passKind = mods?.panenka ? 'panenka' : mods?.power ? (mods.power === 1 ? 'power-good' : 'power')
+    : mods?.finesse ? 'finesse' : mods?.flair ? 'flair' : chip ? 'chip' : 'shot'
+  // 플레어 — 아웃프런트·무회전: 어느 쪽으로 휠지 모른다 (사람 입력에서만 난수를 뽑는다)
+  if (mods?.flair) {
+    b.curl += (rand(st.rng) - 0.5) * 5
+    b.trick = 1
+  }
   b.shotBy = p.idx
-  // 이 슛의 질 — 골키퍼가 잡을지 쳐낼지 정할 때 본다
-  b.shotQ = p.sk.fin
+  // 이 슛의 질 — 골키퍼가 잡을지 쳐낼지 정할 때 본다 (플레어·타이밍 맞은 파워 슛은 더 잡기 어렵다)
+  b.shotQ = p.sk.fin + (mods?.flair ? 0.08 : 0) + (mods?.power === 1 ? 0.1 : 0)
   const S = st.stats[p.team]
   S.shots++
+  // 직접 프리킥 — 벽이 먼저 본다
+  if (mods?.freekick && wallBlock(st, p, bx, by)) return
   // 블록 — 슛 선상 3 m 안에 있는 수비수가 몸으로 막는다. 위치 선정(posn)이 닿는 폭을, 태클(tck)이 성공률을 정한다 (수비 강화 2026-09-10)
   const v2 = speed * speed
   for (const q of st.players) {
@@ -986,6 +1182,7 @@ export function doShoot(st: GameState, p: Player, dx: number, dy: number, power:
     const zAt = b.vz * t - 0.5 * G * t * t
     if (zAt > 1.6) continue
     if (rand(st.rng) < 0.45 + 0.4 * q.sk.tck) {
+      clearSpin(b)
       b.vx = -b.vx * 0.25 + randN(st.rng) * 2
       b.vy = b.vy * 0.3 + randN(st.rng) * 2
       b.vz = 1 + rand(st.rng) * 2
@@ -1033,6 +1230,7 @@ export function gkCatch(st: GameState, gk: Player): void {
     // 다이브 뒤 일어나는 중 — 잡지는 못한다. 누운 몸에 맞은 공만 튕긴다 (2026-09-11: 좌우 연속 다이브 금지)
     if (dist(gk.x, gk.y, b.x, b.y) < 0.6 && b.z < 1.0 && len(b.vx, b.vy) > 3) {
       const wasShot = b.shotBy >= 0 && b.onTarget
+      clearSpin(b)
       b.vx = -b.vx * 0.3 + randN(st.rng) * 1.5
       b.vy = b.vy * 0.4 + randN(st.rng) * 1.5
       b.vz = 1 + rand(st.rng)
@@ -1053,6 +1251,8 @@ export function gkCatch(st: GameState, gk: Player): void {
     return
   }
   if (gk.action !== ACT_RUN && gk.action !== ACT_DIVE) return
+  // 손은 **자기 박스 안에서만** (2026-09-23 — 골키퍼 직접 조작(`)으로 박스 밖까지 나갈 수 있다). 밖에서는 발로(tryControl)
+  if (!inOwnBox(gk, st.teams[gk.team].dir)) return
   if (b.z > 2.6) return
   // 백패스 규칙 — 아군이 발로 준 공(스로인 포함)은 손으로 잡을 수 없다. 발로만 다룬다 (2026-09-10)
   if (b.lastTeam === gk.team && b.lastTouch !== gk.idx && (b.passLive || b.fromThrow)) return
@@ -1141,6 +1341,7 @@ export function gkCatch(st: GameState, gk: Player): void {
     st.events.push({ tick: st.tick, type: 'save', team: gk.team, player: gk.idx, x: b.x, y: b.y })
   }
   const team = st.teams[gk.team]
+  clearSpin(b)
   b.vx = -b.vx * 0.35 + team.dir * 3 + randN(st.rng) * 3
   b.vy = b.vy * 0.3 + randN(st.rng) * 3
   b.vz = 2 + rand(st.rng) * 2
@@ -1220,6 +1421,217 @@ export function gkDistribute(st: GameState, gk: Player): void {
   }
   if (best >= 0) doPass(st, gk, 'ground', best, 0, 0, 0.3)
   else gkPunt(st, gk, (rand(st.rng) - 0.5) * 34)
+}
+
+// ---------------------------------------------------------------- 사람 조작 동작 (FC 온라인 조작, 2026-09-23 · DESIGN 3.1a)
+
+/**
+ * 직접 프리킥의 **벽** — 공과 골문 사이 6~11.5 m 에 선 수비수(AI 가 세운 벽 · 벽 옆에 붙은 사람 포함)가 어깨 폭(0.42 m) 안으로
+ * 지나가는 공을 막는다. 선 채로는 머리 높이(키 + 0.1 m)까지, 뛰면(수비 W) 0.45 m ~ 머리 + 0.55 m — 뛰면 발밑이 빈다.
+ * 예전엔 벽이 서 있기만 하고 슛을 막지 않았다(블록은 공 3.2 m 안만 봤다). 봇의 직접 프리킥도 이 판정을 탄다
+ */
+function wallBlock(st: GameState, p: Player, bx: number, by: number, minD = 6): boolean {
+  const b = st.ball
+  const v2 = b.vx * b.vx + b.vy * b.vy
+  if (v2 < 1) return false
+  const def = st.teams[1 - p.team]
+  for (const q of st.players) {
+    if (q.team === p.team || q.sk.isGK || q.sentOff) continue
+    const dq = dist(bx, by, q.x, q.y)
+    if (dq < minD || dq > 11.5) continue
+    const t = ((q.x - bx) * b.vx + (q.y - by) * b.vy) / v2
+    if (t <= 0) continue
+    if (dist(q.x, q.y, bx + b.vx * t, by + b.vy * t) > 0.42) continue
+    const zAt = b.z + b.vz * t - 0.5 * (G + b.dip) * t * t
+    // 공이 벽에 닿는 순간 공중에 있나 — 점프는 누른 뒤 4~40틱
+    const air = st.tick + t * 60 - def.wallJumpT
+    const jumping = air >= 4 && air <= 40
+    const head = (q.spec.h || 180) / 100 + 0.1
+    if (zAt < (jumping ? 0.45 : 0) || zAt > (jumping ? head + 0.55 : head)) continue
+    if (rand(st.rng) < 0.85) {
+      clearSpin(b)
+      b.vx = -b.vx * 0.25 + randN(st.rng) * 2
+      b.vy = b.vy * 0.3 + randN(st.rng) * 2
+      b.vz = 1 + rand(st.rng) * 2
+      b.shotBy = -1
+      b.onTarget = false
+      b.lastTouch = q.idx
+      b.lastTeam = q.team
+      b.passLive = false
+      q.lastKick = st.tick
+      st.events.push({ tick: st.tick, type: 'block', team: q.team, player: q.idx, x: q.x, y: q.y })
+      return true
+    }
+  }
+  return false
+}
+
+/** 방금 찬 공을 두 번째 누르기로 바꿀 때의 종류 */
+export const TAP_S = 1
+export const TAP_W = 2
+export const TAP_A = 3
+export const TAP_D = 4
+export const TAP_KNOCK = 5
+/** 두 번째 누르기를 받아 주는 틱 수 — 공이 발을 떠난 뒤 0.15 초 */
+export const TAP_TICKS = 9
+
+/**
+ * 방금 찬 공에 같은 키를 한 번 더 (FC 온라인 S+S 딩크 · W+W 딩크 스루 · A+A 낮은 크로스 · D+D 드리븐 슛 · E 세 번 슈퍼 녹온).
+ * 이 게임의 킥은 **떼는 순간** 나가서 두 번째 입력을 기다릴 동작 시간이 없다 — 기다리면 모든 패스가 늦어진다.
+ * 그래서 공이 발을 떠난 뒤 0.15 초(9틱) 안에 누르면 **날아가는 공을 바꾼다**. 그때 공은 아직 1~2 m 앞이라 한 동작으로 보인다.
+ * 예전 A 두 번(낮은 크로스)은 첫 A 에 공이 이미 떠나 두 번째가 먹히지 않았다 — 이 방식으로 고쳤다
+ */
+export function followTap(st: GameState, p: Player, kind: number, d: number): boolean {
+  const b = st.ball
+  const team = st.teams[p.team]
+  if (b.owner >= 0 || b.lastTouch !== p.idx || b.kickTick !== team.tapTick) return false
+  const sp = len(b.vx, b.vy)
+  if (sp < 0.5) return false
+  if (kind === TAP_S || kind === TAP_W) {
+    // 딩크 — 수비수 발 위로 살짝 띄운다 (정점 0.6~0.75 m). 뜬 동안은 상대가 발로 못 끊는다(tryControl)
+    const k = kind === TAP_S ? 0.82 : 0.86
+    b.vx *= k
+    b.vy *= k
+    b.vz = kind === TAP_S ? 3.4 : 3.8
+    b.dink = true
+    b.passKind = kind === TAP_S ? 'dink' : 'dinkthrough'
+  } else if (kind === TAP_A) {
+    // 로빙 → 낮은 크로스
+    const ns = clamp(12 + 0.6 * d, 14, 24)
+    b.vx *= ns / sp
+    b.vy *= ns / sp
+    b.vz = 0.8
+    b.passKind = 'lowcross'
+  } else if (kind === TAP_D) {
+    // 드리븐 — 낮고 세게 깔아 찬다
+    b.vx *= 1.06
+    b.vy *= 1.06
+    b.vz = Math.min(b.vz, 0.9) * 0.55
+    b.dip = 0
+    b.passKind = 'driven'
+    if (b.shotBy === p.idx) remarkShot(st, p.team)
+    // 직접 프리킥을 낮게 바꿨다 — 벽을 다시 본다 (선 벽에는 맞고, 뛴 벽은 밑으로 지나간다)
+    if (b.restartBy === p.idx) wallBlock(st, p, b.x, b.y, 1)
+  } else if (kind === TAP_KNOCK) {
+    // 슈퍼 녹온 — 더 길게 친다
+    const k = (sp + 2.5) / sp
+    b.vx *= k
+    b.vy *= k
+  } else return false
+  return true
+}
+
+/** 날아가는 슛이 바뀌었다 — 유효슛 표시를 다시 본다 (한 번만 센다) */
+export function remarkShot(st: GameState, teamIdx: number): void {
+  const b = st.ball
+  if (b.onTarget) {
+    b.onTarget = false
+    st.stats[teamIdx].onTarget--
+  }
+  markOnTarget(st, teamIdx)
+}
+
+/**
+ * 페이크 슛 (Z+C+D, FC 온라인 "플레어 슛 · 페이크") — 공은 그대로 두고 차는 시늉만 한다. 앞 5 m 안의 상대 필드 선수는
+ * 0.4 초(사람이 조작 중인 선수는 0.23 초) 발이 묶이고, 14 m 안의 골키퍼는 위치 선정이 나쁠수록 먼저 몸을 날린다.
+ * 1.5 초 안에 또 하면 아무도 안 속는다. 난수는 사람 입력에서만 뽑는다
+ */
+export function fakeShot(st: GameState, p: Player): void {
+  const team = st.teams[p.team]
+  p.action = ACT_KICK
+  p.actT = 8
+  const fresh = st.tick - team.fakeT > 90
+  team.fakeT = st.tick
+  if (!fresh) return
+  for (const q of st.players) {
+    if (q.team === p.team || q.sentOff || q.action !== ACT_RUN) continue
+    if (q.sk.isGK) {
+      if (q.holdT > 0 || dist(q.x, q.y, p.x, p.y) > 14) continue
+      if (rand(st.rng) < 0.65 - 0.35 * q.sk.gkPos) {
+        // 가까운 포스트 쪽으로 먼저 눕는다 — 그 뒤 일어나는 시간(0.5 초)이 빈틈이다
+        q.action = ACT_DIVE
+        q.actT = 20
+        q.diveHigh = false
+        q.vx = 0
+        q.vy = (p.y >= q.y ? 1 : -1) * 3.5
+      }
+      continue
+    }
+    if (dist(q.x, q.y, p.x, p.y) > 5 || fromBehind(p, q) > 0.5) continue
+    const qt = st.teams[q.team]
+    q.bitT = st.tick + (qt.human && qt.controlled === q.idx ? 14 : 24)
+  }
+}
+
+/**
+ * 공격수 밀치기 (수비 D 를 누른 순간 · 소유자 1.3 m 안, FC 온라인 "공격수 밀치기"). 어깨 싸움이라 힘(str)이 가른다.
+ * 옆·앞에서면 정당한 몸싸움 — 이기면 공이 흐르고, 지면 튕겨 나온다. 뒤에서 밀면 파울(명백한 득점 기회면 퇴장)
+ */
+export function shoulderBarge(st: GameState, q: Player, o: Player): void {
+  const b = st.ball
+  const behind = fromBehind(o, q)
+  if (behind > 0.6) {
+    foul(st, q, o.x, o.y, 0.35, 'foul', clearChance(st, o, q) ? 2 : 0)
+    return
+  }
+  const pw = q.sk.str / (q.sk.str + o.sk.str + 0.0001)
+  const win = 0.1 + 0.5 * pw * (1 - 0.4 * behind)
+  const roll = rand(st.rng)
+  if (roll < win) {
+    clearSpin(b)
+    b.owner = -1
+    b.vx = o.vx * 0.7 + (o.x - q.x) * 1.5 + randN(st.rng) * 0.5
+    b.vy = o.vy * 0.7 + (o.y - q.y) * 1.5 + randN(st.rng) * 0.5
+    b.vz = 0
+    b.lastTouch = o.idx
+    b.lastTeam = o.team
+    b.shotBy = -1
+    b.passTo = -1
+    b.restartBy = -1
+    b.passLive = false
+    b.fromThrow = false
+    o.lastKick = st.tick
+    o.vx *= 0.5
+    o.vy *= 0.5
+    st.stats[q.team].tackles++
+    st.events.push({ tick: st.tick, type: 'tackle', team: q.team, player: q.idx, x: b.x, y: b.y })
+  } else if (roll > 0.985 - 0.02 * q.sk.agg) {
+    foul(st, q, o.x, o.y, 0.1, 'foul')
+  } else {
+    q.vx *= 0.3
+    q.vy *= 0.3
+  }
+}
+
+/** 프리킥 수비벽이 앞으로 나왔다가(Z) 주심에게 걸렸다 — 경고, 프리킥은 그 자리에서 다시 (FC 온라인: "잘못하면 옐로카드") */
+export function encroachFoul(st: GameState, q: Player): void {
+  const r = st.restart
+  if (!r) return
+  call(st, { kind: 'foul', team: r.team, by: q.idx, x: r.x, y: r.y, card: 1, penalty: false })
+}
+
+/**
+ * Z+S 를 상대 박스 근처(골라인 14 m 안 · 가운데에서 7 m 밖)에서 누르면 **컷백** — 뒤쪽, 골문 20 m 안의 빈 동료에게
+ * (FC 온라인 "드라이브 땅볼 패스 / 컷인 패스"). 없으면 −1
+ */
+export function cutbackTarget(st: GameState, p: Player): number {
+  const dir = st.teams[p.team].dir
+  const gx = dir * HALF_L
+  if ((gx - p.x) * dir > 14 || Math.abs(p.y) < 7) return -1
+  let best = -1
+  let bestS = -99
+  for (const q of st.players) {
+    if (q.team !== p.team || q.idx === p.idx || q.sk.isGK || q.sentOff) continue
+    if ((q.x - p.x) * dir > 0.5) continue
+    const dG = dist(q.x, q.y, gx, 0)
+    if (dG > 20) continue
+    const s = -dG * 0.1 + Math.min(4, nearestOppDist(st, q)) * 0.3
+    if (s > bestS) {
+      bestS = s
+      best = q.idx
+    }
+  }
+  return best
 }
 
 /** 자기 박스 안인가 */

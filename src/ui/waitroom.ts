@@ -71,7 +71,7 @@ export class WaitRoom {
     // 지난 대화가 날아가므로 **밖**(`wait-chat`)에 따로 둔다 (2026-09-23)
     host.innerHTML = `<div class="wait"><div class="wait-stack">
       <div class="wait-main"></div>
-      <div class="wait-chat"><div class="wc-t">💬 대화 <small>경기가 시작돼도 이어집니다 · 경기 중에는 T</small></div><div class="wc-host"></div></div>
+      <div class="wait-chat"><div class="wc-t">💬 대화 <small>경기가 시작돼도 이어집니다 · 경기 중에는 Enter</small></div><div class="wc-host"></div></div>
     </div></div>`
     this.shell = host.querySelector('.wait') as HTMLElement
     this.root = host.querySelector('.wait-main') as HTMLElement

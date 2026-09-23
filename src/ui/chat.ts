@@ -1,8 +1,8 @@
 // 텍스트 채팅 — 대기실(붙박이)과 온라인 경기 중 (2026-09-23, 사용자 요청 "bedorage-rpg 참고해서 대기실과 경기 중 채팅").
 //
-// bedorage-rpg `src/ui/chat.ts`(v0.42~0.43)를 옮겨 왔다. 다른 점은 **여는 키** 하나다:
-//  · 이 게임은 Enter 가 이미 "세레모니 건너뛰기"(BTN_SKIP)이고 화면 배너도 "Enter 로 건너뛰기" 라고 쓴다.
-//    그래서 경기 중에는 **T 로 열고**, 열린 입력칸에서 Enter 로 보내고 Esc 로 닫는다.
+// bedorage-rpg `src/ui/chat.ts`(v0.42~0.43)를 옮겨 왔다. 여는 키는 bedorage-rpg 처럼 **Enter** 다 (사용자 결정 2026-09-23):
+//  · 다만 Enter 는 이 게임에서 "세레모니 건너뛰기"(BTN_SKIP)이기도 하다 — **골 세레모니·리플레이 중에만** 건너뛰기로 쓰고
+//    그 밖에는 채팅을 연다(세션 `onChatKeyDown`). T 도 그대로 연다. 열린 입력칸에서 Enter 로 보내고 Esc 로 닫는다.
 //  · 대기실은 붙박이(docked) — 입력칸이 늘 있고 줄이 사라지지 않는다. 대기실 대화는 경기가 시작되면 경기 안으로 이어진다.
 //
 // 방 통로(RoomLink)의 컨트롤 메시지로 **문자열만** 오간다 — sim · 락스텝 · 해시와 무관하다.
@@ -54,7 +54,7 @@ export class ChatBox {
     this.root.innerHTML =
       `<div class="chat-log"></div>` +
       `<input class="chat-in" type="text" maxlength="${CHAT_MAX}" placeholder="${hint}" autocomplete="off" spellcheck="false"${this.docked ? '' : ' hidden'}>` +
-      (this.docked ? '' : '<div class="chat-hint">T 채팅</div>')
+      (this.docked ? '' : '<div class="chat-hint">Enter 채팅</div>')
     parent.appendChild(this.root)
     this.log = this.root.querySelector('.chat-log') as HTMLElement
     this.input = this.root.querySelector('.chat-in') as HTMLInputElement

@@ -702,7 +702,7 @@ em.outtag { font-style: normal; font-size: 10px; padding: 0 4px; border-radius: 
 
 /*
  * 텍스트 채팅 (2026-09-23 · bedorage-rpg 에서 옮김) — 경기 중에는 왼쪽, 입력 키 표시(아래 150~290px) 바로 위.
- * 닫혀 있으면 줄이 12초 뒤 사라지고, T 로 열면 지난 줄이 모두 보인다. 대기실은 붙박이(docked).
+ * 닫혀 있으면 줄이 12초 뒤 사라지고, Enter(또는 T)로 열면 지난 줄이 모두 보인다. 대기실은 붙박이(docked).
  */
 .chat { position: absolute; left: 16px; bottom: 300px; width: 360px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; z-index: 13; }
 .chat-log { max-height: 170px; overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
@@ -719,7 +719,7 @@ em.outtag { font-style: normal; font-size: 10px; padding: 0 4px; border-radius: 
   border: 1px solid var(--gold); border-radius: 6px; padding: 7px 10px; outline: none; }
 .chat-in::placeholder { color: #7d8896; }
 .chat-in[hidden] { display: none; }
-/* 닫혀 있을 때만 "T 채팅" 을 흐리게 — 있는지 알게 */
+/* 닫혀 있을 때만 "Enter 채팅" 을 흐리게 — 있는지 알게 */
 .chat-hint { align-self: flex-start; font: 700 10.5px 'IBM Plex Mono', monospace; color: rgba(230,237,243,.55); background: rgba(8,12,18,.45);
   border: 1px solid rgba(125,136,150,.3); border-radius: 999px; padding: 2px 8px; }
 .chat.open .chat-hint { display: none; }
@@ -728,3 +728,39 @@ em.outtag { font-style: normal; font-size: 10px; padding: 0 4px; border-radius: 
 .chat.docked .chat-log { height: 128px; max-height: none; overflow-y: auto; background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 6px 9px; }
 .chat.docked .chat-log:empty::before { content: "대화가 여기 쌓입니다"; color: var(--ink-3); font: 500 12px 'IBM Plex Sans KR', sans-serif; }
 .chat.docked .chat-line { text-shadow: none; }
+
+/* ---- 🎯 조작 연습 (2026-09-23) ---- */
+.tile.practice { border-color: #3fb95055; background: linear-gradient(160deg, #13261b 0%, #171a26 60%); }
+.tile.practice .k { color: #7ee787; border-color: #3fb95066; background: #3fb95014; }
+.tile.practice:hover { border-color: #7ee787; }
+kbd { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 6px;
+  background: #1c2330; border: 1px solid #3a4658; border-bottom-width: 3px; color: #fff; font: 700 12.5px 'IBM Plex Mono', monospace; }
+.dk { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.dk i { font-style: normal; color: var(--ink-3); font-weight: 700; padding: 0 1px; }
+.dk small { color: var(--ink-2); font-size: 11.5px; margin-left: 3px; }
+.dk.big kbd { min-width: 34px; height: 34px; font-size: 16px; }
+.drill-card { position: absolute; top: 14px; left: 16px; width: min(340px, 78vw); pointer-events: none; z-index: 8;
+  background: rgba(8,12,18,.84); border: 1px solid #2c3644; border-radius: 12px; padding: 12px 14px; }
+.drill-card[hidden] { display: none; }
+.drill-card .dc-cat { font: 700 11px 'IBM Plex Mono', monospace; color: #7ee787; letter-spacing: .04em; }
+.drill-card h3 { font-family: 'Black Han Sans', sans-serif; font-weight: 400; font-size: 22px; margin: 2px 0 8px; }
+.drill-card p { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
+.drill-card .dc-goal b { color: var(--gold); margin-right: 4px; }
+.drill-card .dc-stat { display: flex; gap: 10px; margin-top: 10px; font: 600 12px 'IBM Plex Mono', monospace; color: var(--ink); flex-wrap: wrap; }
+.drill-card .dc-hint { margin-top: 6px; font-size: 11px; color: var(--ink-3); }
+.drill-flash { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); z-index: 9; pointer-events: none;
+  padding: 12px 22px; border-radius: 12px; font: 700 20px 'IBM Plex Sans KR', sans-serif; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis; }
+.drill-flash[hidden] { display: none; }
+.drill-flash.ok { background: rgba(35,134,54,.92); color: #fff; box-shadow: 0 0 30px rgba(63,185,80,.45); }
+.drill-flash.no { background: rgba(120,28,28,.9); color: #fff; font-size: 16px; }
+.drill-box { width: min(880px, 94vw); text-align: left; }
+.drill-box h2, .drill-box > p { text-align: center; }
+.drill-box .row { justify-content: center; }
+.drill-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; margin: 6px 0 14px; }
+.drill-cat h4 { margin: 0 0 6px; font-size: 13px; color: var(--gold); }
+.drill-item { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; text-align: left; margin: 0 0 6px; padding: 8px 10px;
+  background: #121821; border: 1px solid #2c3644; border-radius: 9px; color: var(--ink); cursor: pointer; font: 500 13px 'IBM Plex Sans KR', sans-serif; }
+.drill-item:hover { border-color: #7ee787; }
+.drill-item b { flex: 1 1 100%; font-weight: 700; }
+.drill-item em { font-style: normal; color: #7ee787; font-size: 12px; margin-left: auto; }
+.drill-item.done { border-color: #3fb95055; }

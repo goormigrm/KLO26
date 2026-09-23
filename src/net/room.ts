@@ -10,8 +10,9 @@ import { joinRoom, selfId, type Room } from 'trystero'
 /**
  * 프로토콜이 바뀌면 올린다. 개발 서버와 배포본이 같은 릴레이·같은 APP_ID 면 방 목록이 섞이므로
  * 개발 중에는 `-dev` 를 붙인다 (HANDOVER 교훈 9).
+ * v2 (2026-09-23): 입력 패킷 6 → 8바이트 (FC 온라인 조작 키) — v1 과는 방 목록부터 갈라진다.
  */
-export const APP_ID = `klo26-v1${import.meta.env?.DEV ? '-dev' : ''}`
+export const APP_ID = `klo26-v2${import.meta.env?.DEV ? '-dev' : ''}`
 const LOBBY_ID = 'lobby'
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 

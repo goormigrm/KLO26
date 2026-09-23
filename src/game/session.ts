@@ -2,8 +2,8 @@
 // **홈/원정은 경기마다 동전 던지기로 정한다** (`toss.ts`, 2026-09-11) — 방장·사람이라고 홈이 아니다.
 // 틱은 Worker 타이머(60Hz), 그리기는 requestAnimationFrame. 렌더는 prev/curr 보간만 하고 sim 을 바꾸지 않는다.
 
-import { BTN_A, BTN_D, BTN_SKIP, BTN_SUB, SUB_CLEAR, soloInputs, type Input } from '../core/input'
-import { createState, hashState, snapshot, step } from '../core/sim'
+import { BTN_A, BTN_C, BTN_D, BTN_Q, BTN_SKIP, BTN_SUB, BTN_Z, SUB_CLEAR, soloInputs, type Input } from '../core/input'
+import { POWER_GREEN, POWER_TICKS, createState, hashState, snapshot, step } from '../core/sim'
 import { synthSquad } from '../core/synth'
 import { clubSquad, squadClub, toSquadConfig, type Squad } from '../cards/squad'
 import { CLUBS } from '../data/pool'
@@ -18,7 +18,7 @@ import { MatchVoice } from '../audio/tts'
 import { ChatBox, cleanChat, type ChatLine } from '../ui/chat'
 import { Hud } from '../render/hud'
 import { KeyView } from '../render/keyview'
-import { Renderer3D, capturePose, type PrevPose } from '../render3d/renderer3d'
+import { NAME_MODE_TEXT, Renderer3D, capturePose, type NameMode, type PrevPose } from '../render3d/renderer3d'
 import type { Kit } from '../render3d/player3d'
 import { bindSettingsPanel, settingsPanelHtml, type Settings } from '../ui/settings'
 import { LocalInput } from './localInput'
@@ -97,6 +97,10 @@ export class Session {
   private paused = false
   private disposed = false
   private message = ''
+  /** 잠깐 띄우는 한 줄 (`-` 이름 표시 바꿈 등) · 사라지는 시각(performance.now) */
+  private toast = ''
+  private toastUntil = 0
+  private nameMode: NameMode = 0
   private evSeen = 0
   private overlay: HTMLElement
   private fpsEl: HTMLElement
@@ -216,6 +220,13 @@ export class Session {
     this.voice.reset()
 
     this.input.onEscape = () => this.toggleMenu()
+    // `-` 선수 이름 표시 — 조작·공 가진 선수 → 전원 → 끔 (FC 온라인 "선수명 표시 변경", 렌더 전용)
+    this.input.onRenderKey = () => {
+      this.nameMode = ((this.nameMode + 1) % 3) as NameMode
+      this.renderer.setNameMode(this.nameMode)
+      this.toast = NAME_MODE_TEXT[this.nameMode]
+      this.toastUntil = performance.now() + 1500
+    }
     this.input.attach()
     window.addEventListener('resize', this.onResize)
     // Ctrl+W(페이스 컨트롤 + 스루 패스)가 크롬에서는 탭을 닫는다 — 막을 수 없으니 한 번 묻는다
@@ -306,7 +317,7 @@ export class Session {
 
   /** 온라인 대전 배선 — 해시 대조 · 리싱크 · 상대 이탈 (DESIGN 6.5 · 6.6) */
   private attachNet(net: NetConfig): void {
-    // 경기 중 채팅 (2026-09-23) — 온라인에만. T 로 열고 Enter 로 보낸다. 대기실 대화를 이어 쌓는다
+    // 경기 중 채팅 (2026-09-23) — 온라인에만. Enter(또는 T)로 열고 Enter 로 보낸다. 대기실 대화를 이어 쌓는다
     this.chat = new ChatBox(this.overlay.parentElement as HTMLElement, (text) => this.sendChat(text))
     if (net.chatLog?.length) this.chat.load(net.chatLog)
     window.addEventListener('keydown', this.onChatKeyDown)
@@ -362,13 +373,22 @@ export class Session {
   }
 
   /**
-   * T — 채팅 열기. **누를 때가 아니라 뗄 때** 연다: 누를 때 입력칸에 포커스를 주면 그 키의 글자('t' · 한글 자판이면 'ㅅ')가
-   * 입력칸에 들어간다. 누를 때는 "열 준비"만 해 둔다 — 입력칸에서 친 T 는 입력칸이 전파를 막아 여기까지 안 온다.
-   * Enter 는 이 게임에서 세레모니 건너뛰기라 쓰지 않는다 (bedorage-rpg 와 다른 점).
+   * 채팅 열기 — **Enter**(사용자 결정 2026-09-23) 또는 T.
+   *  · Enter 는 **골 세레모니·리플레이 중에는 건너뛰기**(BTN_SKIP)다 — 그때만 채팅을 열지 않는다. 그 밖엔 BTN_SKIP 이 sim 에서 아무 일도 안 한다.
+   *    누르는 순간 연다(글자가 없는 키라 입력칸에 아무것도 안 들어간다).
+   *  · T 는 **뗄 때** 연다: 누를 때 입력칸에 포커스를 주면 그 글자('t' · 한글 자판이면 'ㅅ')가 입력칸에 들어간다.
+   *  입력칸에서 친 키는 입력칸이 전파를 막아 여기까지 안 온다.
    */
   private onChatKeyDown = (e: KeyboardEvent): void => {
-    if (e.code !== 'KeyT' || !this.chat || this.chat.open || e.repeat) return
+    if (!this.chat || this.chat.open || e.repeat) return
     if (!this.overlay.hidden) return // 메뉴·설정 창이 떠 있으면 열지 않는다
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      if (this.state.phase === 'goal' || this.replay) return // 세레모니 건너뛰기
+      e.preventDefault()
+      this.chat.show()
+      return
+    }
+    if (e.code !== 'KeyT') return
     this.chatArmed = true
     e.preventDefault()
   }
@@ -486,14 +506,18 @@ export class Session {
     const alpha = this.paused ? 1 : Math.min(1, this.acc / TICK_MS)
     const me = this.meTeam
     const controlled = this.state.teams[me].controlled
-    let message = this.message
+    let message = this.message || (now < this.toastUntil ? this.toast : '')
     if (this.cfg.net && this.stallSince >= 0 && now - this.stallSince > 400) {
       message = `상대 입력 대기 중… (${this.cfg.net.link.rtt} ms)`
     }
     if (!this.drawReplay(dt)) {
       const tm = this.state.teams[me]
       const hold = Math.min(1, Math.max(tm.holdShoot / 36, tm.holdPass / 30))
-      this.renderer.draw(this.prev, this.state, alpha, dt, { humanTeam: me, controlled, aim: this.previewAim(), hold })
+      // 파워 슛(F+D) 타이밍 게이지 — 초록 구간에서 D 를 한 번 더 (sim 의 POWER_* 와 같은 값)
+      const gauge = tm.powerT >= 0
+        ? { t: (this.state.tick - tm.powerT) / POWER_TICKS, green: [POWER_GREEN[0] / POWER_TICKS, POWER_GREEN[1] / POWER_TICKS] as [number, number], hit: tm.powerHit }
+        : null
+      this.renderer.draw(this.prev, this.state, alpha, dt, { humanTeam: me, controlled, aim: this.previewAim(), hold, gauge })
       this.hud.update(this.state, { humanTeam: me, controlled, message })
     }
     if (import.meta.env.DEV) this.captureAfterDraw()
@@ -521,7 +545,9 @@ export class Session {
     const held = this.lastInput.buttons
     const kind = held & BTN_D ? 'D' : held & BTN_A ? 'A' : null
     if (!kind) return null
-    return previewRestartKick(st, me, kind, this.lastInput.mx, this.lastInput.my, Math.min(1, team.holdShoot / 36))
+    // 조합키도 미리 본다 — Z 감아차기(휘는 궤적) · Q 파넨카(PK) · C 플레어는 방향이 정해지지 않아 평균만
+    const mods = { finesse: (held & BTN_Z) !== 0, panenka: st.phase === 'penalty' && (held & BTN_Q) !== 0, flair: st.phase !== 'penalty' && (held & BTN_C) !== 0 }
+    return previewRestartKick(st, me, kind, this.lastInput.mx, this.lastInput.my, Math.min(1, team.holdShoot / 36), mods)
   }
 
   // ---- 메뉴 · 결과 ----

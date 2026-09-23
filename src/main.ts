@@ -1,6 +1,7 @@
 // 진입점 — 기기 판정 → 로비 ↔ 혼자 하기 세션. 온라인 대전은 단계 6 에서 (src/net).
 // 설계서: docs/DESIGN.md · 다음 할 일: HANDOVER.md
 
+import { PracticeSession } from './game/practice'
 import { Session, type NetConfig, type SoloConfig } from './game/session'
 import { HostRoom } from './net/hostroom'
 import { openLobby, type LobbyLink, type RoomLink } from './net/room'
@@ -15,6 +16,7 @@ let lobby: Lobby | null = null
 let session: Session | null = null
 let squad: SquadScreen | null = null
 let wait: WaitRoom | null = null
+let practice: PracticeSession | null = null
 /**
  * 공용 로비 통로는 페이지가 사는 동안 하나만 연다 (bedorage-duck 2026-09-06 교훈).
  * 폰 차단 화면에서는 아예 열지 않는다 — 접속만 하고 못 노는 사람이 목록에 뜨면 헷갈린다.
@@ -174,10 +176,23 @@ function showWait(code: string, role: 'host' | 'guest', link?: RoomLink, peerId?
   )
 }
 
+/** 🎯 조작 연습 (2026-09-23) — 내 스쿼드로, 로비에서 들어가고 로비로 나온다 */
+function showPractice(): void {
+  closeRoom()
+  lobby?.dispose()
+  lobby = null
+  app.innerHTML = ''
+  practice = new PracticeSession(app, loadSettings(), loadSquadOrDefault(), () => {
+    practice = null
+    showLobby()
+  })
+}
+
 function showLobby(): void {
   session = null
   squad = null
   wait = null
+  practice = null
   app.innerHTML = ''
   if (!lobbyLink) lobbyLink = openLobby()
   lobby = new Lobby(
@@ -200,6 +215,7 @@ function showLobby(): void {
     },
     lobbyLink,
     { info: hostingInfo, enter: enterWait, close: closeRoom },
+    showPractice,
   )
   lobby.setHosting(hostingInfo())
 }
@@ -210,7 +226,7 @@ function boot(): void {
     lobby = null
     return
   }
-  if (!lobby && !session) showLobby()
+  if (!lobby && !session && !practice) showLobby()
 }
 
 // 창을 넓히면 로비가 열리고, 좁히면 (세션 중이 아닐 때) 다시 안내로

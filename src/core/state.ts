@@ -127,6 +127,8 @@ export interface Player {
   touchT: number
   touchLen: number
   touchI: number
+  /** 크로서가 깊은 사이드(|y| > 16 · 골문 x 33 m 안)에 공을 갖고 들어간 틱 — 박스로 뛰는 동료를 1.2 초까지 기다린다 (32차) */
+  crossT: number
   /** 공을 잡은 틱 — 12틱 안에 차면 퍼스트 타임(오차 ×1.3) */
   gotT: number
   /** 스탠딩 태클(Space) 남은 틱 — 그동안 뺏을 확률 ×3 */

@@ -70,6 +70,43 @@ function holdLine(st: GameState, p: Player, tx: number, dir: number): number {
   return t > line - LINE_MARGIN ? (line - LINE_MARGIN) * dir : tx
 }
 
+/**
+ * 박스 침투 자리 (2026-09-15 · 32차 함수로) — 니어포스트·PK 스팟·파포스트·컷백 네 자리 중 하나로 달린다. 맡았으면 true.
+ * sideY: 크로스가 오는 쪽(+면 +y 사이드에서 온다). exclude: 공 가진 선수·받을 선수. atLine: 오프사이드 라인 뒤에서 멈추나(공을 차기 전).
+ * 누가 뛰는가는 역할 계수 box (기본: FW·AM·MF 1, 포스트형·침투형 CAM 2 = 먼저, 밖으로 윙어·홀딩 0 = 안 감)
+ */
+function boxRun(st: GameState, p: Player, sideY: number, exclude: number, atLine: boolean): boolean {
+  if (p.rt.box <= 0 || p.sk.isGK) return false
+  const ti = p.team
+  const team = st.teams[ti]
+  const dir = team.dir
+  const gx = goalX(team)
+  const far = sideY > 0 ? -1 : 1
+  const spots: [number, number][] = [
+    [gx - dir * 5.5, -far * 2.5],
+    [gx - dir * 11, 0],
+    [gx - dir * 7, far * 5],
+    [gx - dir * 15, -far * 6],
+  ]
+  // 네 자리 — box 가 큰 순, 같으면 idx 순 (같은 자리를 둘이 안 잡게).
+  // 재검증(2026-09-15 저녁): 32 m 안에 있는 사람만 뛰게 했더니 사이드 소유 때 박스 안 동료가 평균 0.24명 — 45 m 로 넓혔다
+  let k = 0
+  for (const q of st.players) {
+    if (q.team !== ti || q.sk.isGK || q.sentOff || q.idx === exclude || q.idx === p.idx || q.rt.box === 0) continue
+    if (!(q.rt.box > p.rt.box || (q.rt.box === p.rt.box && q.idx < p.idx))) continue
+    if (dist(q.x, q.y, gx, 0) < 30) k++
+  }
+  if (k >= 4 || dist(p.x, p.y, gx, 0) >= 45) return false
+  const [sx, sy] = spots[k]
+  let tx = sx * dir
+  if (atLine) tx = Math.min(tx, offsideLineX(st, ti) * dir - LINE_MARGIN)
+  p.tx = clamp(tx * dir, -HALF_L + 1, HALF_L - 1)
+  p.ty = clamp(sy, -HALF_W + 1, HALF_W - 1)
+  p.sprint = p.stamina > 0.25
+  p.runT = st.tick
+  return true
+}
+
 /** 지금 오프사이드 위치인가 (달려 나가도 되는지 AI 가 스스로 본다) */
 function inOffsidePosition(st: GameState, p: Player): boolean {
   const dir = st.teams[p.team].dir
@@ -231,9 +268,15 @@ function carrierDecide(st: GameState, p: Player, noise: number): void {
       s += 0.12
       kind = 'through'
     }
-    if (Math.abs(p.y) > 18 && p.x * dir > 30 && Math.abs(q.x - gx) < 20 && Math.abs(q.y) < 20) {
+    // 크로스 (32차 손봄) — 사이드(|y| > 16) 골문 x 22.5 m 안에서, 박스 안 동료 또는 **박스로 달려드는 동료**에게.
+    // 달려드는 동료(침투 러닝 중 · 골문 24 m 안 · 골문 쪽으로 2 m/s 넘게)는 doPass 가 달리는 앞을 겨눈다 — 예전엔 이미 박스에
+    // 서 있는 사람에게만 올려 크로스가 12판에 5번이었다(audit). 박스 쪽은 **머리 높이**(highcross), 그 밖은 로빙
+    const inBoxQ = Math.abs(q.x - gx) < 16 && Math.abs(q.y) < 12
+    const arriving = st.tick - q.runT < 20 && dist(q.x, q.y, gx, 0) < 24 && q.vx * dir > 2
+    if (Math.abs(p.y) > 16 && p.x * dir > 30 && (inBoxQ || arriving || (Math.abs(q.x - gx) < 20 && Math.abs(q.y) < 20))) {
+      // 가산점은 예전 로빙과 같게(+0.15) — +0.2 로 올렸더니 성공률 22% 인 크로스가 땅볼·스루를 밀어내 4-4-2 의 골이 1.36 → 1.00 으로 줄었다
       s += 0.15
-      kind = 'lob'
+      kind = inBoxQ || arriving ? 'highcross' : 'lob'
     }
     if (s > bestScore) {
       bestScore = s
@@ -252,7 +295,27 @@ function carrierDecide(st: GameState, p: Player, noise: number): void {
   let clr = -1
   if (p.x * dir < -20 && opD < 3) clr = 0.55 + (inOwnBox(p, dir) ? 0.2 : 0) + randN(r) * noise
 
-  const hold = 0.08 + 0.03 * (2 - tac.tempo)
+  let hold = 0.08 + 0.03 * (2 - tac.tempo)
+  // 크로서가 기다린다 (32차 — audit: 사이드 깊숙이 공을 가졌을 때 박스 안 동료가 평균 0.5~0.9명, 뛰는 중 4.5명이 닿기 전에 크로스가 나갔다).
+  // 깊은 사이드(|y| > 16 · 골문 x 33 m 안)에서 박스 안 동료 2명 미만 · 박스로 뛰는 동료가 있고 · 압박이 없으면
+  // **깊은 사이드에 들어간 뒤** 1.2 초까지 공을 지키며 바이라인 쪽으로 천천히 간다 (받은 뒤로 셌더니 몰고 들어온 윙어는 기다리지 않았다)
+  let waitCross = false
+  const deepWide = Math.abs(p.y) > 16 && p.x * dir > 33
+  if (deepWide && p.crossT < p.gotT) p.crossT = st.tick
+  if (deepWide && opD > 2.8 && st.tick - p.crossT < 72) {
+    let inBox = 0
+    let coming = 0
+    for (const q of st.players) {
+      if (q.team !== ti || q.idx === p.idx || q.sk.isGK || q.sentOff) continue
+      const dq = dist(q.x, q.y, gx, 0)
+      if (dq < 16 && Math.abs(q.y) < 12) inBox++
+      else if (st.tick - q.runT < 20 && dq < 34) coming++
+    }
+    if (inBox < 2 && coming > 0) {
+      waitCross = true
+      hold = Math.max(hold, bestScore + 0.05, drib + 0.05)
+    }
+  }
   const top = Math.max(shoot, bestScore, drib, clr, hold)
   p.sprint = false
   if (top === shoot) {
@@ -313,7 +376,12 @@ function carrierDecide(st: GameState, p: Player, noise: number): void {
     p.sprint = ahead > 8 && p.stamina > 0.3
     return
   }
-  // hold: 상대 반대쪽으로 몸을 돌려 지킨다
+  // hold: 상대 반대쪽으로 몸을 돌려 지킨다. 크로스를 기다리는 중이면 바이라인 쪽으로 천천히 (골문 쪽으로 좁히며)
+  if (waitCross) {
+    p.tx = clamp(p.x + dir * 2, -HALF_L + 2, HALF_L - 2)
+    p.ty = p.y * 0.96
+    return
+  }
   p.tx = p.x - dir * 1
   p.ty = p.y
 }
@@ -561,6 +629,10 @@ export function aiDecide(st: GameState, p: Player): void {
       p.press = true
       return
     }
+    // 우리 크로스가 날아가는 중 — 박스로 뛰던 선수는 **계속 들어간다** (32차: 공이 뜨는 순간 자유 공이 되어 모두 자리로 돌아가,
+    // 크로스 1 초 뒤 박스 안 동료가 0.2명이었다). 공은 이미 떠났으니 오프사이드 라인에 묶이지 않는다
+    const ck = b.passKind
+    if (b.lastTeam === ti && b.passLive && (ck === 'highcross' || ck === 'lob' || ck === 'lowcross') && Math.abs(b.x - goalX(team)) < 40 && boxRun(st, p, -b.vy, b.passTo, false)) return
     goAnchor(p, 0, dir)
     p.sprint = dist(p.x, p.y, p.tx, p.ty) > 14 && p.stamina > 0.3
     return
@@ -571,33 +643,7 @@ export function aiDecide(st: GameState, p: Player): void {
     // 박스 침투 (2026-09-15 제보 "크로스 올릴 때 헤딩할 선수가 없다") — 소유자가 사이드 깊숙이(|y| > 16 · 상대 진영 20 m 안)면
     // 공격수·AM 셋이 니어포스트·PK 스팟·파포스트로 달려 들어간다. 오프사이드 라인은 넘지 않는다
     // 누가 뛰는가는 역할 계수 box (기본: FW·AM·MF 1, 포스트형·침투형 CAM 2 = 먼저, 밖으로 윙어·홀딩 0 = 안 감)
-    if (p.rt.box > 0 && Math.abs(o.y) > 16 && o.x * dir > 20 && p.idx !== b.owner) {
-      const gx = goalX(team)
-      const far = o.y > 0 ? -1 : 1
-      const spots: [number, number][] = [
-        [gx - dir * 5.5, -far * 2.5],
-        [gx - dir * 11, 0],
-        [gx - dir * 7, far * 5],
-        [gx - dir * 15, -far * 6],
-      ]
-      // 네 자리(니어·PK·파포스트·컷백) — box 가 큰 순, 같으면 idx 순 (같은 자리를 둘이 안 잡게).
-      // 재검증(2026-09-15 저녁): 32 m 안에 있는 사람만 뛰게 했더니 사이드 소유 때 박스 안 동료가 평균 0.24명 — 45 m 로 넓혔다
-      let k = 0
-      for (const q of st.players) {
-        if (q.team !== ti || q.sk.isGK || q.sentOff || q.idx === b.owner || q.idx === p.idx || q.rt.box === 0) continue
-        if (!(q.rt.box > p.rt.box || (q.rt.box === p.rt.box && q.idx < p.idx))) continue
-        if (dist(q.x, q.y, gx, 0) < 30) k++
-      }
-      if (k < 4 && dist(p.x, p.y, gx, 0) < 45) {
-        const [sx, sy] = spots[k]
-        const line = offsideLineX(st, ti) * dir
-        p.tx = clamp(Math.min(sx * dir, line - LINE_MARGIN) * dir, -HALF_L + 1, HALF_L - 1)
-        p.ty = clamp(sy, -HALF_W + 1, HALF_W - 1)
-        p.sprint = p.stamina > 0.25
-        p.runT = st.tick
-        return
-      }
-    }
+    if (Math.abs(o.y) > 16 && o.x * dir > 20 && p.idx !== b.owner && boxRun(st, p, o.y, b.owner, true)) return
     // 침투 러닝 (P3, 2026-09-15 — 지원 러닝보다 먼저 본다 · FC 온라인 영상: 받을 선수가 패스 **전에** 빈 공간으로 뛴다).
     // 공격수·공격형 미드필더가 소유자보다 앞에 있고, 소유자가 전진 중이거나 상대 진영이며, 내 앞 7 m 가 비었으면
     // 오프사이드 라인 바로 뒤까지 사선으로 달린다. 소유자 AI 는 `runT` 를 보고 이 선수에게 스루를 선호한다

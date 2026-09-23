@@ -64,6 +64,11 @@ let fouls = 0
 let yellows = 0
 let reds = 0
 let throughGoalsChance = 0
+// 크로스 (32차) — 사이드(|y| > 14)에서 뜬 공중 패스. 1 초 뒤(떨어질 무렵) 박스 안 동료 수 · 2 초 안에 그 팀 슛(헤딩 포함)으로 이어졌나.
+// 슛이 1 초 전에 나오면 박스 인원은 안 센다(분모는 크로스 수 그대로 — 보수적)
+let crossesN = 0
+let crossBox = 0
+let crossShot = 0
 const gkLog: { m: number; tick: number; kind: string; d: number; open: number; to: number; res: string }[] = []
 
 for (let m = 0; m < N; m++) {
@@ -74,6 +79,7 @@ for (let m = 0; m < N; m++) {
   let passer = -1
   let passTeam = -1
   let isRestart = false
+  let crossPend: { t: number; team: number; shots: number; gx: number; counted: boolean } | null = null
   let lastRestartTick = -100
   let gkSince = -1
   let gkIdx = -1
@@ -90,6 +96,14 @@ for (let m = 0; m < N; m++) {
     if (!live && b.passLive && b.passTo >= 0 && b.lastTouch >= 0) {
       live = true
       kind = b.passKind
+      if ((kind === 'highcross' || kind === 'lob' || kind === 'lowcross') && Math.abs(b.y) > 14) {
+        const pt = st.players[b.lastTouch].team
+        const gx = goalX(st.teams[pt])
+        if (Math.abs(b.x - gx) < 40) {
+          crossesN++
+          crossPend = { t: st.tick, team: pt, shots: st.stats[pt].shots, gx, counted: false }
+        }
+      }
       passer = b.lastTouch
       passTeam = st.players[passer].team
       isRestart = st.tick - lastRestartTick < 4
@@ -129,6 +143,17 @@ for (let m = 0; m < N; m++) {
       // 펀트 = 배급 뒤 공이 높이 떴다
       if (b.vz > 5) gkPunts++
       gkIdx = -1
+    }
+    if (crossPend) {
+      // 1 초 뒤(공이 떨어질 무렵) 박스 안 동료 수
+      if (!crossPend.counted && st.tick - crossPend.t >= 60) {
+        crossPend.counted = true
+        for (const q of st.players) if (q.team === crossPend.team && !q.sk.isGK && !q.sentOff && Math.abs(q.x - crossPend.gx) < 16 && Math.abs(q.y) < 12) crossBox++
+      }
+      if (st.stats[crossPend.team].shots > crossPend.shots) {
+        crossShot++
+        crossPend = null
+      } else if (st.tick - crossPend.t > 120) crossPend = null
     }
     // ---- 헤딩 ----
     for (const p of st.players) {
@@ -258,6 +283,7 @@ add(`GK 보유 시간 중앙값 / 90% (틱)`, `${med} / ${p90}`, '≤ 130 / ≤ 
 add(`서 있는 선수가 공을 본다 (${faceN} 표본)`, pct(faceOk, faceN), '≥ 85%', faceOk / Math.max(1, faceN) >= 0.85)
 add(`골문 쪽으로 달려오는 상대에 마커 (${markN} 표본)`, pct(markOk, markN), '≥ 60%', markN === 0 || markOk / markN >= 0.6)
 add(`사이드 깊숙이 소유 때 박스 안 동료 수 (${crossN} 표본)`, (crossRunners / Math.max(1, crossN)).toFixed(2), '≥ 2.0', crossN === 0 || crossRunners / crossN >= 2)
+add(`크로스 (판당 · ${crossesN}회) — 1초 뒤 박스 안 동료 · 2초 안 슛`, `${(crossesN / N).toFixed(1)} · ${(crossBox / Math.max(1, crossesN)).toFixed(2)} · ${pct(crossShot, crossesN)}`, '≥ 1 · ≥ 1.5 · ≥ 20%', crossesN / N >= 1 && crossBox / Math.max(1, crossesN) >= 1.5 && crossShot / Math.max(1, crossesN) >= 0.2)
 add(`  └ 그때 박스로 뛰는 중(runT) 동료 · 가까운 셋의 골문 거리 · 수비 라인`, `${(crossRunning / Math.max(1, crossN)).toFixed(2)} · ${(crossNear3 / Math.max(1, crossN)).toFixed(0)} m · ${(crossLine / Math.max(1, crossN)).toFixed(0)} m`, '(진단)', true)
 add(`GK 골킥 성공 (${gkGoalKick}회)`, pct(gkGoalKickOk, gkGoalKick), '≥ 60%', gkGoalKick === 0 || gkGoalKickOk / gkGoalKick >= 0.6)
 spWait.sort((a, c) => a - c)

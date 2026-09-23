@@ -40,7 +40,7 @@ function mkPlayer(idx: number, team: number, spec: PlayerSpec, slot: string, ban
     sk: skillsOf(spec, slot, band as never),
     ax: 0, ay: 0, tx: 0, ty: 0,
     sprint: false, press: false, lastKick: -100, holdT: 0, yellow: 0, sentOff: false,
-    dribX: 1, dribY: 0, touchT: -1000, touchLen: 0, touchI: 12, gotT: -100, tackleT: 0, clearNext: false,
+    dribX: 1, dribY: 0, touchT: -1000, touchLen: 0, touchI: 12, crossT: -1000, gotT: -100, tackleT: 0, clearNext: false,
     offside: false, throwing: false, subbedIn: false, runT: -1000, diveHigh: false, markOf: -1, markT: -1000,
     goUntil: -1000, skillT: -1000, bitT: -1000, pull: false, slid: false, quickUp: false, gotMate: false, dropped: false, callT: -1000,
   }

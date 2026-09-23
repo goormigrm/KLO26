@@ -122,6 +122,9 @@ function gkDecide(st: GameState, gk: Player): void {
     gk.ty = gk.y
     return
   }
+  // 우리 골문으로 오는 슛이 날아가는 중 — 자리는 `gkCatch` 가 틱마다 잡는다(경로 쪽 옆걸음 · 날 때 기다리기, 2026-09-23).
+  // 여기서 15틱마다 원래 자리로 되돌리면 옆걸음이 끊긴다
+  if (b.owner < 0 && b.shotBy >= 0 && b.lastTeam !== ti) return
   // 페널티킥을 막는 쪽 — 킥 순간까지 **골라인 위 가운데** (사용자 지적 2026-09-11: 5 m 앞으로 나와 있었다)
   if (st.phase === 'penalty' && st.restart && st.restart.team !== ti) {
     gk.tx = ownGoalX + dir * 0.35

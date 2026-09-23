@@ -1239,6 +1239,9 @@ export function doClear(st: GameState, p: Player): void {
  * 시도할 수 있어서 1대1 이 거의 안 들어갔다 (사용자 제보 2026-09-09) — 가까이서 세게 찬 공은
  * 반응할 시간이 없어야 한다.
  */
+/** 골키퍼가 공 경로에 몸이 닿는 데 드는 시간에 더하는 여유 (초) — 이만큼 전에 난다 */
+const DIVE_LEAD = 0.15
+
 export function gkCatch(st: GameState, gk: Player): void {
   const b = st.ball
   if (b.owner >= 0 || gk.holdT > 0 || gk.sentOff) return
@@ -1294,11 +1297,12 @@ export function gkCatch(st: GameState, gk: Player): void {
       const t = toward / v2
       let px = b.x + b.vx * t
       let py = b.y + b.vy * t
-      // 감아찬 공 — 골키퍼는 회전을 **절반쯤** 읽는다 (2026-09-23). 하나도 못 읽으면 포스트 바깥으로 나가는 처음 경로만 보고
-      // 몸을 안 날려, 가까운 포스트 감아차기가 64% 들어갔다(보통 슛 25%) — 읽는 만큼 줄고, 못 읽는 절반이 감아차기의 몫이다
+      // 감아찬 공 — 골키퍼는 회전을 읽는다 (2026-09-23). 못 읽으면 포스트 바깥으로 나가는 처음 경로만 보고 "빗나간다"며 몸을
+      // 안 날려, 가까운 포스트 감아차기가 보통 슛의 4배 들어갔다. 절반만 읽게 해도 3.8배 — 다 읽어도 **가까운 포스트에 붙여
+      // 감는 것**만으로 2배(20 m · 보통 12% → 24%)라 그 몫이 감아차기다 (31차 셋째 A/B, `tools/shots.ts` 방식)
       if (b.curl !== 0) {
         const sp = Math.sqrt(v2)
-        const k = 0.5 * 0.5 * b.curl * t * t
+        const k = 0.5 * b.curl * t * t
         px += (-b.vy / sp) * k
         py += (b.vx / sp) * k
       }
@@ -1310,8 +1314,20 @@ export function gkCatch(st: GameState, gk: Player): void {
         // 다이브 2종 (P3, 2026-09-15): 공이 손 높이(1.1 m) 위로 오면 **뛰어오르고**(하이), 아니면 **낮게 눕는다**(로우).
         // 하이는 발밑 공을, 로우는 머리 위 공을 놓친다 — 잡기 판정의 뻗음(stretch)에 걸린다
         const zAt = b.z + b.vz * t - 0.5 * G * t * t
-        gk.diveHigh = zAt > 1.1
-        const diveSpeed = (3.4 + 1.2 * gk.sk.gkReach + 1.2 * gk.sk.gkHand) * (gk.diveHigh ? 0.9 : 1)
+        const high = zAt > 1.1
+        const diveSpeed = (3.4 + 1.2 * gk.sk.gkReach + 1.2 * gk.sk.gkHand) * (high ? 0.9 : 1)
+        // **날 때를 기다린다** (2026-09-23) — 몸이 공 경로에 닿는 데 드는 시간(need)보다 공이 한참 멀면 아직 안 난다.
+        // 그동안은 옆걸음으로 경로 쪽에 다가서고(가까워지면 서서 잡는다), 공이 오기 0.15 초 + need 전에 난다.
+        // 예전엔 반응 시간만 지나면 곧바로 날아, 먼 슛은 공이 오기 전에 넘어졌고(다이브 24틱 + 일어나기 30틱)
+        // 그 사이에 굴러오는 공이 지나갔다 — 20 m 보통 슛 25% · 가까운 포스트 감아차기 64% (31차 계측)
+        const need = Math.max(0, lat - HAND_DIVE) / diveSpeed
+        if (t > need + DIVE_LEAD) {
+          gk.tx = px
+          gk.ty = py
+          gk.sprint = true
+          return
+        }
+        gk.diveHigh = high
         gk.action = ACT_DIVE
         gk.actT = 24
         gk.vx = ((px - gk.x) / lat) * diveSpeed

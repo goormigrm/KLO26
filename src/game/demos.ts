@@ -128,9 +128,9 @@ export const DEMOS: Record<string, DemoFn> = {
 
   // ---- 슛 ----
   finesse(k) {
-    // Z 를 누른 채 D 를 모았다 떼기 — 먼 포스트(↘) 쪽으로 감는다
-    if (k < 28) return I(BTN_Z | BTN_D, 127, -127)
-    if (k < 32) return I(BTN_Z, 127, -127)
+    // Z 를 누른 채 D 를 모았다 떼기 — 가까운 포스트(↗) 쪽 구석으로, 바깥에서 안으로 휘어 붙는다
+    if (k < 28) return I(BTN_Z | BTN_D, 127, 127)
+    if (k < 32) return I(BTN_Z, 127, 127)
     return I(0)
   },
   driven(k) {

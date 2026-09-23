@@ -100,7 +100,15 @@ describe('골키퍼 다이브 2종', () => {
     b.shotBy = st.teams[0].start + 9
     b.kickTick = st.tick - 30 // 반응 시간은 지났다
     b.onTarget = true
-    gkCatch(st, gk)
+    // 공을 한 틱씩 옮기며 골키퍼가 날 때까지 (2026-09-23: 먼 공은 옆걸음으로 기다렸다 난다 — 아래 '날 때 기다리기')
+    for (let k = 0; k < 30 && gk.action !== ACT_DIVE; k++) {
+      gkCatch(st, gk)
+      if (gk.action === ACT_DIVE) break
+      b.x += b.vx / 60
+      b.y += b.vy / 60
+      b.vz -= 9.81 / 60
+      b.z = Math.max(0, b.z + b.vz / 60)
+    }
     return st
   }
 
@@ -113,6 +121,47 @@ describe('골키퍼 다이브 2종', () => {
     const gkL = lo.players[lo.teams[1].gk]
     expect(gkL.action).toBe(ACT_DIVE)
     expect(gkL.diveHigh).toBe(false)
+  })
+})
+
+describe('골키퍼 — 날 때 기다리기 (2026-09-23)', () => {
+  it('먼 슛에는 바로 몸을 날리지 않고 경로 쪽으로 옆걸음 — 공이 오기 직전(0.5 초 안)에 난다', () => {
+    const st = match(65)
+    const gk = st.players[st.teams[1].gk]
+    const dir = st.teams[0].dir
+    park(st, [gk.idx, st.teams[0].start + 9])
+    gk.x = dir * (HALF_L - 1)
+    gk.y = 0
+    gk.vx = 0
+    gk.vy = 0
+    gk.action = ACT_RUN
+    const b = st.ball
+    b.owner = -1
+    b.x = dir * (HALF_L - 22)
+    b.y = 0
+    b.z = 0.3
+    b.vx = dir * 24
+    b.vy = 2.3 // 골라인에서 2.1 m 옆
+    b.vz = 1
+    b.shotBy = st.teams[0].start + 9
+    b.lastTouch = st.teams[0].start + 9
+    b.lastTeam = 0
+    b.kickTick = st.tick
+    b.onTarget = true
+    let diveAt = -1
+    let maxY = 0
+    for (let k = 0; k < 70 && diveAt < 0; k++) {
+      step(st, [EMPTY_INPUT, EMPTY_INPUT])
+      maxY = Math.max(maxY, Math.abs(gk.y))
+      if (gk.action === ACT_DIVE) diveAt = k
+      if (st.phase !== 'play' || b.owner >= 0) break
+    }
+    // 반응 시간(≤ 0.35 초)이 지나자마자 날지 않았다 — 옆걸음으로 먼저 다가섰다
+    expect(maxY).toBeGreaterThan(0.2)
+    if (diveAt >= 0) {
+      const left = Math.abs(dir * HALF_L - b.x) / 24
+      expect(left).toBeLessThan(0.55)
+    }
   })
 })
 

@@ -162,11 +162,12 @@ describe('조작 연습 — 그 키로 하면 성공한다', () => {
   it('파넨카: Q 누른 채 D 를 절반쯤 모았다 떼기 — 먼저 뛴 골키퍼 위로', () => {
     const d = drillById('panenka')!
     let ok = 0
-    for (let seed = 1; seed <= 12; seed++) {
+    // 40% 안팎 (60판 24) — 골키퍼가 먼저 안 뛰면(25%) 가운데 공을 잡는다
+    for (let seed = 1; seed <= 40; seed++) {
       const r = run(d, seed, (k) => (k < 17 ? inp(BTN_Q | BTN_D) : inp(k < 19 ? BTN_Q : 0)))
       if (r === true) ok++
     }
-    expect(ok).toBeGreaterThanOrEqual(4)
+    expect(ok).toBeGreaterThanOrEqual(10)
   })
 })
 

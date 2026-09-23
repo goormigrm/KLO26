@@ -9,6 +9,7 @@ import type { GameState } from '../src/core/state'
 import { clubSquad, toSquadConfig } from '../src/cards/squad'
 import { CLUBS } from '../src/data/pool'
 import { DRILLS, DRILL_CATS, drillById, judge, startDrill, type Drill, type DrillCtx } from '../src/game/drills'
+import { DEMOS, demoInput, findDemoSeed, inputCodes } from '../src/game/demos'
 
 function inp(buttons: number, mx = 0, my = 0): Input {
   return { mx, my, buttons, a: 0, b: 0 }
@@ -166,5 +167,54 @@ describe('조작 연습 — 그 키로 하면 성공한다', () => {
       if (r === true) ok++
     }
     expect(ok).toBeGreaterThanOrEqual(4)
+  })
+})
+
+describe('조작 연습 — 🤖 시범', () => {
+  // 연습 화면(game/practice.ts)이 찾는 시드와 같은 40개
+  const seeds = Array.from({ length: 40 }, (_, i) => 1000 + i)
+
+  it('연습마다 시범 대본이 있고, 사람 키보드로 낼 수 있는 입력만 쓴다 (방향키 ±127·0)', () => {
+    for (const d of DRILLS) {
+      expect(DEMOS[d.id], d.id).toBeTypeOf('function')
+      const st = synthState(5)
+      const c = startDrill(d, st)
+      const m: Record<string, number> = {}
+      for (let k = 0; k < 240; k++) {
+        const i = demoInput(d, k, st, c, m)
+        expect([-127, 0, 127], d.id).toContain(i.mx)
+        expect([-127, 0, 127], d.id).toContain(i.my)
+        step(st, [i, EMPTY_INPUT])
+        if (judge(d, st, c, i) !== null) break
+      }
+    }
+  }, 60000)
+
+  it('어느 연습이든 40개 시드 안에 시범이 성공하는 판이 있다 — 합성 스쿼드 · 실제 구단 스쿼드', () => {
+    for (const d of DRILLS) {
+      expect(findDemoSeed(d, synthState, seeds), `${d.id} 합성`).toBeGreaterThanOrEqual(0)
+      expect(findDemoSeed(d, clubState, seeds), `${d.id} 구단`).toBeGreaterThanOrEqual(0)
+    }
+  }, 180000)
+
+  it('찾은 시드를 다시 돌리면 똑같이 성공한다 (결정론 — 화면에서 보여 주는 시범)', () => {
+    for (const id of ['knock', 'finesse', 'pksave', 'wall']) {
+      const d = drillById(id)!
+      const s = findDemoSeed(d, synthState, seeds)
+      const st = synthState(s)
+      const c = startDrill(d, st)
+      const m: Record<string, number> = {}
+      let r: true | string | null = null
+      for (let k = 0; k < d.limit * 60 + 120 && r === null; k++) {
+        const i = demoInput(d, k, st, c, m)
+        step(st, [i, EMPTY_INPUT])
+        r = judge(d, st, c, i)
+      }
+      expect(r, id).toBe(true)
+    }
+  }, 60000)
+
+  it('시범 입력 → 불을 켤 키 이름', () => {
+    expect(inputCodes({ mx: 127, my: -127, buttons: 1 << 3 | 1 << 9, a: 0, b: 0 }).sort()).toEqual(['ArrowDown', 'ArrowRight', 'KeyD', 'KeyZ'].sort())
   })
 })

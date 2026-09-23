@@ -361,8 +361,8 @@ export const DRILLS: Drill[] = [
       c.me = best(st, 0, 'pas')
       c.f.mate = best(st, 0, 'vmax', [c.me])
       put(st, c.me, 4, -4, 20, 0)
-      // 동료는 이미 라인 쪽으로 뛰기 시작했다 — 로빙 스루는 달리는 선수 앞 빈 공간에 떨어뜨리는 패스다
-      put(st, c.f.mate, 12, 4, 30, 4, 5)
+      // 동료는 라인 바로 뒤에서 이미 뛰기 시작했다 — 로빙 스루는 달리는 선수 앞, 수비 등 뒤에 떨어뜨리는 패스다
+      put(st, c.f.mate, 16.5, 4, 30, 4, 6)
       give(st, c.me)
       put(st, best(st, 1, 'tck'), 19, 6, 0, 0)
       put(st, best(st, 1, 'posn', [best(st, 1, 'tck')]), 19, -2, 0, 0)
@@ -385,11 +385,13 @@ export const DRILLS: Drill[] = [
       park(st)
       c.me = best(st, 0, 'vmax')
       c.f.mate = best(st, 0, 'pas', [c.me])
-      put(st, c.me, 0, -6, 12, 3)
-      put(st, c.f.mate, 12, 3, 0, 0)
+      // 이미 달리고 있다 — 원투는 멈춘 채가 아니라 달리며 주고받는다
+      put(st, c.me, 0, -6, 14, -6, 5)
+      put(st, c.f.mate, 15, 3, 0, 0)
       give(st, c.me)
-      put(st, best(st, 1, 'tck'), 7, -4, 0, -6)
-      put(st, best(st, 1, 'posn', [best(st, 1, 'tck')]), 24, 0, 0, 0)
+      // 붙는 수비수는 바깥에서 온다 — 동료에게 가는 길은 열려 있고, 뒤로 돌아 들어가는 길을 막는다
+      put(st, best(st, 1, 'tck'), 6, -9, 0, -6)
+      put(st, best(st, 1, 'posn', [best(st, 1, 'tck')]), 27, 0, 0, 0)
       oppKeeper(st)
     },
     check(st, c) {
@@ -438,7 +440,8 @@ export const DRILLS: Drill[] = [
       c.me = best(st, 0, 'fin')
       put(st, c.me, 33, 11, HALF_L, 0)
       give(st, c.me)
-      put(st, best(st, 1, 'tck'), 38.5, 6.5, 33, 11)
+      // 수비수는 바깥에서 붙으러 온다 — 먼 포스트로 가는 길은 비어 있다
+      put(st, best(st, 1, 'tck'), 36.5, 14.5, 33, 11)
       oppKeeper(st)
     },
     check: (st, c) => shotCheck(st, c, 'finesse', 'Z 를 누른 채 D'),
@@ -488,15 +491,15 @@ export const DRILLS: Drill[] = [
   {
     id: 'fake', cat: '슛', title: '페이크 슛 → 슛',
     keys: 'Z + C + D', goal: '앞의 수비수를 페이크로 묶고 슛으로 넣기',
-    tip: 'Z 와 C 를 누른 채 D — 차는 척만 한다. 속은 수비수는 0.4 초 못 움직인다. 그 틈에 옆으로 빠져 슛',
+    tip: '수비수에게 몰고 가다 4 m 앞에서 Z 와 C 를 누른 채 D — 차는 척만 한다. 속은 수비수는 0.4 초 못 움직인다. 그 옆으로 지나가 슛',
     limit: 12,
     setup(st, c) {
       park(st)
       c.me = best(st, 0, 'drib')
-      put(st, c.me, 30, 0, HALF_L, 0)
+      put(st, c.me, 22, 0, HALF_L, 0, 5)
       give(st, c.me)
       c.f.def = best(st, 1, 'tck')
-      put(st, c.f.def, 33.5, 0.3, 30, 0)
+      put(st, c.f.def, 31, 0.3, 22, 0)
       oppKeeper(st)
     },
     check(st, c) {
@@ -519,7 +522,7 @@ export const DRILLS: Drill[] = [
       put(st, w, 40, 25, HALF_L, 0)
       give(st, w)
       doPass(st, st.players[w], 'highcross', c.me, 0, 0, 0.6)
-      put(st, best(st, 1, 'head'), 46, 1, 40, 25)
+      put(st, best(st, 1, 'head'), 47, 6, 40, 25)
       oppKeeper(st)
       st.teams[0].controlled = c.me
     },
@@ -687,9 +690,10 @@ export const DRILLS: Drill[] = [
       const m1 = best(st, 0, 'pas')
       put(st, m1, -32, 14, 0, 0)
       put(st, best(st, 0, 'ctl', [m1]), -32, -14, 0, 0)
+      // 상대 공격수 둘은 아래쪽을 막고 있다 — 위쪽 동료를 불러 그쪽으로 준다
       const f1 = best(st, 1, 'vmax')
-      put(st, f1, -38, 7, -48, 0)
-      put(st, best(st, 1, 'sta', [f1]), -38, -7, -48, 0)
+      put(st, f1, -36, -7, -48, 0)
+      put(st, best(st, 1, 'sta', [f1]), -31, -1, -48, 0)
     },
     check(st, c) {
       for (const p of st.players) if (p.team === 0 && p.callT > st.tick) c.f.called = p.idx + 1

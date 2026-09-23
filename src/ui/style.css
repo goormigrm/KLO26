@@ -764,3 +764,19 @@ kbd { display: inline-grid; place-items: center; min-width: 24px; height: 24px; 
 .drill-item b { flex: 1 1 100%; font-weight: 700; }
 .drill-item em { font-style: normal; color: #7ee787; font-size: 12px; margin-left: auto; }
 .drill-item.done { border-color: #3fb95055; }
+/* 🤖 시범 띠 · 가운데 설명 창 (2026-09-23) — AI 가 누른 키캡에 불이 켜진다 */
+.demo-banner { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 9; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: min(640px, 92vw);
+  background: rgba(8,12,18,.86); border: 1px solid #7a5cff66; border-radius: 12px; padding: 10px 16px; }
+.demo-banner[hidden] { display: none; }
+.demo-banner .db-t { font: 700 15px 'IBM Plex Sans KR', sans-serif; color: #fff; text-align: center; }
+.demo-banner .db-t small { display: block; font-weight: 500; font-size: 11.5px; color: var(--ink-2); margin-top: 2px; }
+kbd.on { background: #ffe14a; color: #1a1a1a; border-color: #ffe14a; box-shadow: 0 0 12px rgba(255,225,74,.6); transform: translateY(1px); }
+kbd { transition: background .08s, color .08s, box-shadow .08s; }
+.drill-box .brief-cat { text-align: center; font: 700 11px 'IBM Plex Mono', monospace; color: #7ee787; letter-spacing: .04em; }
+.drill-box .brief-body { max-width: 560px; margin: 4px auto 14px; }
+.drill-box .brief-body p { text-align: left; margin: 0 0 8px; font-size: 14px; color: var(--ink); line-height: 1.55; }
+.drill-box .brief-body b { color: var(--gold); margin-right: 6px; }
+.drill-box .brief-limit { color: var(--ink-2) !important; font-size: 12.5px !important; }
+.drill-box .brief-note { color: #ffb347 !important; font-size: 12.5px !important; }
+.drill-box p.dk.big { justify-content: center; display: flex; }

@@ -538,8 +538,14 @@ function handleInput(st: GameState, t: number, inp: Input): void {
       c.action = ACT_SLIDE
       c.actT = 30
       c.slid = true
-      if (dx !== 0 || dy !== 0) c.facing = atan2A(dy, dx)
-      else c.facing = atan2A(b.y - c.y, b.x - c.x)
+      // 방향키를 **지금** 누르고 있으면 그쪽, 아니면 공 쪽 — 움직이는 공은 미끄러져 닿을 때의 자리로 앞질러 겨눈다.
+      // (2026-09-23 조작 연습 시범에서 드러남: 대각선으로 몰고 오는 공의 "지금 자리"로 누우면 공은 비켜 가고 발이 사람에 걸렸다.
+      //  또 방향키를 뗀 지 0.25 초 안이면 패스용 기억 방향으로 누웠다 — 슬라이딩은 지금 누른 키만 본다)
+      if (team.inX !== 0 || team.inY !== 0) c.facing = atan2A(team.inY, team.inX)
+      else {
+        const t = clamp(len(b.x - c.x, b.y - c.y) / (1.3 * c.sk.vmax), 0, 0.5)
+        c.facing = atan2A(b.y + b.vy * t - c.y, b.x + b.vx * t - c.x)
+      }
     }
     if (edge & BTN_SPACE) c.tackleT = 12
     if (edge & BTN_W) team.gkRush = st.tick + 90

@@ -52,12 +52,22 @@ export function interceptPoint(st: GameState, p: Player, out: { x: number; y: nu
   let vy = b.vy
   let x = b.x
   let y = b.y
-  const air = b.z > 0.2
+  // 높이도 따라간다 (2026-09-23) — 예전엔 공중볼의 **땅 위 경로**에서 가장 이른 점을 골라, 크로스를 받을 선수가 아직 5 m 높이인
+  // 공 밑으로 달려가 섰고 공은 머리 위로 지나갔다(조작 연습 헤딩 시범에서 드러남). 이제 머리가 닿는 높이(2.4 m)로 내려온 뒤의 점만 본다
+  let z = b.z
+  let vz = b.vz
   for (let i = 1; i <= 25; i++) {
     const sp = len(vx, vy)
+    const air = z > 0.2 || vz > 0
     if (air) {
       vx *= 1 - 0.25 * 0.1
       vy *= 1 - 0.25 * 0.1
+      vz -= (G + b.dip) * 0.1
+      z += vz * 0.1
+      if (z < 0) {
+        z = 0
+        vz = 0
+      }
     } else if (sp > 0) {
       const ns = Math.max(0, sp - 4.0 * 0.1)
       vx *= ns / sp
@@ -65,6 +75,7 @@ export function interceptPoint(st: GameState, p: Player, out: { x: number; y: nu
     }
     x += vx * 0.1
     y += vy * 0.1
+    if (z > 2.4) continue
     const t = i * 0.1
     // 반응 시간 — 예측(posn)이 좋을수록 먼저 움직인다 (0.35 → 0.10 s). 짧은 경합은 속도보다 이게 가른다 (2026-09-11)
     const react = 0.35 - 0.25 * p.sk.posn
@@ -366,6 +377,9 @@ export function tryControl(st: GameState): void {
     if (p.action !== ACT_RUN && p.action !== ACT_KICK) continue
     if (st.tick - p.lastKick <= 8) continue
     if (p.sk.isGK && p.holdT > 0) continue
+    // 직접 프리킥·PK 슛은 차고 0.5 초 동안 상대 필드 선수가 못 건드린다 — 벽은 찬 순간 `wallBlock` 이 이미 판정했다.
+    // 안 막으면 벽 위를 넘은 공(2.0~2.4 m)을 벽 선수가 머리로 걷어냈다 (2026-09-23 연습 시범에서 드러남)
+    if (b.shotBy >= 0 && b.restartBy === b.shotBy && st.tick - b.kickTick < 30 && p.team !== b.lastTeam && !p.sk.isGK) continue
     // 딩크(S+S · W+W, 2026-09-23) — 발높이 위로 뜬 동안은 상대가 발로 못 끊는다
     if (b.dink && !aerial && b.z > 0.3 && p.team !== b.lastTeam) continue
     // 상대 패스를 끊는 것은 위치 선정(posn)이 좋은 수비수가 더 멀리서 한다 (수비 강화 — 2026-09-10).
@@ -835,9 +849,12 @@ export function doPass(
       ax = q.x + rx * lead + dir * 1.0
       ay = q.y + ry * lead
       if (mods?.lofted) {
-        // 로빙 스루(Q+W)는 **수비 라인 뒤 공간**으로 — 라인(뒤에서 두 번째 상대) 4 m 뒤, 받을 선수 앞 6 m 이상 (2026-09-23).
+        // 로빙 스루(Q+W)는 **수비 라인 뒤 공간**으로 — 라인(뒤에서 두 번째 상대) 5 m 뒤, 받을 선수가 닿을 자리 (2026-09-23).
         // 땅볼 스루의 리드(2~4 m)로 띄우면 공이 라인 위 수비수 머리에 떨어졌다
-        const want = Math.max(offsideLineX(st, p.team) * dir + 4, q.x * dir + 6)
+        // 달리는 선수는 공이 떠 있는 동안(체공 T) 계속 간다 — 그 자리에 떨어뜨린다 (서 있는 선수 기준으로 겨누면 공이 등 뒤에 떨어졌다)
+        const line = offsideLineX(st, p.team) * dir
+        const T = clamp((Math.max(line + 5, q.x * dir + 7) - p.x * dir) / 13, 0.9, 2.6)
+        const want = Math.max(line + 5, q.x * dir + Math.max(7, len(q.vx, q.vy) * T + 2))
         ax = Math.min(want, HALF_L - 6) * dir
         ay = q.y + ry * 3
       }
@@ -1275,8 +1292,16 @@ export function gkCatch(st: GameState, gk: Player): void {
       // 다가오는 공 — 반응 시간이 지났으면 경로 위 가장 가까운 점을 본다
       if (isShot && since < gk.sk.gkReact) return
       const t = toward / v2
-      const px = b.x + b.vx * t
-      const py = b.y + b.vy * t
+      let px = b.x + b.vx * t
+      let py = b.y + b.vy * t
+      // 감아찬 공 — 골키퍼는 회전을 **절반쯤** 읽는다 (2026-09-23). 하나도 못 읽으면 포스트 바깥으로 나가는 처음 경로만 보고
+      // 몸을 안 날려, 가까운 포스트 감아차기가 64% 들어갔다(보통 슛 25%) — 읽는 만큼 줄고, 못 읽는 절반이 감아차기의 몫이다
+      if (b.curl !== 0) {
+        const sp = Math.sqrt(v2)
+        const k = 0.5 * 0.5 * b.curl * t * t
+        px += (-b.vy / sp) * k
+        py += (b.vx / sp) * k
+      }
       const lat = dist(gk.x, gk.y, px, py)
       if (lat > HAND_STAND) {
         // 손이 안 닿는다 — 도달 거리 근처면 몸을 날린다(시도는 넉넉히, 닿을지는 **실제 거리·시간**으로)
@@ -1533,7 +1558,7 @@ export function remarkShot(st: GameState, teamIdx: number): void {
 
 /**
  * 페이크 슛 (Z+C+D, FC 온라인 "플레어 슛 · 페이크") — 공은 그대로 두고 차는 시늉만 한다. 앞 5 m 안의 상대 필드 선수는
- * 0.4 초(사람이 조작 중인 선수는 0.23 초) 발이 묶이고, 14 m 안의 골키퍼는 위치 선정이 나쁠수록 먼저 몸을 날린다.
+ * 0.6 초(사람이 조작 중인 선수는 0.3 초) 발이 묶이고 — 0.4 초로는 제 속도로 가속해 옆을 지나갈 틈이 안 났다(연습 시범에서 잼) — 14 m 안의 골키퍼는 위치 선정이 나쁠수록 먼저 몸을 날린다.
  * 1.5 초 안에 또 하면 아무도 안 속는다. 난수는 사람 입력에서만 뽑는다
  */
 export function fakeShot(st: GameState, p: Player): void {
@@ -1559,7 +1584,7 @@ export function fakeShot(st: GameState, p: Player): void {
     }
     if (dist(q.x, q.y, p.x, p.y) > 5 || fromBehind(p, q) > 0.5) continue
     const qt = st.teams[q.team]
-    q.bitT = st.tick + (qt.human && qt.controlled === q.idx ? 14 : 24)
+    q.bitT = st.tick + (qt.human && qt.controlled === q.idx ? 18 : 36)
   }
 }
 

@@ -15,6 +15,7 @@ import type { Lockstep } from '../net/lockstep'
 import type { RoomLink } from '../net/room'
 import { sfx } from '../audio/sfx'
 import { MatchVoice } from '../audio/tts'
+import { ChatBox, cleanChat, type ChatLine } from '../ui/chat'
 import { Hud } from '../render/hud'
 import { KeyView } from '../render/keyview'
 import { Renderer3D, capturePose, type PrevPose } from '../render3d/renderer3d'
@@ -61,6 +62,8 @@ export interface NetConfig {
   /** 두 팀의 스쿼드 (이미 검사를 통과한 것) */
   squads: [Squad, Squad]
   names: [string, string]
+  /** 대기실 대화 — 경기 안 채팅으로 이어 쌓는다 (2026-09-23) */
+  chatLog?: ChatLine[]
 }
 
 // 유니폼은 구단 색에서 만든다 (src/render3d/kits.ts). 경기마다 정해진다
@@ -120,6 +123,10 @@ export class Session {
   private snd = sfx()
   /** 중계 음성 (TTS) — 하이라이트에서만 한 줄. 렌더 쪽이라 결정론과 무관하다 (2026-09-16) */
   private voice = new MatchVoice()
+  /** 온라인 경기 채팅 (2026-09-23) — T 로 연다. 혼자 하기에는 없다 */
+  private chat: ChatBox | null = null
+  /** 채팅이 닫혀 있을 때 T 를 눌렀다 — 뗄 때 연다 */
+  private chatArmed = false
   /** 내 팀 (0 = 홈 · 1 = 원정). **동전 던지기로 정해진다** — 방장이라고 홈이 아니다 (2026-09-11) */
   private meTeam: 0 | 1 = 0
   /** 코인토스 연출 중 — Esc 메뉴를 막는다 */
@@ -299,6 +306,11 @@ export class Session {
 
   /** 온라인 대전 배선 — 해시 대조 · 리싱크 · 상대 이탈 (DESIGN 6.5 · 6.6) */
   private attachNet(net: NetConfig): void {
+    // 경기 중 채팅 (2026-09-23) — 온라인에만. T 로 열고 Enter 로 보낸다. 대기실 대화를 이어 쌓는다
+    this.chat = new ChatBox(this.overlay.parentElement as HTMLElement, (text) => this.sendChat(text))
+    if (net.chatLog?.length) this.chat.load(net.chatLog)
+    window.addEventListener('keydown', this.onChatKeyDown)
+    window.addEventListener('keyup', this.onChatKeyUp)
     net.link.onPeerJoin((id) => {
       if (id === net.peerId) net.lockstep.resendTo(id)
     })
@@ -321,6 +333,13 @@ export class Session {
         // 어긋났다 — 방장이 지금 판을 통째로 보낸다
         this.resyncs++
         net.link.sendCtl({ t: 'resync', tick: this.state.tick, state: snapshot(this.state) }, net.peerId)
+      } else if (m.t === 'chat') {
+        // 보낸 사람은 피어 id 로 이미 가렸다(위 `from !== net.peerId`). 글은 다시 다듬는다
+        const text = cleanChat(m.text)
+        if (text) {
+          this.chat?.add(net.names[1 - net.me], text, 'other')
+          this.snd.ui('click')
+        }
       } else if (m.t === 'resync' && net.me === 1) {
         this.resyncs++
         this.state = m.state as GameState
@@ -331,6 +350,33 @@ export class Session {
         this.renderer.setMatch(this.state, this.kits, this.gkKits)
       }
     })
+  }
+
+  /** 채팅 보내기 — 내 화면에는 바로 쓰고 상대에게 보낸다 */
+  private sendChat(text: string): boolean {
+    const net = this.cfg.net
+    if (!net || this.peerLeft) return false
+    this.chat?.add(net.names[net.me], text, 'me')
+    net.link.sendCtl({ t: 'chat', text }, net.peerId)
+    return true
+  }
+
+  /**
+   * T — 채팅 열기. **누를 때가 아니라 뗄 때** 연다: 누를 때 입력칸에 포커스를 주면 그 키의 글자('t' · 한글 자판이면 'ㅅ')가
+   * 입력칸에 들어간다. 누를 때는 "열 준비"만 해 둔다 — 입력칸에서 친 T 는 입력칸이 전파를 막아 여기까지 안 온다.
+   * Enter 는 이 게임에서 세레모니 건너뛰기라 쓰지 않는다 (bedorage-rpg 와 다른 점).
+   */
+  private onChatKeyDown = (e: KeyboardEvent): void => {
+    if (e.code !== 'KeyT' || !this.chat || this.chat.open || e.repeat) return
+    if (!this.overlay.hidden) return // 메뉴·설정 창이 떠 있으면 열지 않는다
+    this.chatArmed = true
+    e.preventDefault()
+  }
+
+  private onChatKeyUp = (e: KeyboardEvent): void => {
+    if (e.code !== 'KeyT' || !this.chatArmed) return
+    this.chatArmed = false
+    this.chat?.show()
   }
 
   /** 상대가 나갔다 — 그 시점 스코어로 끝낸다 (DESIGN 2장 "몰수승은 없다") */
@@ -1077,6 +1123,10 @@ export class Session {
     this.renderer.dispose()
     this.snd.stopCrowd()
     this.voice.dispose()
+    window.removeEventListener('keydown', this.onChatKeyDown)
+    window.removeEventListener('keyup', this.onChatKeyUp)
+    this.chat?.dispose()
+    this.chat = null
     if (this.cfg.net) {
       if (!this.peerLeft) this.cfg.net.link.sendCtl({ t: 'leave' }, this.cfg.net.peerId)
       setTimeout(() => this.cfg.net?.link.leave(), 120)

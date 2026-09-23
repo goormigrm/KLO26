@@ -77,6 +77,8 @@ npm run dev     # http://localhost:5175/KLO26/
 | `npm run throwin` | 스로인 뒤 5초 안에 누가 잡는지 (가로채기 비율) |
 | `npm run oneone` | 1대1 (공격수 vs 골키퍼) 전환율 |
 | `npm run asym 200` | 홈/원정 대칭 — 같은 스쿼드끼리 N 판, 하프별 골·슛·점유 (공개 전 필수, 목표 47~53%) |
+| `npm run enhcheck 200 even 1` | 강화가 값을 하나 — 배분(`even`·`att`·`def`·`tw4` 기준선)·단계별 짝 비교 A/B. 목표 +8~15%p |
+| `npm run balance -- 120 180 swap` | 두 스쿼드 자리를 바꿔 돈다 — "홈 승 : 원정 승" 이 홈 이점인지 스쿼드 전력 차인지 가른다 |
 | `npm run asymprobe 400 base 10000` | 대칭이 깨졌을 때 원인 가르기 — `swapdir`(진영) · `ko1`(킥오프) · `both` 변형과 하프별 전체 통계 |
 | `npm run cards` | 카드 OVR 보정 · 급여 상한 계산 |
 | `npm run clubs 90` | 실제 구단끼리 90판 계측 (1부/2부 차이 · 골) |

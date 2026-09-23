@@ -279,6 +279,12 @@ input.nick { background: var(--bg-2); color: var(--ink); border: 1px solid var(-
 input.nick:focus { outline: 2px solid var(--gold); border-color: transparent; }
 input.nick.need { border-color: var(--risk); box-shadow: 0 0 0 3px rgba(248,81,73,.25); }
 .wait { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+/* 대기실 = 다시 그리는 상자 + 그대로 있는 대화 상자 (2026-09-23) */
+.wait-stack { display: flex; flex-direction: column; gap: 10px; width: min(640px, 94vw); }
+.wait-stack .wait-box { min-width: 0; }
+.wait-chat { background: linear-gradient(180deg, #131922, var(--panel)); border: 1px solid #2c3644; border-radius: 14px; padding: 12px 16px 14px; text-align: left; }
+.wc-t { font: 800 12.5px 'IBM Plex Sans KR', sans-serif; color: #f0f6fc; margin-bottom: 8px; }
+.wc-t small { font-weight: 500; color: var(--ink-3); margin-left: 6px; }
 .wait-box { background: linear-gradient(180deg, #131922, var(--panel) 46%); border: 1px solid #2c3644; border-radius: 16px; padding: 28px 32px; min-width: 520px; text-align: center; }
 .wait-box h1 { font-family: 'Black Han Sans', sans-serif; font-weight: 400; font-size: 34px; margin: 6px 0 16px; }
 .wait-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }
@@ -693,3 +699,32 @@ em.outtag { font-style: normal; font-size: 10px; padding: 0 4px; border-radius: 
 .role-box .seg button { padding: 5px 4px; font-size: 12px; }
 .role-box small { display: block; color: var(--ink-3); font-size: 10.5px; margin: 0; }
 .chip.hasrole small em { font-style: normal; color: var(--gold); }
+
+/*
+ * 텍스트 채팅 (2026-09-23 · bedorage-rpg 에서 옮김) — 경기 중에는 왼쪽, 입력 키 표시(아래 150~290px) 바로 위.
+ * 닫혀 있으면 줄이 12초 뒤 사라지고, T 로 열면 지난 줄이 모두 보인다. 대기실은 붙박이(docked).
+ */
+.chat { position: absolute; left: 16px; bottom: 300px; width: 360px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; z-index: 13; }
+.chat-log { max-height: 170px; overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
+.chat.open .chat-log { overflow-y: auto; pointer-events: auto; background: rgba(8,12,18,.72); border: 1px solid rgba(227,179,65,.28); border-radius: 8px; padding: 5px 8px; }
+.chat-line { font: 500 13px 'IBM Plex Sans KR', sans-serif; line-height: 1.45; color: #e6edf3; text-shadow: 0 1px 2px #000, 0 0 4px rgba(0,0,0,.9);
+  word-break: keep-all; overflow-wrap: anywhere; transition: opacity .6s; }
+.chat-line b { font-weight: 700; }
+.chat-line.me b { color: #ffe27a; }
+.chat-line.other b { color: #7ee2a0; }
+.chat-line.sys { color: var(--ink-3); font-style: italic; }
+.chat-line.old { opacity: .45; }
+.chat-line.gone { display: none; }
+.chat-in { pointer-events: auto; cursor: text; font: 500 13px 'IBM Plex Sans KR', sans-serif; color: #f0f6fc; background: rgba(8,12,18,.9);
+  border: 1px solid var(--gold); border-radius: 6px; padding: 7px 10px; outline: none; }
+.chat-in::placeholder { color: #7d8896; }
+.chat-in[hidden] { display: none; }
+/* 닫혀 있을 때만 "T 채팅" 을 흐리게 — 있는지 알게 */
+.chat-hint { align-self: flex-start; font: 700 10.5px 'IBM Plex Mono', monospace; color: rgba(230,237,243,.55); background: rgba(8,12,18,.45);
+  border: 1px solid rgba(125,136,150,.3); border-radius: 999px; padding: 2px 8px; }
+.chat.open .chat-hint { display: none; }
+/* 대기실 — 입력칸이 늘 있고 줄이 사라지지 않는다 */
+.chat.docked { position: static; width: auto; pointer-events: auto; }
+.chat.docked .chat-log { height: 128px; max-height: none; overflow-y: auto; background: var(--bg); border: 1px solid var(--line-2); border-radius: 8px; padding: 6px 9px; }
+.chat.docked .chat-log:empty::before { content: "대화가 여기 쌓입니다"; color: var(--ink-3); font: 500 12px 'IBM Plex Sans KR', sans-serif; }
+.chat.docked .chat-line { text-shadow: none; }

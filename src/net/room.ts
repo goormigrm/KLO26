@@ -146,6 +146,11 @@ export type CtlMessage =
   | { t: 'leave' }
   /** 한 판 더 */
   | { t: 'rematch'; seed: number }
+  /**
+   * 채팅 한 줄 (2026-09-23) — 대기실·경기 중. 보낸 사람은 **피어 id 로** 가린다(글에 이름을 싣지 않는다 —
+   * 남의 이름을 빌려 쓰지 못하게). 받는 쪽이 `cleanChat` 으로 다시 다듬는다. sim 과 무관하다
+   */
+  | { t: 'chat'; text: string }
 
 export interface RoomLink {
   code: string

@@ -57,7 +57,8 @@ export class HostRoom {
       this.opts.onGuestLeave?.()
     })
     this.link.onCtl((m, from) => this.onCtl(m, from))
-    this.timer = window.setInterval(() => this.publish(), 2000)
+    // `window.` 을 붙이지 않는다 — 테스트(Node)에서도 돈다
+    this.timer = setInterval(() => this.publish(), 2000) as unknown as number
     this.publish()
   }
 

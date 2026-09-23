@@ -11,6 +11,7 @@
     "probe": "vite-node tools/probe.ts",
     "asym": "vite-node tools/asym.ts",
     "asymprobe": "vite-node tools/asymprobe.ts",
+    "enhcheck": "vite-node tools/enhcheck.ts",
     "verify": "vite-node tools/verify.ts",
     "oneone": "vite-node tools/oneone.ts",
     "cards": "vite-node tools/cards.ts",

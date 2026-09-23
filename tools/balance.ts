@@ -1,15 +1,23 @@
-// 봇 vs 봇 대량 계측 (DESIGN 12장). `npx vite-node tools/balance.ts [판수] [하프초]`
+// 봇 vs 봇 대량 계측 (DESIGN 12장). `npx vite-node tools/balance.ts [판수] [하프초] [swap]`
 // 골 분포 · 슛 · 유효슛 · 점유율 · 패스 성공률 · 태클 · 틱당 시간을 찍는다.
+//
+// ⚠ 두 스쿼드는 **서로 다르다**(시드 11 4-3-3 vs 시드 22 4-4-2). 그래서 "홈 승 : 원정 승" 은 홈 이점이 아니라
+// **이 두 스쿼드의 전력 차**다. 셋째 인자 `swap` 을 주면 자리를 바꿔 돈다 — 홈/원정이 뒤집혀도 같은 쪽이 이기면 전력 차,
+// 따라 뒤집히면 홈 편향이다 (2026-09-23: 75:19 를 보고 확인하려고 넣었다). 홈 편향 자체는 `asym`(같은 스쿼드끼리)로 잰다.
 import { EMPTY_INPUT, type Input } from '../src/core/input'
 import { createState, step } from '../src/core/sim'
 import { synthSquad } from '../src/core/synth'
 
 const n = Number(process.argv[2] ?? 50)
 const halfSec = Number(process.argv[3] ?? 180)
+const swap = process.argv[4] === 'swap'
 const idle: [Input, Input] = [EMPTY_INPUT, EMPTY_INPUT]
 
-const home = synthSquad(11, { name: '홈', short: '홈', formation: '4-3-3', quality: 66 })
-const away = synthSquad(22, { name: '원정', short: '원정', formation: '4-4-2', quality: 66 })
+const a433 = synthSquad(11, { name: '홈', short: '홈', formation: '4-3-3', quality: 66 })
+const b442 = synthSquad(22, { name: '원정', short: '원정', formation: '4-4-2', quality: 66 })
+const home = swap ? { ...b442, name: '홈', short: '홈' } : a433
+const away = swap ? { ...a433, name: '원정', short: '원정' } : b442
+if (swap) console.log('[swap] 홈 = 시드 22 4-4-2 · 원정 = 시드 11 4-3-3')
 
 const dist = new Map<number, number>()
 let hw = 0

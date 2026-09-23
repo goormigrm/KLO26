@@ -10,7 +10,9 @@ import { START_SIZE, cardOvr, checkSquad, computeCap, normalizeSquad, squadClub,
 import { ovrStars } from '../cards/cards'
 import { cardById } from '../data/pool'
 import { starHtml } from './stars'
-import { decodeSquad, encodeSquad } from '../cards/squadcode'
+import { decodeSquad } from '../cards/squadcode'
+import { toggleReady } from '../cards/confirm'
+import { ChatBox, cleanChat } from './chat'
 import type { NetConfig } from '../game/session'
 import { Lockstep } from '../net/lockstep'
 import { tossHostHome } from '../game/toss'
@@ -50,6 +52,12 @@ export class WaitRoom {
   private disposed = false
   /** **준비를 누른 순간** 확정한 스쿼드. 그 전에는 null 이고 화면엔 지금 저장된 것을 보여 준다 */
   private mySquad: Squad | null = null
+  /** 대기실 전체 (dispose 가 지운다) — `root` 는 그 안의 다시 그리는 부분 */
+  private shell: HTMLElement
+  /** 대기실 채팅 — 붙박이. 경기가 시작되면 지난 줄을 경기 안 채팅으로 넘긴다 */
+  private chat: ChatBox
+  /** 상대가 들어왔다는 알림을 한 번만 */
+  private greeted = ''
 
   constructor(
     host: HTMLElement,
@@ -59,8 +67,15 @@ export class WaitRoom {
   ) {
     // 스쿼드 코드는 비어 있다 — 준비를 눌러야 확정된다 (2026-09-16)
     this.me = { id: '', name: opts.name, ready: false, squadCode: '' }
-    host.innerHTML = '<div class="wait"></div>'
-    this.root = host.querySelector('.wait') as HTMLElement
+    // 대기실 상자(`wait-main`)는 1초마다 통째로 다시 그린다(왕복 시간 표시). 채팅이 그 안에 있으면 입력 중인 글과
+    // 지난 대화가 날아가므로 **밖**(`wait-chat`)에 따로 둔다 (2026-09-23)
+    host.innerHTML = `<div class="wait"><div class="wait-stack">
+      <div class="wait-main"></div>
+      <div class="wait-chat"><div class="wc-t">💬 대화 <small>경기가 시작돼도 이어집니다 · 경기 중에는 T</small></div><div class="wc-host"></div></div>
+    </div></div>`
+    this.shell = host.querySelector('.wait') as HTMLElement
+    this.root = host.querySelector('.wait-main') as HTMLElement
+    this.chat = new ChatBox(host.querySelector('.wc-host') as HTMLElement, (text) => this.sendChat(text), { docked: true })
     // 방장이 로비에서 열어 둔 연결이 있으면 그대로 쓴다 — 다시 열면 상대가 끊긴다
     this.link = opts.link ?? openRoom(opts.code, opts.role)
     this.me.id = this.link.selfId
@@ -81,9 +96,12 @@ export class WaitRoom {
     })
     this.link.onPeerLeave((id) => {
       if (id !== this.otherId) return
+      const who = this.other?.name
       this.otherId = ''
       this.other = null
+      this.greeted = ''
       this.msg = '상대가 나갔습니다.'
+      this.chat.add('', `${who ?? '상대'} 님이 나갔습니다`, 'sys')
       this.draw()
     })
     this.link.onCtl((m, from) => this.onCtl(m, from))
@@ -109,9 +127,19 @@ export class WaitRoom {
       return
     }
     if (from !== this.otherId && this.otherId) return
+    if (m.t === 'chat') {
+      // 보낸 사람은 피어 id 로 가린다 — 글에 이름이 실려 오지 않는다. 글은 다시 다듬는다
+      const text = cleanChat(m.text)
+      if (text && this.other && from === this.otherId) this.chat.add(this.other.name, text, 'other')
+      return
+    }
     if (m.t === 'hello') {
       this.otherId = from
       this.other = { id: from, name: m.name, ready: m.ready, squadCode: m.squadCode }
+      if (this.greeted !== from) {
+        this.greeted = from
+        this.chat.add('', `${m.name} 님이 들어왔습니다`, 'sys')
+      }
       // 내 정보를 아직 못 받았을 수 있으니 한 번 더
       this.sendHello()
       this.draw()
@@ -174,7 +202,20 @@ export class WaitRoom {
     const names: [string, string] = me === 0 ? [this.me.name, this.other!.name] : [this.other!.name, this.me.name]
     void members
     const lockstep = new Lockstep(this.link, delay, me, this.otherId)
-    this.onStart({ link: this.link, lockstep, me, peerId: this.otherId, squads, names }, halfSec, seed)
+    // 대기실 대화는 경기 안으로 이어진다 (bedorage-rpg 와 같다)
+    const chatLog = this.chat.history()
+    this.onStart({ link: this.link, lockstep, me, peerId: this.otherId, squads, names, chatLog }, halfSec, seed)
+  }
+
+  /** 채팅 보내기 — 상대가 있을 때만. 내 화면에는 바로 쓴다 */
+  private sendChat(text: string): boolean {
+    if (!this.otherId || !this.other) {
+      this.chat.add('', '아직 상대가 없습니다 — 들어오면 이야기할 수 있습니다', 'sys')
+      return false
+    }
+    this.chat.add(this.me.name, text, 'me')
+    this.link.sendCtl({ t: 'chat', text }, this.otherId)
+    return true
   }
 
   /** 한쪽 패널 — 구단 색 띠 · 포메이션 · 선발 평균 OVR · 급여 · 팀워크 · 강화 (사용자 요청 2026-09-10) */
@@ -247,24 +288,16 @@ export class WaitRoom {
    * 준비를 취소하면 다시 풀려서 나가 고치고 올 수 있다.
    */
   private toggleReady(): void {
-    if (this.me.ready) {
-      this.me.ready = false
-      this.mySquad = null
-      this.me.squadCode = ''
-      this.msg = ''
-    } else {
-      const sq = this.opts.getSquad()
-      const c = checkSquad(sq, CAP)
-      if (!c.ok) {
-        this.msg = `내 스쿼드가 규칙을 어겼습니다 — ${c.errors[0]}`
-        this.draw()
-        return
-      }
-      this.mySquad = sq
-      this.me.squadCode = encodeSquad(sq)
-      this.me.ready = true
-      this.msg = ''
+    // 판단은 순수 함수(`cards/confirm.ts`)가 한다 — 테스트가 그쪽을 지킨다
+    const next = toggleReady({ ready: this.me.ready, squadCode: this.me.squadCode, squad: this.mySquad }, this.opts.getSquad, CAP)
+    this.msg = next.msg
+    if (next.msg && !next.ready) {
+      this.draw()
+      return
     }
+    this.me.ready = next.ready
+    this.me.squadCode = next.squadCode
+    this.mySquad = next.squad
     this.sendHello()
     this.draw()
     if (this.opts.role === 'host') this.maybeStart()
@@ -282,6 +315,7 @@ export class WaitRoom {
     if (this.disposed) return
     this.disposed = true
     clearInterval(this.timer)
-    this.root.remove()
+    this.chat.dispose()
+    this.shell.remove()
   }
 }

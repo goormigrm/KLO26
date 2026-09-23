@@ -11,7 +11,7 @@ import {
   EMPTY_INPUT, BTN_A, BTN_C, BTN_CTRL, BTN_D, BTN_E, BTN_F, BTN_GK, BTN_PACE, BTN_Q, BTN_S, BTN_SPACE, BTN_W, BTN_Z, type Input,
 } from '../core/input'
 import { previewRestartKick, type KickPreview } from '../core/rules'
-import { POWER_GREEN, POWER_TICKS, createState, step } from '../core/sim'
+import { POWER_GREEN, POWER_TICKS, createState, kickStick, step } from '../core/sim'
 import { TICK_MS, type GameState } from '../core/state'
 import { clubSquad, squadClub, toSquadConfig, type Squad } from '../cards/squad'
 import { CLUBS } from '../data/pool'
@@ -595,7 +595,8 @@ export class PracticeSession {
     const kind = held & BTN_D ? 'D' : held & BTN_A ? 'A' : null
     if (!kind) return null
     const mods = { finesse: (held & BTN_Z) !== 0, panenka: st.phase === 'penalty' && (held & BTN_Q) !== 0, flair: st.phase !== 'penalty' && (held & BTN_C) !== 0 }
-    return previewRestartKick(st, 0, kind, this.lastInput.mx, this.lastInput.my, Math.min(1, team.holdShoot / 36), mods)
+    const ks = kickStick(team, this.lastInput.mx, this.lastInput.my, st.tick)
+    return previewRestartKick(st, 0, kind, ks.mx, ks.my, Math.min(1, team.holdShoot / 36), mods)
   }
 
   private onResize = (): void => this.renderer.resize()

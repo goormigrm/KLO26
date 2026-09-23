@@ -466,7 +466,7 @@ export function previewRestartKick(
       const a = atan2A(A.ty - b.y, goalX(team) - b.x)
       return { x: b.x, y: b.y, z: 0, vx: cosA(a) * A.speed, vy: sinA(a) * A.speed, vz: A.vz, kind, curl: A.curl, dip: A.dip }
     }
-    if (phase === 'freekick' && stick) {
+    if (phase === 'freekick' && (stick || screen)) {
       const A = aimShot(st, k, dx, dy, clamp(0.6 + power * 0.4, 0.6, 1), false, null, screen ? { lat, lift } : undefined, { ...mods, freekick: true })
       const a = atan2A(A.ty - b.y, goalX(team) - b.x)
       return { x: b.x, y: b.y, z: 0, vx: cosA(a) * A.speed, vy: sinA(a) * A.speed, vz: A.vz, kind, curl: A.curl, dip: A.dip }
@@ -579,7 +579,10 @@ export function performRestartKick(st: GameState, aim: RestartAim | null = null)
 
   const noOff = r.noOffside
   // ---- 사람이 고른 킥 ----
-  if (aim && (aim.dx !== 0 || aim.dy !== 0)) {
+  // 키커 뒤 시점의 직접 프리킥 D 는 방향키가 없어도 사람이 찬 것 — 곧게 가운데로 (PK 와 같다 · 2026-09-23).
+  // 예전엔 방향키가 없으면 AI 가 대신 차서 아무 구석으로 갔다 — 화면은 "← → 코너" 라고만 알려 주는데
+  const fkStraight = aim !== null && aim.kind === 'D' && phase === 'freekick' && aim.lat !== undefined
+  if (aim && (aim.dx !== 0 || aim.dy !== 0 || fkStraight)) {
     const { dx, dy } = aim
     if (aim.kind === 'D') {
       if (phase === 'goalkick') gkPunt(st, k, dy * 30)
@@ -669,11 +672,16 @@ function keeperDive(st: GameState, ti: number): void {
   if (gk.sentOff || gk.action !== ACT_RUN) return
   const lat = tm.pkDiveY * 2.9 - gk.y
   if (Math.abs(lat) < 0.5) return
-  gk.diveHigh = tm.pkDiveHigh
+  pkGuessDive(gk, Math.sign(lat), tm.pkDiveHigh)
+}
+
+/** PK 에서 골키퍼가 차는 순간 한쪽(side ±1, 월드 y)으로 먼저 몸을 날린다 — 사람 골키퍼의 PK 다이빙과 조작 연습(파넨카)이 같이 쓴다 */
+export function pkGuessDive(gk: Player, side: number, high: boolean): void {
+  gk.diveHigh = high
   gk.action = ACT_DIVE
   gk.actT = 24
   gk.vx = 0
-  gk.vy = Math.sign(lat) * (3.4 + 1.2 * gk.sk.gkReach + 1.2 * gk.sk.gkHand) * (gk.diveHigh ? 0.9 : 1)
+  gk.vy = side * (3.4 + 1.2 * gk.sk.gkReach + 1.2 * gk.sk.gkHand) * (high ? 0.9 : 1)
 }
 
 /**

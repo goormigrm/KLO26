@@ -355,6 +355,10 @@ export interface Team {
   fkCharge: boolean
   /** 골키퍼가 공을 들고 E — 이 틱까지 팀 라인이 올라간다 */
   pushUntil: number
+  /** 세트피스 킥커가 마지막으로 누른 방향키(원시 값 −127..127)와 그 틱 — D·A 와 방향키를 같이 떼도 방향이 남게 (2026-09-23) */
+  kickMx: number
+  kickMy: number
+  kickT: number
 }
 
 export interface TeamStats {

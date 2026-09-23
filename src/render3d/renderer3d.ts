@@ -779,13 +779,15 @@ export class Renderer3D {
     // 전력질주 — 사람 조작 선수는 E 홀드, 나머지는 AI 의 sprint. 체력이 바닥이면 sim 도 안 빨라지니 모션도 보통으로
     const tm = st.teams[p.team]
     const sprint = (tm.human && tm.controlled === p.idx ? tm.sprint : p.sprint) && p.stamina > 0.05 && speed > 4.5
-    // 다이브 방향: 정면 기준 오른쪽 성분
+    // 다이브 방향: 정면 기준 오른쪽 성분. 옆 속도가 거의 없으면(정면으로 뛰기 · 서서 쳐내고 넘어짐) **공이 있는 쪽**으로 —
+    // 예전엔 0 이면 지난 다이브의 방향을 그대로 써서, 공과 반대로 누운 채 막는 그림이 나왔다 (사용자 제보 2026-09-23)
     let lateral = 0
     if (p.action === ACT_DIVE) {
       const rx = Math.sin(facingRad)
       const ry = -Math.cos(facingRad)
       const l = p.vx * rx + p.vy * ry
-      lateral = l > 0.05 ? 1 : l < -0.05 ? -1 : 0
+      if (Math.abs(l) > 0.3) lateral = l > 0 ? 1 : -1
+      else lateral = (st.ball.x - p.x) * rx + (st.ball.y - p.y) * ry >= 0 ? 1 : -1
     }
     // 세레모니는 **리플레이가 아닐 때만** — 리플레이는 골 장면 프레임을 되돌려 보는 것인데 phase 가 'goal' 이라
     // 팔을 든 채로 슛하는 그림이 나왔다 (사용자 제보 2026-09-15). 종류(0~2)는 골마다·선수마다 달라지되 결정론(idx·득점 수)

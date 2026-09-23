@@ -9,9 +9,9 @@ import { atan2A } from '../core/fixedmath'
 import { doPass } from '../core/ball'
 import { BTN_A, BTN_C, BTN_D, BTN_GK, BTN_PACE, BTN_Z, type Input } from '../core/input'
 import { rand } from '../core/rng'
-import { setupFreeKick, setupPenalty } from '../core/rules'
+import { pkGuessDive, setupFreeKick, setupPenalty } from '../core/rules'
 import type { Skills } from '../core/skills'
-import { ACT_DIVE, ACT_FALLEN, ACT_RUN, ACT_SLIDE, CIRCLE_R, HALF_L, type GameState, type Phase, type Player } from '../core/state'
+import { ACT_FALLEN, ACT_RUN, ACT_SLIDE, CIRCLE_R, HALF_L, type GameState, type Phase, type Player } from '../core/state'
 
 export type DrillCat = '드리블' | '패스' | '슛' | '수비' | '골키퍼' | '세트피스'
 export const DRILL_CATS: DrillCat[] = ['드리블', '패스', '슛', '수비', '골키퍼', '세트피스']
@@ -764,15 +764,10 @@ export const DRILLS: Drill[] = [
       if (st.phase === 'penalty') return null
       if (!c.f.kick) {
         c.f.kick = st.tick
-        // 연습 전용 — 골키퍼가 넷 중 셋은 먼저 한쪽으로 몸을 날린다 (경기의 봇 골키퍼는 공을 보고 반응한다)
+        // 연습 전용 — 골키퍼가 넷 중 셋은 먼저 한쪽으로 몸을 날린다 (경기의 봇 골키퍼는 공을 보고 반응한다).
+        // 날리는 건 사람 골키퍼의 PK 다이빙과 같은 함수 — 연습에서 익힌 게 대전에서도 그대로 통한다
         const gk = st.players[st.teams[1].gk]
-        if (rand(st.botRng) < 0.75 && gk.action === ACT_RUN) {
-          gk.action = ACT_DIVE
-          gk.actT = 24
-          gk.diveHigh = false
-          gk.vx = 0
-          gk.vy = (rand(st.botRng) < 0.5 ? -1 : 1) * 5
-        }
+        if (rand(st.botRng) < 0.75 && gk.action === ACT_RUN) pkGuessDive(gk, rand(st.botRng) < 0.5 ? -1 : 1, false)
       }
       return shotCheck(st, c, 'panenka', 'Q 를 누른 채 D') ?? (st.phase !== 'play' && st.phase !== 'goal' ? '빗나갔습니다' : st.tick - c.f.kick > 150 ? '골이 안 됐습니다' : null)
     },

@@ -66,7 +66,7 @@ function mkTeam(t: number, sq: SquadConfig, human: boolean, bot: number): Team {
     tapKind: 0, tapTick: -1000, tapBy: -1, tapD: 0, eTaps: 0, eTick: -1000, rollT: -1000,
     powerT: -1, powerHit: 0, powerDx: 0, powerDy: 0, powerPow: 0, powerZ: false, fakeT: -1000, fakeHold: false,
     pkDive: false, pkDiveY: 0, pkDiveHigh: false, pkAntT: -1000,
-    wallJumpT: -1000, wallShift: 0, wallAdv: 0, fkCharge: false, pushUntil: -1,
+    wallJumpT: -1000, wallShift: 0, wallAdv: 0, fkCharge: false, pushUntil: -1, kickMx: 0, kickMy: 0, kickT: -1000,
   }
 }
 
@@ -115,6 +115,20 @@ export function createState(cfg: MatchConfig): GameState {
 
 /** 받을 선수의 요격 지점 (할당을 피하려 재사용) */
 const RECV_TMP = { x: 0, y: 0 }
+
+/** 세트피스 킥에서 방향키를 뗀 뒤에도 이만큼(틱) 그 방향을 기억한다 — 0.33 초 */
+export const KICK_AIM_TICKS = 20
+
+/**
+ * 세트피스 킥커의 방향키 — 지금 누른 것이 없으면 **0.33 초 안에 마지막으로 누른 것** (2026-09-23 사용자 제보
+ * "PK·프리킥이 누른 방향과 다르게 날아간다"). D 와 방향키를 같이 떼면 두 키가 한 프레임(16 ms)에 떨어져, 떼는 틱의
+ * 방향키가 (0,0)이 되어 PK 는 아무 구석으로, 프리킥은 골키퍼가 비운 구석으로 갔다. 궤적 미리보기(렌더)도 같은 값을 쓴다
+ */
+export function kickStick(team: Team, mx: number, my: number, tick: number): { mx: number; my: number } {
+  if (mx !== 0 || my !== 0) return { mx, my }
+  if (tick - team.kickT <= KICK_AIM_TICKS) return { mx: team.kickMx, my: team.kickMy }
+  return { mx: 0, my: 0 }
+}
 
 /** 파워 슛(F+D) 준비 시간과 타이밍 게이지의 초록 구간 (틱) — 렌더가 같은 값으로 게이지를 그린다 */
 export const POWER_TICKS = 30
@@ -322,8 +336,15 @@ function handleInput(st: GameState, t: number, inp: Input): void {
       team.prevButtons = held
       return
     }
-    // 키커 뒤 시점(직접 프리킥·PK)이면 방향키를 **화면 기준**으로 읽는다 — ↑ 골문 쪽 · → 화면 오른쪽 (2026-09-11)
-    const stick = restartStick(st, t, inp.mx, inp.my)
+    // 키커 뒤 시점(직접 프리킥·PK)이면 방향키를 **화면 기준**으로 읽는다 — ↑ 골문 쪽 · → 화면 오른쪽 (2026-09-11).
+    // 방향키를 D 와 같이 떼도 방향이 남는다 (`kickStick`)
+    if (inp.mx !== 0 || inp.my !== 0) {
+      team.kickMx = inp.mx
+      team.kickMy = inp.my
+      team.kickT = st.tick
+    }
+    const ks = kickStick(team, inp.mx, inp.my, st.tick)
+    const stick = restartStick(st, t, ks.mx, ks.my)
     team.inX = stick.dx
     team.inY = stick.dy
     // D(슛·펀트)와 A(롱볼)는 **홀드**로 힘을 모아 떼는 순간 찬다. S·W 는 누르는 순간 (2026-09-11: A 도 홀드)

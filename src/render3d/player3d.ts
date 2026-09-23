@@ -258,6 +258,8 @@ export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
   // 킥은 sim 에서 6틱(0.1초)뿐이라 렌더가 0.32초로 늘려 보여 준다
   if (a.action === ACT_KICK && rig.lastAction !== ACT_KICK) rig.kickT = 0.32
   if (a.action === ACT_HEAD && rig.lastAction !== ACT_HEAD) rig.headT = 0.3
+  // 다이브 쪽은 **날기 시작할 때 한 번** 정한다 — 날아가는 동안 속도가 줄어 방향이 바뀌어 보이지 않게
+  if (a.action === ACT_DIVE && rig.lastAction !== ACT_DIVE && a.lateral !== 0) rig.lieSide = a.lateral
   rig.lastAction = a.action
   rig.kickT = Math.max(0, rig.kickT - dt)
   rig.headT = Math.max(0, rig.headT - dt)
@@ -275,7 +277,6 @@ export function animateRig(rig: PlayerRig, a: AnimInput, dt: number): void {
   } else if (a.action === ACT_DIVE) {
     lieTarget = 1
     sideways = true
-    if (a.lateral !== 0) rig.lieSide = a.lateral
   }
   const k = Math.min(1, dt * 9)
   rig.lie += (lieTarget - rig.lie) * k

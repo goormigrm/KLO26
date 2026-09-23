@@ -1048,7 +1048,9 @@ export function aimShot(
   let ty = 0
   let awkward = false
   const gk = oppGK(st, p.team)
-  if (fine && fine.lat !== 0) ty = clamp(fine.lat, -1, 1) * 3.1
+  // 키커 뒤 시점의 조준(fine)은 **누른 그대로** — 좌우를 안 눌렀으면 가운데다 (2026-09-23 제보: ↑ 만 누른 PK 가 아무 구석으로,
+  // 프리킥은 골키퍼가 비운 구석으로 갔다 — 미리보기 점선과도 달랐다)
+  if (fine) ty = clamp(fine.lat, -1, 1) * 3.1
   else if (aimSide !== null) ty = aimSide * 2.9
   else {
     // 자동 보조 (DESIGN 3.3, 2026-09-10 개정): 슛은 **언제나 골문을 겨눈다**.
@@ -1395,8 +1397,16 @@ export function gkCatch(st: GameState, gk: Player): void {
   b.fromThrow = false
   gk.lastKick = st.tick
   if (gk.action !== ACT_DIVE) {
+    // 서서 쳐냈다 — 공 쪽으로 몸을 던지며 넘어진다 (예전엔 옆걸음하던 속도 그대로 누워, 공과 반대쪽으로 넘어지기도 했다)
+    const dx = b.x - gk.x
+    const dy = b.y - gk.y
+    const l = len(dx, dy)
     gk.action = ACT_DIVE
     gk.actT = 20
+    if (l > 0.05) {
+      gk.vx = (dx / l) * 2.5
+      gk.vy = (dy / l) * 2.5
+    }
   }
 }
 

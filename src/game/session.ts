@@ -3,7 +3,7 @@
 // 틱은 Worker 타이머(60Hz), 그리기는 requestAnimationFrame. 렌더는 prev/curr 보간만 하고 sim 을 바꾸지 않는다.
 
 import { BTN_A, BTN_C, BTN_D, BTN_Q, BTN_SKIP, BTN_SUB, BTN_Z, SUB_CLEAR, soloInputs, type Input } from '../core/input'
-import { POWER_GREEN, POWER_TICKS, createState, hashState, snapshot, step } from '../core/sim'
+import { POWER_GREEN, POWER_TICKS, createState, hashState, kickStick, snapshot, step } from '../core/sim'
 import { synthSquad } from '../core/synth'
 import { clubSquad, squadClub, toSquadConfig, type Squad } from '../cards/squad'
 import { CLUBS } from '../data/pool'
@@ -547,7 +547,9 @@ export class Session {
     if (!kind) return null
     // 조합키도 미리 본다 — Z 감아차기(휘는 궤적) · Q 파넨카(PK) · C 플레어는 방향이 정해지지 않아 평균만
     const mods = { finesse: (held & BTN_Z) !== 0, panenka: st.phase === 'penalty' && (held & BTN_Q) !== 0, flair: st.phase !== 'penalty' && (held & BTN_C) !== 0 }
-    return previewRestartKick(st, me, kind, this.lastInput.mx, this.lastInput.my, Math.min(1, team.holdShoot / 36), mods)
+    // 방향키를 먼저 놓아도 sim 은 0.33 초 기억한다 — 점선도 같은 방향으로 (kickStick)
+    const ks = kickStick(team, this.lastInput.mx, this.lastInput.my, st.tick)
+    return previewRestartKick(st, me, kind, ks.mx, ks.my, Math.min(1, team.holdShoot / 36), mods)
   }
 
   // ---- 메뉴 · 결과 ----
